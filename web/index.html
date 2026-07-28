@@ -1,0 +1,1811 @@
+<title>Kumiko Lamp Configurator</title>
+
+<style>
+/* ---- tokens -------------------------------------------------------- */
+:root {
+  --hinoki:  #ede4d2;   /* pale worked cypress: the page ground */
+  --washi:   #f7f1e4;   /* raised surfaces */
+  --edge:    #d6c8ac;
+  --sumi:    #241e1a;   /* warm near-black ink */
+  --sumi-2:  #5c5046;   /* secondary text, warm grey biased to the ground */
+  --sumi-3:  #8a7c6d;
+  --ai:      #1f3a5f;   /* aizome indigo: the one bold note */
+  --ai-soft: #e3e8ef;
+  --kigara:  #8a5a2b;   /* the wood tone used in the repo's renders */
+  --bengara: #a6371f;   /* iron-oxide red: warnings only */
+  --ok:      #3f6b46;
+  --shadow:  0 1px 0 rgba(36,30,26,.05), 0 2px 10px rgba(36,30,26,.06);
+  --stage:   #ded2b9;
+
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hinoki: #191512; --washi: #221d18; --edge: #3a322a;
+    --sumi: #ece3d5; --sumi-2: #b3a693; --sumi-3: #8a7d6c;
+    --ai: #7fa6d9; --ai-soft: #24303f;
+    --kigara: #c89a5e; --bengara: #e0785c; --ok: #7fb489;
+    --shadow: 0 1px 0 rgba(0,0,0,.3), 0 2px 12px rgba(0,0,0,.35);
+    --stage: #120f0c;
+  }
+}
+:root[data-theme="dark"] {
+  --hinoki: #191512; --washi: #221d18; --edge: #3a322a;
+  --sumi: #ece3d5; --sumi-2: #b3a693; --sumi-3: #8a7d6c;
+  --ai: #7fa6d9; --ai-soft: #24303f;
+  --kigara: #c89a5e; --bengara: #e0785c; --ok: #7fb489;
+  --shadow: 0 1px 0 rgba(0,0,0,.3), 0 2px 12px rgba(0,0,0,.35);
+  --stage: #120f0c;
+}
+:root[data-theme="light"] {
+  --hinoki: #ede4d2; --washi: #f7f1e4; --edge: #d6c8ac;
+  --sumi: #241e1a; --sumi-2: #5c5046; --sumi-3: #8a7c6d;
+  --ai: #1f3a5f; --ai-soft: #e3e8ef;
+  --kigara: #8a5a2b; --bengara: #a6371f; --ok: #3f6b46;
+  --shadow: 0 1px 0 rgba(36,30,26,.05), 0 2px 10px rgba(36,30,26,.06);
+  --stage: #ded2b9;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--hinoki); color: var(--sumi);
+  font-family: var(--serif); font-size: 16px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { text-wrap: balance; font-weight: 600; margin: 0; }
+a { color: var(--ai); }
+
+.wrap { max-width: 1440px; margin: 0 auto; padding: 0 24px 72px; }
+
+/* ---- masthead ------------------------------------------------------ */
+.mast {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap;
+  padding: 30px 0 18px; border-bottom: 1px solid var(--edge); margin-bottom: 26px;
+}
+.mast h1 { font-size: 30px; letter-spacing: -.01em; }
+.mast .kicker {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--kigara); margin-bottom: 6px;
+}
+.mast p { margin: 6px 0 0; color: var(--sumi-2); max-width: 62ch; font-size: 15px; }
+.dims {
+  font-family: var(--mono); font-size: 13px; color: var(--sumi-2);
+  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.dims b { display: block; font-size: 21px; color: var(--sumi); font-weight: 600; }
+
+/* ---- workbench ----------------------------------------------------- */
+.bench { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 940px) { .bench { grid-template-columns: 1fr; } }
+
+.rail { display: flex; flex-direction: column; gap: 10px; }
+.grp {
+  background: var(--washi); border: 1px solid var(--edge);
+  border-radius: 3px; box-shadow: var(--shadow);
+}
+.grp > summary {
+  cursor: pointer; list-style: none; padding: 11px 14px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--sumi-2);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.grp > summary::-webkit-details-marker { display: none; }
+.grp > summary::after { content: "+"; font-size: 15px; color: var(--sumi-3); }
+.grp[open] > summary::after { content: "\2212"; }
+.grp > summary:hover { color: var(--sumi); }
+.grp .body { padding: 4px 14px 14px; display: flex; flex-direction: column; gap: 13px; }
+
+.ctl label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 13px; color: var(--sumi-2); gap: 10px; margin-bottom: 5px;
+}
+.ctl .val {
+  font-family: var(--mono); font-size: 12px; color: var(--sumi);
+  font-variant-numeric: tabular-nums;
+}
+.ctl input[type=range] {
+  width: 100%; margin: 0; accent-color: var(--ai); height: 18px;
+}
+.ctl input[type=range]:focus-visible { outline: 2px solid var(--ai); outline-offset: 3px; }
+
+.styles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.styles button {
+  font-family: var(--serif); font-size: 13px; padding: 8px 6px; cursor: pointer;
+  background: transparent; color: var(--sumi-2);
+  border: 1px solid var(--edge); border-radius: 2px;
+}
+.styles button:hover { border-color: var(--kigara); color: var(--sumi); }
+.styles button[aria-pressed="true"] {
+  background: var(--ai); border-color: var(--ai); color: var(--washi);
+}
+.styles button:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+
+/* ---- stage --------------------------------------------------------- */
+.stage { display: grid; grid-template-columns: minmax(0,1fr) 232px; gap: 16px; }
+@media (max-width: 760px) { .stage { grid-template-columns: 1fr; } }
+
+.view {
+  position: relative; background: var(--stage);
+  border: 1px solid var(--edge); border-radius: 3px; overflow: hidden;
+  min-height: 470px; box-shadow: var(--shadow);
+}
+.view canvas { display: block; width: 100%; height: 100%; }
+.hint {
+  position: absolute; left: 12px; bottom: 10px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+  color: var(--sumi-2); opacity: .75; pointer-events: none; text-transform: uppercase;
+}
+.viewtabs { position: absolute; right: 10px; top: 10px; display: flex; gap: 4px; }
+.viewtabs button {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  padding: 5px 9px; cursor: pointer; border-radius: 2px;
+  background: color-mix(in srgb, var(--washi) 88%, transparent);
+  border: 1px solid var(--edge); color: var(--sumi-2);
+}
+.viewtabs button[aria-pressed="true"] { background: var(--ai); border-color: var(--ai); color: var(--washi); }
+.viewtabs button:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+
+.swatch {
+  background: var(--washi); border: 1px solid var(--edge); border-radius: 3px;
+  padding: 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px;
+  align-self: start;   /* hug the swatch instead of stretching to the viewport */
+}
+.swatch canvas { width: 100%; height: auto; display: block; }
+.swatch .cap {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--sumi-3);
+}
+
+/* ---- problems ------------------------------------------------------ */
+.problems {
+  margin-top: 16px; border-left: 3px solid var(--bengara);
+  background: color-mix(in srgb, var(--bengara) 8%, var(--washi));
+  padding: 12px 16px; border-radius: 0 3px 3px 0;
+}
+.problems h3 { font-size: 14px; color: var(--bengara); margin-bottom: 4px; }
+.problems ul { margin: 0; padding-left: 18px; font-size: 14px; color: var(--sumi-2); }
+
+/* ---- tables and sections ------------------------------------------- */
+section.block { margin-top: 34px; }
+section.block > h2 {
+  font-size: 12px; font-family: var(--mono); letter-spacing: .16em;
+  text-transform: uppercase; color: var(--sumi-2);
+  padding-bottom: 8px; border-bottom: 1px solid var(--edge); margin-bottom: 14px;
+}
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 640px; }
+th, td { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--edge); }
+th {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--sumi-3); font-weight: 400;
+}
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td .part { font-weight: 600; }
+td .note { color: var(--sumi-3); font-size: 12.5px; }
+.chip {
+  display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 2px; border: 1px solid;
+}
+.chip.fit { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.chip.nofit { color: var(--bengara); border-color: color-mix(in srgb, var(--bengara) 45%, transparent); background: color-mix(in srgb, var(--bengara) 10%, transparent); }
+
+button.dl {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .06em; cursor: pointer;
+  padding: 5px 11px; border: 1px solid var(--edge); border-radius: 2px;
+  background: transparent; color: var(--sumi-2);
+}
+button.dl:hover { border-color: var(--ai); color: var(--ai); }
+button.dl:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+
+.actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+button.primary {
+  font-family: var(--serif); font-size: 15px; cursor: pointer;
+  padding: 11px 22px; border-radius: 2px; border: 1px solid var(--ai);
+  background: var(--ai); color: #f7f1e4;
+}
+button.primary:hover { filter: brightness(1.12); }
+button.primary:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+button.primary:focus-visible { outline: 2px solid var(--kigara); outline-offset: 2px; }
+.actions .said { font-size: 13.5px; color: var(--sumi-2); }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 26px; }
+.cols h3 { font-size: 15px; margin-bottom: 7px; }
+.cols p, .cols li { font-size: 14.5px; color: var(--sumi-2); }
+.cols ol, .cols ul { margin: 0; padding-left: 19px; }
+.cols li { margin-bottom: 5px; }
+.cols li::marker { color: var(--kigara); }
+dl.spec { margin: 0; font-size: 14px; }
+dl.spec div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px dotted var(--edge); }
+dl.spec dt { color: var(--sumi-2); }
+dl.spec dd { margin: 0; font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+.warn {
+  border: 1px solid color-mix(in srgb, var(--bengara) 40%, var(--edge));
+  border-left: 3px solid var(--bengara);
+  background: color-mix(in srgb, var(--bengara) 6%, var(--washi));
+  padding: 15px 18px; border-radius: 0 3px 3px 0;
+}
+.warn h3 { color: var(--bengara); }
+.warn strong { color: var(--bengara); }
+
+pre.cmd {
+  font-family: var(--mono); font-size: 12px; background: var(--washi);
+  border: 1px solid var(--edge); border-radius: 3px; padding: 11px 13px;
+  overflow-x: auto; margin: 0; color: var(--sumi);
+}
+.foot {
+  margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--edge);
+  font-size: 13px; color: var(--sumi-3);
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <div class="mast">
+    <div>
+      <div class="kicker">Kumiko lantern &middot; parametric</div>
+      <h1>Design your lamp, take the STLs</h1>
+      <p>A four-panel kumiko lantern with sliding mortise-and-groove joints. Every
+         part prints flat with no supports, and nothing needs glue. Change anything
+         below and the joinery re-solves itself.</p>
+    </div>
+    <div class="dims"><b id="d-overall">&mdash;</b><span id="d-sub">&mdash;</span></div>
+  </div>
+
+  <div class="bench">
+    <div class="rail" id="rail"></div>
+
+    <div>
+      <div class="stage">
+        <div class="view">
+          <canvas id="gl"></canvas>
+          <div class="viewtabs">
+            <button id="v-asm" aria-pressed="true">Assembled</button>
+            <button id="v-exp" aria-pressed="false">Exploded</button>
+          </div>
+          <div class="hint">Drag to turn &middot; scroll to zoom</div>
+        </div>
+        <div class="swatch">
+          <div class="cap" id="sw-name">Asanoha</div>
+          <canvas id="flat" width="420" height="560"></canvas>
+          <div class="cap" id="sw-meta">&mdash;</div>
+        </div>
+      </div>
+      <div id="problems"></div>
+    </div>
+  </div>
+
+  <section class="block">
+    <h2>Print list</h2>
+    <div class="scroll"><table>
+      <thead><tr>
+        <th>Part</th><th class="num">Qty</th><th class="num">Size (mm)</th>
+        <th class="num">Volume</th><th>Plate</th><th></th>
+      </tr></thead>
+      <tbody id="parts"></tbody>
+    </table></div>
+    <div class="actions">
+      <button class="primary" id="dl-all">Download all parts (.zip)</button>
+      <span class="said" id="said"></span>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Settings, assembly, and the bit that matters</h2>
+    <div class="cols">
+      <div>
+        <h3>Slicer</h3>
+        <dl class="spec">
+          <div><dt>Nozzle / layer</dt><dd id="s-noz">0.4 / 0.2 mm</dd></div>
+          <div><dt>Wall loops</dt><dd id="s-walls">4</dd></div>
+          <div><dt>Infill</dt><dd>15% gyroid</dd></div>
+          <div><dt>Supports</dt><dd>none</dd></div>
+          <div><dt>Brim</dt><dd>5 mm on posts &amp; panels</dd></div>
+        </dl>
+        <p style="margin-top:10px" id="s-walls-why"></p>
+      </div>
+      <div>
+        <h3>Assembly</h3>
+        <ol>
+          <li>Drop the four posts into the corner sockets in the base.</li>
+          <li>Slide each panel down between two posts, lattice facing out.</li>
+          <li>Fit the cap over the post tops and panel top edges.</li>
+        </ol>
+        <p>Friction fit throughout, so the cap lifts off to change the bulb. If panels
+           bind, raise the slot clearance and reprint only the posts.</p>
+      </div>
+      <div>
+        <h3>Diffuser</h3>
+        <p>The back of each panel is rebated and open at the top edge. Slide in shoji
+           paper or vellum before fitting the cap.</p>
+        <dl class="spec">
+          <div><dt>Sheet size &times;4</dt><dd id="s-diff">&mdash;</dd></div>
+          <div><dt>Rebate depth</dt><dd id="s-reb">&mdash;</dd></div>
+        </dl>
+      </div>
+      <div class="warn">
+        <h3>Heat</h3>
+        <p><strong>LED bulb only, 9 W maximum.</strong> A filament or halogen bulb will
+           soften and deform this lamp &mdash; PLA starts to go around 60&nbsp;&deg;C.</p>
+        <p>Print the <strong>base and cap in PETG</strong>; they sit nearest the bulb.
+           PLA is fine for panels and posts. Mains wiring is your responsibility.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Fully manifold files</h2>
+    <div class="cols">
+      <div>
+        <p>The <strong>base, posts and adapter ring</strong> come out of here as single
+           watertight shells, and their volumes match the Python generator exactly.</p>
+        <p>The <strong>panel lattice and cap grille</strong> are built as one closed
+           solid per slat, overlapping where slats cross. Resolving those crossings
+           into a single shell needs a CSG engine the browser does not have; doing it
+           by decomposition instead costs eighteen times the triangles and takes
+           seconds per change. There are <em>no open edges</em> anywhere &mdash; every
+           edge is shared by an even number of faces &mdash; but the shared ones sit on
+           four faces rather than two, so a strict manifold check calls these
+           non-manifold and your slicer may offer to repair them. Overlapping closed
+           solids are unioned correctly, so they print as drawn.</p>
+        <p>For strictly manifold files, the Python generator in this repo builds the
+           same lamp with real CSG:</p>
+      </div>
+      <div>
+        <pre class="cmd" id="cli">&mdash;</pre>
+        <p style="font-size:13.5px;color:var(--sumi-3);margin-top:8px">
+          One caveat on the numbers above: the volume shown for the panel and cap
+          counts overlapping slats twice, so it reads a few percent high. The other
+          three parts are exact.</p>
+      </div>
+    </div>
+    <div class="foot">
+      Nothing here has been test printed. Shrinkage and your printer's dimensional
+      accuracy are the remaining unknowns, and the joints are where they would show.
+    </div>
+  </section>
+</div>
+
+<script id="kumiko-core">
+/* Kumiko lamp — geometry core.  No DOM access; mirrors kumiko_lamp.py. */
+var Kumiko = (function () {
+  'use strict';
+
+  var EPS = 1e-3;      // through-cut nudge, matches the Python EPS
+  var TOL = 1e-7;      // geometric tolerance
+  var SIDE = 1e-4;     // offset used to probe which side of a wall is solid
+
+  // ------------------------------------------------------------------
+  // Parameters — defaults identical to Params in kumiko_lamp.py
+  // ------------------------------------------------------------------
+  var DEFAULTS = {
+    size: 180, height: 210,
+    bedX: 256, bedY: 256, bedZ: 256, nozzle: 0.4,
+    post: 18, postChamfer: 2,
+    panelT: 4, panelBorder: 12, slatW: 1.6, grid: 28,
+    rebateD: 0.6, rebateLip: 8,
+    grooveD: 6, slotClear: 0.4, panelClear: 0.3, socketClear: 0.4,
+    plinth: 5, baseT: 16, capT: 10,
+    socketBore: 40, socketCbore: 50, socketCboreD: 4, socketNeck: 26.5,
+    cableW: 9, cableH: 5, cableFloor: 2,
+    baseVents: 16, baseVentR0: 29, baseVentR1: 37,
+    capVentD: 70, capGrilleF: 0.75,
+    arc: 64,
+    pattern: 'asanoha'
+  };
+
+  function derive(raw) {
+    var p = {};
+    for (var k in DEFAULTS) p[k] = (raw && raw[k] !== undefined) ? +raw[k] : DEFAULTS[k];
+    if (raw && raw.pattern) p.pattern = raw.pattern;
+    p.slotW = p.panelT + p.slotClear;
+    p.postCenter = p.size / 2 - p.post / 2;
+    p.grooveSpan = 2 * (p.postCenter - (p.post / 2 - p.grooveD));
+    p.panelW = p.grooveSpan - p.panelClear;
+    p.foot = p.size + 2 * p.plinth;
+    p.socketSz = p.post + p.socketClear;
+    p.totalHeight = p.baseT + (p.height - 2 * p.grooveD) + p.capT;
+    p.openW = p.panelW - 2 * p.panelBorder;
+    p.openH = p.height - 2 * p.panelBorder;
+    p.diffuserW = p.panelW - 2 * p.rebateLip;
+    p.diffuserH = p.height - p.rebateLip;
+    return p;
+  }
+
+  /* Port of check_fits().  Returns a list of blocking problems. */
+  function checkFits(P) {
+    var out = [];
+    function bad(m) { out.push(m); }
+    if (Math.abs((P.panelW + P.panelClear) - P.grooveSpan) > 1e-9)
+      bad('Panel width does not match the post groove span.');
+    if (Math.abs((P.slotW - P.panelT) - P.slotClear) > 1e-9)
+      bad('Groove width does not give the intended slot clearance.');
+    if (P.grooveD >= P.post / 2)
+      bad('Groove depth ' + P.grooveD + ' mm would cut the ' + P.post + ' mm post in half.');
+    if (P.slatW < 2 * P.nozzle)
+      bad('Slat width ' + P.slatW + ' mm is under two extrusions.');
+    if (Math.abs(P.slatW / P.nozzle - Math.round(P.slatW / P.nozzle)) > 1e-6)
+      bad('Slat width ' + P.slatW + ' mm is not a multiple of the ' + P.nozzle + ' mm nozzle.');
+    if (P.rebateD >= P.panelT)
+      bad('Diffuser rebate is deeper than the panel is thick.');
+    if (P.cableFloor + P.cableH > P.baseT - P.grooveD)
+      bad('Cord tunnel breaks into the panel groove above it.');
+    if (P.cableFloor < 3 * 0.2)
+      bad('Less than three layers of floor under the cord tunnel.');
+    if (P.panelBorder <= P.grooveD)
+      bad('Panel frame is narrower than its groove engagement.');
+    if (P.rebateLip >= P.panelBorder)
+      bad('Diffuser rebate eats the whole frame lip.');
+    if (P.socketCbore / 2 >= P.baseVentR0)
+      bad('Adapter counterbore runs into the ventilation slots.');
+    if (P.foot / 2 <= P.postCenter + P.socketSz / 2)
+      bad('Post socket breaks out of the side of the base and cap.');
+    if (P.openW <= P.grid || P.openH <= P.grid)
+      bad('Pattern pitch ' + P.grid + ' mm is too coarse for the panel opening.');
+    if (P.socketNeck >= P.socketCbore - 0.4)
+      bad('Adapter ring bore is larger than the ring itself.');
+    if (P.socketBore >= P.socketCbore)
+      bad('Lamp holder bore is not smaller than its counterbore.');
+    if (P.cableW / 2 >= P.socketBore / 2)
+      bad('Cord tunnel is wider than the lamp holder bore.');
+    return out;
+  }
+
+  // ------------------------------------------------------------------
+  // 2-D segments
+  // ------------------------------------------------------------------
+  /* Rounds to 4 dp and normalises -0, which would otherwise hash apart
+     from +0 and leave duplicate slats in the lattice. */
+  function key2(p) {
+    return (Math.round(p[0] * 1e4) / 1e4 + 0).toFixed(4) + ',' +
+           (Math.round(p[1] * 1e4) / 1e4 + 0).toFixed(4);
+  }
+
+  function SegSet() { this.seen = {}; this.segs = []; }
+  SegSet.prototype.add = function (p, q) {
+    if (Math.abs(q[0] - p[0]) < 1e-6 && Math.abs(q[1] - p[1]) < 1e-6) return;
+    var a = key2(p), b = key2(q);
+    var k = a < b ? a + '|' + b : b + '|' + a;
+    if (this.seen[k]) return;
+    this.seen[k] = 1;
+    this.segs.push([p, q]);
+  };
+
+  function clipRect(segs, x0, y0, x1, y1) {
+    var out = [];
+    for (var i = 0; i < segs.length; i++) {
+      var px = segs[i][0][0], py = segs[i][0][1];
+      var qx = segs[i][1][0], qy = segs[i][1][1];
+      var dx = qx - px, dy = qy - py;
+      var t0 = 0, t1 = 1, ok = true;
+      var ps = [-dx, dx, -dy, dy], qs = [px - x0, x1 - px, py - y0, y1 - py];
+      for (var j = 0; j < 4; j++) {
+        if (Math.abs(ps[j]) < 1e-12) { if (qs[j] < 0) { ok = false; break; } continue; }
+        var r = qs[j] / ps[j];
+        if (ps[j] < 0) { if (r > t1) { ok = false; break; } if (r > t0) t0 = r; }
+        else { if (r < t0) { ok = false; break; } if (r < t1) t1 = r; }
+      }
+      if (!ok || t1 - t0 < 1e-9) continue;
+      var a = [px + t0 * dx, py + t0 * dy], b = [px + t1 * dx, py + t1 * dy];
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 1e-6) out.push([a, b]);
+    }
+    return out;
+  }
+
+  function clipCircle(segs, cx, cy, r) {
+    var out = [];
+    for (var i = 0; i < segs.length; i++) {
+      var px = segs[i][0][0], py = segs[i][0][1];
+      var qx = segs[i][1][0], qy = segs[i][1][1];
+      var dx = qx - px, dy = qy - py;
+      var fx = px - cx, fy = py - cy;
+      var a = dx * dx + dy * dy;
+      var b = 2 * (fx * dx + fy * dy);
+      var c = fx * fx + fy * fy - r * r;
+      var disc = b * b - 4 * a * c;
+      if (disc <= 0) continue;
+      var s = Math.sqrt(disc);
+      var t0 = Math.max(0, (-b - s) / (2 * a));
+      var t1 = Math.min(1, (-b + s) / (2 * a));
+      if (t1 - t0 < 1e-9) continue;
+      var A = [px + t0 * dx, py + t0 * dy], B = [px + t1 * dx, py + t1 * dy];
+      if (Math.hypot(B[0] - A[0], B[1] - A[1]) > 1e-6) out.push([A, B]);
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------
+  // Kumiko patterns — f(w, h, s) -> segments, centred on the origin.
+  // Periodic patterns overshoot; the caller clips.
+  // ------------------------------------------------------------------
+  function triGrid(w, h, s) {
+    var rh = s * Math.sqrt(3) / 2, tris = [];
+    var k0 = Math.floor(-h / 2 / rh) - 2, k1 = Math.ceil(h / 2 / rh) + 2;
+    var i0 = Math.floor(-w / 2 / s) - 3, i1 = Math.ceil(w / 2 / s) + 3;
+    function v(i, k) { return [i * s + (((k % 2) + 2) % 2) * (s / 2), k * rh]; }
+    for (var k = k0; k <= k1; k++) {
+      for (var i = i0; i <= i1; i++) {
+        if ((((k % 2) + 2) % 2) === 0) {
+          tris.push([v(i, k), v(i + 1, k), v(i, k + 1)]);
+          tris.push([v(i, k + 1), v(i + 1, k + 1), v(i + 1, k)]);
+        } else {
+          tris.push([v(i, k), v(i + 1, k), v(i + 1, k + 1)]);
+          tris.push([v(i, k + 1), v(i + 1, k + 1), v(i, k)]);
+        }
+      }
+    }
+    return tris;
+  }
+
+  function patMitsukude(w, h, s) {
+    var ss = new SegSet(), t = triGrid(w, h, s);
+    for (var i = 0; i < t.length; i++)
+      for (var j = 0; j < 3; j++) ss.add(t[i][j], t[i][(j + 1) % 3]);
+    return ss.segs;
+  }
+
+  function patAsanoha(w, h, s) {
+    var ss = new SegSet(), t = triGrid(w, h, s);
+    for (var i = 0; i < t.length; i++) {
+      var tri = t[i];
+      for (var j = 0; j < 3; j++) ss.add(tri[j], tri[(j + 1) % 3]);
+      var c = [(tri[0][0] + tri[1][0] + tri[2][0]) / 3,
+               (tri[0][1] + tri[1][1] + tri[2][1]) / 3];
+      for (var m = 0; m < 3; m++) ss.add(tri[m], c);
+    }
+    return ss.segs;
+  }
+
+  function hexGrid(w, h, r) {
+    var colW = Math.sqrt(3) * r, rowH = 1.5 * r, out = [];
+    var c0 = Math.floor(-w / 2 / colW) - 2, c1 = Math.ceil(w / 2 / colW) + 2;
+    var r0 = Math.floor(-h / 2 / rowH) - 2, r1 = Math.ceil(h / 2 / rowH) + 2;
+    for (var row = r0; row <= r1; row++) {
+      for (var col = c0; col <= c1; col++) {
+        var cx = col * colW + (((row % 2) + 2) % 2) * colW / 2;
+        var cy = row * rowH, verts = [];
+        for (var j = 0; j < 6; j++) {
+          var a = (90 + 60 * j) * Math.PI / 180;
+          verts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+        }
+        out.push({ row: row, col: col, c: [cx, cy], v: verts });
+      }
+    }
+    return out;
+  }
+
+  function patKikkou(w, h, r) {
+    var ss = new SegSet(), hx = hexGrid(w, h, r);
+    for (var i = 0; i < hx.length; i++) {
+      var H = hx[i];
+      for (var j = 0; j < 6; j++) ss.add(H.v[j], H.v[(j + 1) % 6]);
+      var start = ((H.row + H.col) % 2 + 2) % 2 === 0 ? 0 : 1;
+      for (var m = 0; m < 3; m++) ss.add(H.c, H.v[(start + 2 * m) % 6]);
+    }
+    return ss.segs;
+  }
+
+  /* Everything meeting the boundary overlaps it rather than stopping on it —
+     abutting slats union into geometry that will not survive an STL round-trip. */
+  function patKawari(w, h, s) {
+    var band = s * 0.6, ov = s * 0.06;
+    var ix0 = -w / 2 + band, iy0 = -h / 2 + band;
+    var ix1 = w / 2 - band, iy1 = h / 2 - band;
+    var segs = clipRect(patAsanoha(w, h, s), ix0 - ov, iy0 - ov, ix1 + ov, iy1 + ov);
+    var ss = new SegSet();
+    ss.add([ix0, iy0], [ix1, iy0]);
+    ss.add([ix1, iy0], [ix1, iy1]);
+    ss.add([ix1, iy1], [ix0, iy1]);
+    ss.add([ix0, iy1], [ix0, iy0]);
+    var pitch = s * 0.85;
+    var nx = Math.max(2, Math.round((ix1 - ix0) / pitch));
+    for (var j = 0; j <= nx; j++) {
+      var x = ix0 + (ix1 - ix0) * j / nx;
+      ss.add([x, iy1 - ov], [x, h / 2]);
+      ss.add([x, -h / 2], [x, iy0 + ov]);
+    }
+    var ny = Math.max(2, Math.round((iy1 - iy0) / pitch));
+    for (var k = 0; k <= ny; k++) {
+      var y = iy0 + (iy1 - iy0) * k / ny;
+      ss.add([-w / 2, y], [ix0 + ov, y]);
+      ss.add([ix1 - ov, y], [w / 2, y]);
+    }
+    return segs.concat(ss.segs);
+  }
+
+  var PATTERNS = {
+    asanoha: patAsanoha,
+    mitsukude: patMitsukude,
+    kikkou: patKikkou,
+    kawari_asanoha: patKawari
+  };
+  var PATTERN_LABEL = {
+    asanoha: 'Asanoha', mitsukude: 'Mitsukude',
+    kikkou: 'Kikkou', kawari_asanoha: 'Kawari-asanoha'
+  };
+
+  // ------------------------------------------------------------------
+  // Loops.  Outer loops run counter-clockwise, voids clockwise; the
+  // extruder classifies by winding number so overlapping voids, and voids
+  // that run outside the outer boundary, both resolve correctly.
+  // ------------------------------------------------------------------
+  function loopArea(L) {
+    var a = 0;
+    for (var i = 0, n = L.length; i < n; i++) {
+      var j = (i + 1) % n;
+      a += L[i][0] * L[j][1] - L[j][0] * L[i][1];
+    }
+    return a / 2;
+  }
+  function orient(L, ccw) {
+    return (loopArea(L) < 0) === !!ccw ? L.slice().reverse() : L;
+  }
+  function rectLoop(x0, y0, x1, y1, ccw) {
+    return orient([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], ccw !== false);
+  }
+  function circleLoop(cx, cy, r, n, ccw) {
+    var L = [];
+    for (var i = 0; i < n; i++) {
+      var a = 2 * Math.PI * i / n;
+      L.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+    }
+    return orient(L, ccw !== false);
+  }
+  function slatLoop(p, q, w, ccw) {
+    var dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy);
+    var ux = dx / len, uy = dy / len, nx = -uy * w / 2, ny = ux * w / 2;
+    return orient([[p[0] + nx, p[1] + ny], [q[0] + nx, q[1] + ny],
+                   [q[0] - nx, q[1] - ny], [p[0] - nx, p[1] - ny]], ccw !== false);
+  }
+
+  // ------------------------------------------------------------------
+  // Extrusion by horizontal-slab decomposition.
+  //
+  // Bands are bounded by every vertex y in the part, so inside a band no
+  // edge starts or ends and the crossing order is constant.  Each band
+  // yields exact trapezoids, and walls are split on the same band
+  // boundaries so faces and walls share vertices.
+  // ------------------------------------------------------------------
+  function edgesOf(loops) {
+    var E = [];
+    for (var i = 0; i < loops.length; i++) {
+      var L = loops[i];
+      for (var j = 0, n = L.length; j < n; j++) {
+        var a = L[j], b = L[(j + 1) % n];
+        if (Math.abs(a[1] - b[1]) < TOL) continue;      // horizontal: no crossings
+        E.push({ x0: a[0], y0: a[1], x1: b[0], y1: b[1],
+                 ylo: Math.min(a[1], b[1]), yhi: Math.max(a[1], b[1]),
+                 // contribution when the band is swept left to right: a
+                 // downward edge adds +1, so a CCW loop encloses winding +1
+                 wind: b[1] > a[1] ? -1 : 1 });
+      }
+    }
+    return E;
+  }
+  /* Endpoint-exact: at a band boundary that *is* a vertex, interpolation gives
+     x0 + (x1 - x0), which is not bit-identical to x1.  That drift leaves
+     near-duplicate vertices which never weld and so never pair into edges. */
+  function xAt(e, y) {
+    if (y === e.y0) return e.x0;
+    if (y === e.y1) return e.x1;
+    var t = (y - e.y0) / (e.y1 - e.y0);
+    return e.x0 + t * (e.x1 - e.x0);
+  }
+  function windingAt(E, x, y) {
+    var w = 0;
+    for (var i = 0; i < E.length; i++) {
+      var e = E[i];
+      if (y <= e.ylo || y > e.yhi) continue;
+      if (xAt(e, y) < x) w += e.wind;
+    }
+    return w;
+  }
+  /*
+   * Band boundaries.  Vertex y-values alone are not enough: they guarantee no
+   * edge *starts* inside a band, but edges belonging to different loops can
+   * still cross inside one (the cord tunnel through the bore, a vent slot
+   * through the tunnel, a groove through a socket, grille slats through each
+   * other).  Where that happens the left-to-right crossing order differs at
+   * the top and bottom of the band and the trapezoids come out wrong, so every
+   * edge-edge intersection contributes a band boundary too.
+   */
+  function bandYs(loops) {
+    var ys = [], i, j;
+    for (i = 0; i < loops.length; i++)
+      for (j = 0; j < loops[i].length; j++) ys.push(loops[i][j][1]);
+
+    var E = edgesOf(loops);
+    for (i = 0; i < E.length; i++) {
+      for (j = i + 1; j < E.length; j++) {
+        var a = E[i], b = E[j];
+        if (a.ylo >= b.yhi || b.ylo >= a.yhi) continue;
+        var rx = a.x1 - a.x0, ry = a.y1 - a.y0;
+        var sx = b.x1 - b.x0, sy = b.y1 - b.y0;
+        var d = rx * sy - ry * sx;
+        if (Math.abs(d) < 1e-12) continue;
+        var qx = b.x0 - a.x0, qy = b.y0 - a.y0;
+        var t = (qx * sy - qy * sx) / d;
+        var u = (qx * ry - qy * rx) / d;
+        if (t <= 1e-9 || t >= 1 - 1e-9 || u <= 1e-9 || u >= 1 - 1e-9) continue;
+        ys.push(a.y0 + t * ry);
+      }
+    }
+
+    ys.sort(function (p, q) { return p - q; });
+    var out = [];
+    for (var k = 0; k < ys.length; k++)
+      if (!out.length || ys[k] - out[out.length - 1] > 1e-6) out.push(ys[k]);
+    return out;
+  }
+
+  /* Trapezoids covering { wA > 0 } minus, optionally, { wB > 0 }. */
+  function slabFaces(EA, EB, ys) {
+    var quads = [];
+    for (var b = 0; b + 1 < ys.length; b++) {
+      var ya = ys[b], yb = ys[b + 1];
+      if (yb - ya < 1e-7) continue;
+      var ym = (ya + yb) / 2, xs = [];
+      function gather(E, tag) {
+        for (var i = 0; i < E.length; i++) {
+          var e = E[i];
+          if (e.ylo > ya + 1e-7 || e.yhi < yb - 1e-7) continue;
+          xs.push({ a: xAt(e, ya), b: xAt(e, yb), m: xAt(e, ym), w: e.wind, t: tag });
+        }
+      }
+      gather(EA, 0);
+      if (EB) gather(EB, 1);
+      if (!xs.length) continue;
+      xs.sort(function (p, q) { return p.m - q.m; });
+      var wA = 0, wB = 0;
+      for (var i = 0; i < xs.length - 1; i++) {
+        if (xs[i].t === 0) wA += xs[i].w; else wB += xs[i].w;
+        var solid = wA > 0 && !(EB && wB > 0);
+        if (!solid) continue;
+        var la = xs[i].a, lb = xs[i].b, ra = xs[i + 1].a, rb = xs[i + 1].b;
+        if (Math.abs(ra - la) < 1e-9 && Math.abs(rb - lb) < 1e-9) continue;
+        quads.push([[la, ya], [ra, ya], [rb, yb], [lb, yb]]);
+      }
+    }
+    return quads;
+  }
+
+  function pushTri(out, a, b, c) {
+    out.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+  }
+  function pushQuad(out, a, b, c, d) { pushTri(out, a, b, c); pushTri(out, a, c, d); }
+
+  /* Emit trapezoids as faces.  Where a band boundary touches an extreme of the
+     outline -- the top and bottom of a circle, say -- one edge of the trapezoid
+     collapses to zero width, and emitting that as a quad would leave a
+     degenerate triangle whose edges never pair.  Collapse it to a triangle. */
+  function emitFaces(out, quads, z, up) {
+    for (var i = 0; i < quads.length; i++) {
+      var q = quads[i], poly = [], j;
+      for (j = 0; j < 4; j++) {
+        var last = poly[poly.length - 1];
+        if (last && Math.abs(last[0] - q[j][0]) < 1e-9 && Math.abs(last[1] - q[j][1]) < 1e-9)
+          continue;
+        poly.push(q[j]);
+      }
+      var f = poly[0], l = poly[poly.length - 1];
+      if (poly.length > 2 && Math.abs(f[0] - l[0]) < 1e-9 && Math.abs(f[1] - l[1]) < 1e-9)
+        poly.pop();
+      if (poly.length < 3) continue;
+      if (!up) poly.reverse();
+      var v = poly.map(function (pt) { return [pt[0], pt[1], z]; });
+      for (j = 1; j + 1 < v.length; j++) pushTri(out, v[0], v[j], v[j + 1]);
+    }
+  }
+
+  /*
+   * Walls for one layer.
+   *
+   * Every edge is split both at band boundaries and wherever another edge
+   * crosses it, then each piece is kept only if the solid lies on exactly one
+   * side.  The crossing splits are what let a wall open up partway along its
+   * length: the base's bottom edge, for instance, is horizontal, so band
+   * boundaries alone never divide it, and without this the whole edge would be
+   * judged by its midpoint -- which sits in the cord tunnel opening, dropping
+   * the entire bottom wall of the plate.
+   */
+  function emitWalls(out, loops, E, ys, z0, z1) {
+    var segs = [], i, j;
+    for (i = 0; i < loops.length; i++) {
+      var L = loops[i];
+      for (j = 0; j < L.length; j++) segs.push([L[j], L[(j + 1) % L.length]]);
+    }
+    for (var si = 0; si < segs.length; si++) {
+      var A = segs[si][0], B = segs[si][1];
+      var dx = B[0] - A[0], dy = B[1] - A[1];
+      if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) continue;
+      var cuts = [0, 1], k;
+
+      if (Math.abs(dy) > TOL)
+        for (k = 0; k < ys.length; k++) {
+          var t = (ys[k] - A[1]) / dy;
+          if (t > 1e-9 && t < 1 - 1e-9) cuts.push(t);
+        }
+
+      for (var oi = 0; oi < segs.length; oi++) {
+        if (oi === si) continue;
+        var C = segs[oi][0], D = segs[oi][1];
+        var ex = D[0] - C[0], ey = D[1] - C[1];
+        var den = dx * ey - dy * ex;
+        if (Math.abs(den) < 1e-12) continue;          // parallel or collinear
+        var qx = C[0] - A[0], qy = C[1] - A[1];
+        var tt = (qx * ey - qy * ex) / den;
+        var uu = (qx * dy - qy * dx) / den;
+        if (tt > 1e-9 && tt < 1 - 1e-9 && uu > -1e-9 && uu < 1 + 1e-9) cuts.push(tt);
+      }
+
+      cuts.sort(function (a, b) { return a - b; });
+      for (var c = 0; c + 1 < cuts.length; c++) {
+        var t0 = cuts[c], t1 = cuts[c + 1];
+        if (t1 - t0 < 1e-9) continue;
+        var P = t0 <= 0 ? A : [A[0] + dx * t0, A[1] + dy * t0];
+        var Q = t1 >= 1 ? B : [A[0] + dx * t1, A[1] + dy * t1];
+        var sx = Q[0] - P[0], sy = Q[1] - P[1], len = Math.hypot(sx, sy);
+        if (len < 1e-9) continue;
+        var nx = sy / len, ny = -sx / len;                 // right of travel
+        var mx = (P[0] + Q[0]) / 2, my = (P[1] + Q[1]) / 2;
+        var plus = windingAt(E, mx + nx * SIDE, my + ny * SIDE) > 0;
+        var minus = windingAt(E, mx - nx * SIDE, my - ny * SIDE) > 0;
+        if (plus === minus) continue;                      // buried, or outside
+        var a = P, b = Q;
+        if (plus) { a = Q; b = P; }                        // face away from solid
+        pushQuad(out,
+          [a[0], a[1], z0], [b[0], b[1], z0],
+          [b[0], b[1], z1], [a[0], a[1], z1]);
+      }
+    }
+  }
+
+  /*
+   * Weld T-junctions.
+   *
+   * Slab decomposition tiles a face exactly but not conformingly: where the
+   * interval structure changes between bands, one long horizontal edge ends up
+   * facing several shorter ones.  There is no gap -- the volume comes out
+   * exact -- but the edges do not pair, so a strict manifold check fails and a
+   * slicer may offer to "repair" the mesh.  Splitting every edge at the
+   * vertices lying on it fixes that without moving any geometry.
+   */
+  function weldTJunctions(tris) {
+    var n = tris.length / 9, i, j;
+    if (!n) return tris;
+
+    // unique vertices, in a uniform grid for lookup
+    var lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (i = 0; i < tris.length; i += 3)
+      for (j = 0; j < 3; j++) {
+        if (tris[i + j] < lo[j]) lo[j] = tris[i + j];
+        if (tris[i + j] > hi[j]) hi[j] = tris[i + j];
+      }
+    var diag = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1;
+    var cell = Math.max(diag / 96, 1e-3);
+    var grid = {}, verts = [], seen = {};
+    function ck(x, y, z) {
+      return Math.floor(x / cell) + '_' + Math.floor(y / cell) + '_' + Math.floor(z / cell);
+    }
+    for (i = 0; i < tris.length; i += 3) {
+      var x = tris[i], y = tris[i + 1], z = tris[i + 2];
+      var vk = Math.round(x * 1e6) + ',' + Math.round(y * 1e6) + ',' + Math.round(z * 1e6);
+      if (seen[vk] !== undefined) continue;
+      seen[vk] = 1;
+      var id = verts.length;
+      verts.push([x, y, z]);
+      var g = ck(x, y, z);
+      (grid[g] || (grid[g] = [])).push(id);
+    }
+
+    var TOL2 = 1e-14;
+    function onEdge(a, b) {                    // vertices strictly inside a..b
+      var dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+      var L2 = dx * dx + dy * dy + dz * dz;
+      if (L2 < 1e-18) return null;
+      var x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]);
+      var y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
+      var z0 = Math.min(a[2], b[2]), z1 = Math.max(a[2], b[2]);
+      var out = null;
+      for (var cx = Math.floor(x0 / cell); cx <= Math.floor(x1 / cell); cx++)
+        for (var cy = Math.floor(y0 / cell); cy <= Math.floor(y1 / cell); cy++)
+          for (var cz = Math.floor(z0 / cell); cz <= Math.floor(z1 / cell); cz++) {
+            var bucket = grid[cx + '_' + cy + '_' + cz];
+            if (!bucket) continue;
+            for (var q = 0; q < bucket.length; q++) {
+              var P = verts[bucket[q]];
+              var wx = P[0] - a[0], wy = P[1] - a[1], wz = P[2] - a[2];
+              var t = (wx * dx + wy * dy + wz * dz) / L2;
+              if (t <= 1e-9 || t >= 1 - 1e-9) continue;
+              var ex = wx - dx * t, ey = wy - dy * t, ez = wz - dz * t;
+              if (ex * ex + ey * ey + ez * ez > TOL2 * L2) continue;
+              (out || (out = [])).push([t, P]);
+            }
+          }
+      if (out) out.sort(function (u, v) { return u[0] - v[0]; });
+      return out;
+    }
+
+    var out = [];
+    for (i = 0; i < n; i++) {
+      var o = i * 9;
+      var A = [tris[o], tris[o + 1], tris[o + 2]];
+      var B = [tris[o + 3], tris[o + 4], tris[o + 5]];
+      var C = [tris[o + 6], tris[o + 7], tris[o + 8]];
+      var eAB = onEdge(A, B), eBC = onEdge(B, C), eCA = onEdge(C, A);
+      if (!eAB && !eBC && !eCA) {
+        pushTri(out, A, B, C);
+        continue;
+      }
+      // walk the boundary with the extra vertices inserted, then fan it
+      var ring = [A];
+      if (eAB) for (j = 0; j < eAB.length; j++) ring.push(eAB[j][1]);
+      ring.push(B);
+      if (eBC) for (j = 0; j < eBC.length; j++) ring.push(eBC[j][1]);
+      ring.push(C);
+      if (eCA) for (j = 0; j < eCA.length; j++) ring.push(eCA[j][1]);
+      for (j = 1; j + 1 < ring.length; j++) pushTri(out, ring[0], ring[j], ring[j + 1]);
+    }
+    return out;
+  }
+
+  /* layers: [{loops, z0, z1}] bottom-to-top and contiguous. */
+  function extrudeStack(layers) {
+    var out = [], all = [];
+    for (var i = 0; i < layers.length; i++) all = all.concat(layers[i].loops);
+    var ys = bandYs(all);
+    var E = layers.map(function (L) { return edgesOf(L.loops); });
+
+    emitFaces(out, slabFaces(E[0], null, ys), layers[0].z0, false);
+    for (i = 0; i < layers.length; i++)
+      emitWalls(out, layers[i].loops, E[i], ys, layers[i].z0, layers[i].z1);
+    for (i = 0; i + 1 < layers.length; i++) {
+      var z = layers[i].z1;
+      emitFaces(out, slabFaces(E[i], E[i + 1], ys), z, true);      // shelf
+      emitFaces(out, slabFaces(E[i + 1], E[i], ys), z, false);     // ceiling
+    }
+    emitFaces(out, slabFaces(E[E.length - 1], null, ys),
+              layers[layers.length - 1].z1, true);
+    return weldTJunctions(out);
+  }
+
+  // ------------------------------------------------------------------
+  // Primitive solids (used for the lattice, which genuinely self-overlaps)
+  // ------------------------------------------------------------------
+  /* Fast path for a convex 4-vertex loop: 12 triangles, no decomposition.
+     Used for lattice slats, of which there can be hundreds. */
+  function quadPrism(loop, z0, z1) {
+    var L = orient(loop, true), out = [];
+    var b = [], t = [], i;
+    for (i = 0; i < 4; i++) { b.push([L[i][0], L[i][1], z0]); t.push([L[i][0], L[i][1], z1]); }
+    pushTri(out, b[0], b[3], b[2]); pushTri(out, b[0], b[2], b[1]);   // -z
+    pushTri(out, t[0], t[1], t[2]); pushTri(out, t[0], t[2], t[3]);   // +z
+    for (i = 0; i < 4; i++) {
+      var j = (i + 1) % 4;
+      pushQuad(out, b[i], b[j], t[j], t[i]);
+    }
+    return out;
+  }
+
+  function prismFromLoop(loop, z0, z1) {
+    if (loop.length === 4) return quadPrism(loop, z0, z1);
+    return extrudeStack([{ loops: [orient(loop, true)], z0: z0, z1: z1 }]);
+  }
+
+  // ------------------------------------------------------------------
+  // Parts
+  // ------------------------------------------------------------------
+  function latticeSegments(P, pattern, w, h, grow) {
+    var segs = (PATTERNS[pattern] || PATTERNS.asanoha)(w, h, P.grid);
+    return clipRect(segs, -w / 2 - grow, -h / 2 - grow, w / 2 + grow, h / 2 + grow);
+  }
+
+  /* Panel, laid flat.  x = width (centred), y = 0..height, z = 0..thickness
+     with z = 0 the lattice face, which goes on the build plate. */
+  function buildPanel(P, pattern) {
+    var W = P.panelW, H = P.height, T = P.panelT, b = P.panelBorder;
+    var lip = P.rebateLip, zm = T - P.rebateD;
+    var tris = [];
+
+    // frame: full ring below, U-shaped lip above (the rebate is open at the top)
+    var frame = extrudeStack([{
+      loops: [rectLoop(-W / 2, 0, W / 2, H, true),
+              rectLoop(-W / 2 + b, b, W / 2 - b, H - b, false)],
+      z0: 0, z1: zm
+    }]);
+    var U = orient([
+      [-W / 2, 0], [W / 2, 0], [W / 2, H], [W / 2 - lip, H],
+      [W / 2 - lip, lip], [-W / 2 + lip, lip], [-W / 2 + lip, H], [-W / 2, H]
+    ], true);
+    var lipMesh = extrudeStack([{ loops: [U], z0: zm - 0.01, z1: T }]);
+    tris = tris.concat(frame, lipMesh);
+
+    // lattice: one solid per slat.  They cross each other, so this is the
+    // one place the browser build cannot produce a single manifold shell.
+    var segs = latticeSegments(P, pattern, P.openW, P.openH, 1.0);
+    var cy = H / 2;
+    for (var i = 0; i < segs.length; i++) {
+      var p = [segs[i][0][0], segs[i][0][1] + cy];
+      var q = [segs[i][1][0], segs[i][1][1] + cy];
+      tris = tris.concat(prismFromLoop(slatLoop(p, q, P.slatW), 0, zm));
+    }
+    return { tris: tris, slats: segs.length, manifold: false };
+  }
+
+  /* Corner post, standing up.  Grooves face +X and +Y; rotated per corner. */
+  function buildPost(P) {
+    var a = P.post / 2, gin = a - P.grooveD, sw = P.slotW / 2, c = P.postChamfer;
+    var L = [[a, -a], [a, -sw], [gin, -sw], [gin, sw], [a, sw], [a, a],
+             [sw, a], [sw, gin], [-sw, gin], [-sw, a], [-a, a]];
+    if (c > 0) L.push([-a, -a + c], [-a + c, -a]);
+    else L.push([-a, -a]);
+    return { tris: extrudeStack([{ loops: [orient(L, true)], z0: 0, z1: P.height }]),
+             manifold: true };
+  }
+
+  /* Post sockets and panel grooves, as void loops.  They overlap each other;
+     the winding rule resolves the union without a 2-D boolean. */
+  function joineryVoids(P) {
+    var v = [], pc = P.postCenter, s = P.socketSz / 2, g = P.slotW / 2;
+    for (var sx = -1; sx <= 1; sx += 2)
+      for (var sy = -1; sy <= 1; sy += 2)
+        v.push(rectLoop(sx * pc - s, sy * pc - s, sx * pc + s, sy * pc + s, false));
+    for (sy = -1; sy <= 1; sy += 2)
+      v.push(rectLoop(-pc, sy * pc - g, pc, sy * pc + g, false));
+    for (sx = -1; sx <= 1; sx += 2)
+      v.push(rectLoop(sx * pc - g, -pc, sx * pc + g, pc, false));
+    return v;
+  }
+
+  function ventVoids(P) {
+    var v = [], rm = (P.baseVentR0 + P.baseVentR1) / 2;
+    var half = Math.PI * rm / P.baseVents * 0.6;
+    for (var j = 0; j < P.baseVents; j++) {
+      var ang = 2 * Math.PI * j / P.baseVents;
+      var cx = rm * Math.cos(ang), cy = rm * Math.sin(ang);
+      var tx = -Math.sin(ang), ty = Math.cos(ang);
+      v.push(slatLoop([cx - tx * half, cy - ty * half],
+                      [cx + tx * half, cy + ty * half],
+                      P.baseVentR1 - P.baseVentR0, false));
+    }
+    return v;
+  }
+
+  function buildBase(P) {
+    var f = P.foot / 2, t = P.baseT, n = P.arc;
+    var bore = circleLoop(0, 0, P.socketBore / 2, n, false);
+    var cbore = circleLoop(0, 0, P.socketCbore / 2, n, false);
+    var vents = ventVoids(P);
+    var outer = rectLoop(-f, -f, f, f, true);
+    var joinery = joineryVoids(P);
+    // The tunnel runs past the bore wall and out through the side; it overlaps
+    // both the bore and the outer boundary, which the winding rule handles.
+    var tunnel = rectLoop(-P.cableW / 2, -f - EPS, P.cableW / 2,
+                          -P.socketBore / 2 + P.cableW, false);
+
+    var z1 = P.cableFloor, z2 = P.cableFloor + P.cableH;
+    var z3 = t - P.grooveD, z4 = t - P.socketCboreD;
+    var layers = [
+      { loops: [outer, bore].concat(vents), z0: 0, z1: z1 },
+      { loops: [outer, bore, tunnel].concat(vents), z0: z1, z1: z2 },
+      { loops: [outer, bore].concat(vents), z0: z2, z1: z3 },
+      { loops: [outer, bore].concat(vents, joinery), z0: z3, z1: z4 },
+      { loops: [outer, cbore].concat(vents, joinery), z0: z4, z1: t }
+    ];
+    return { tris: extrudeStack(layers), manifold: true };
+  }
+
+  /* Cap, modelled joinery-side-up; exported flipped so it prints as-is.
+     Unlike the Python part this has no top-edge chamfer — a tapered wall is
+     not a prism, and the chamfer is purely cosmetic. */
+  function buildCap(P, pattern) {
+    var f = P.foot / 2, t = P.capT, n = P.arc, r = P.capVentD / 2;
+    var outer = rectLoop(-f, -f, f, f, true);
+    var vent = circleLoop(0, 0, r, n, false);
+    var joinery = joineryVoids(P);
+
+    var layers = [
+      { loops: [outer, vent].concat(joinery), z0: 0, z1: P.grooveD },
+      { loops: [outer, vent], z0: P.grooveD, z1: t }
+    ];
+    var tris = extrudeStack(layers);
+
+    /* Grille slats, as separate prisms.  Unioning them into the plate is
+       exact but the crossings multiply the slab count enormously -- a fine
+       pitch took the cap past 150k triangles -- so the grille follows the
+       same rule as the panel lattice.  They overlap the rim by 0.8 mm, so
+       the grille is solidly attached. */
+    var g = P.grid * P.capGrilleF;
+    var segs = (PATTERNS[pattern] || PATTERNS.asanoha)(P.capVentD, P.capVentD, g);
+    segs = clipCircle(segs, 0, 0, r + 0.8);
+    for (var i = 0; i < segs.length; i++)
+      tris = tris.concat(quadPrism(slatLoop(segs[i][0], segs[i][1], P.slatW + 0.4, true), 0, t));
+
+    return { tris: tris, manifold: false, grilleSegs: segs.length };
+  }
+
+  function buildRing(P) {
+    var od = P.socketCbore - 0.4, n = P.arc;
+    return { tris: extrudeStack([{
+      loops: [circleLoop(0, 0, od / 2, n, true),
+              circleLoop(0, 0, P.socketNeck / 2, n, false)],
+      z0: 0, z1: P.socketCboreD }]), manifold: true };
+  }
+
+  // ------------------------------------------------------------------
+  // Transforms and assembly
+  // ------------------------------------------------------------------
+  function transform(tris, m) {
+    var out = new Array(tris.length);
+    for (var i = 0; i < tris.length; i += 3) {
+      var x = tris[i], y = tris[i + 1], z = tris[i + 2];
+      out[i] = m[0] * x + m[1] * y + m[2] * z + m[3];
+      out[i + 1] = m[4] * x + m[5] * y + m[6] * z + m[7];
+      out[i + 2] = m[8] * x + m[9] * y + m[10] * z + m[11];
+    }
+    return out;
+  }
+  function rotZ(d) {
+    var c = Math.cos(d * Math.PI / 180), s = Math.sin(d * Math.PI / 180);
+    return [c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0];
+  }
+  function rotX(d) {
+    var c = Math.cos(d * Math.PI / 180), s = Math.sin(d * Math.PI / 180);
+    return [1, 0, 0, 0, 0, c, -s, 0, 0, s, c, 0];
+  }
+  function mul(a, b) {
+    var o = new Array(12);
+    for (var r = 0; r < 3; r++)
+      for (var c = 0; c < 4; c++)
+        o[r * 4 + c] = a[r * 4] * b[c] + a[r * 4 + 1] * b[4 + c] +
+                       a[r * 4 + 2] * b[8 + c] + (c === 3 ? a[r * 4 + 3] : 0);
+    return o;
+  }
+  function trans(x, y, z) { return [1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z]; }
+
+  function capPrintTransform(P) { return mul(trans(0, 0, P.capT), rotX(180)); }
+
+  /* Port of place_parts(). */
+  function assemble(P, panel, post, base, cap) {
+    var pc = P.postCenter, t = P.panelT, zb = P.baseT - P.grooveD, out = [];
+    out.push({ name: 'base', tris: base, kind: 'plate' });
+    var ang = { '-1,-1': 0, '1,-1': 90, '1,1': 180, '-1,1': 270 };
+    var corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+    for (var i = 0; i < 4; i++) {
+      var sx = corners[i][0], sy = corners[i][1];
+      out.push({ name: 'post' + i, kind: 'post',
+        tris: transform(post, mul(trans(sx * pc, sy * pc, zb), rotZ(ang[sx + ',' + sy]))) });
+    }
+    var places = [
+      [mul(rotZ(180), rotX(90)), [0, -pc - t / 2, zb]],
+      [rotX(90), [0, pc + t / 2, zb]],
+      [mul(rotZ(90), rotX(90)), [-pc - t / 2, 0, zb]],
+      [mul(rotZ(-90), rotX(90)), [pc + t / 2, 0, zb]]
+    ];
+    for (i = 0; i < 4; i++)
+      out.push({ name: 'panel' + i, kind: 'panel',
+        tris: transform(panel, mul(trans(places[i][1][0], places[i][1][1], places[i][1][2]),
+                                   places[i][0])) });
+    out.push({ name: 'cap', kind: 'plate',
+      tris: transform(cap, trans(0, 0, zb + P.height - P.grooveD)) });
+    return out;
+  }
+
+  // ------------------------------------------------------------------
+  // Measurement
+  // ------------------------------------------------------------------
+  function volume(tris) {
+    var v = 0;
+    for (var i = 0; i < tris.length; i += 9) {
+      var ax = tris[i], ay = tris[i + 1], az = tris[i + 2];
+      var bx = tris[i + 3], by = tris[i + 4], bz = tris[i + 5];
+      var cx = tris[i + 6], cy = tris[i + 7], cz = tris[i + 8];
+      v += (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx));
+    }
+    return v / 6;
+  }
+  function bbox(tris) {
+    var lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (var i = 0; i < tris.length; i += 3)
+      for (var k = 0; k < 3; k++) {
+        if (tris[i + k] < lo[k]) lo[k] = tris[i + k];
+        if (tris[i + k] > hi[k]) hi[k] = tris[i + k];
+      }
+    return { lo: lo, hi: hi, size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] };
+  }
+
+  // ------------------------------------------------------------------
+  // Export
+  // ------------------------------------------------------------------
+  function stlBinary(tris) {
+    var n = tris.length / 9;
+    var buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf);
+    var hdr = 'Kumiko lamp - generated in browser';
+    for (var i = 0; i < 80; i++) dv.setUint8(i, i < hdr.length ? hdr.charCodeAt(i) : 32);
+    dv.setUint32(80, n, true);
+    var o = 84;
+    for (var t = 0; t < n; t++) {
+      var i0 = t * 9;
+      var ax = tris[i0], ay = tris[i0 + 1], az = tris[i0 + 2];
+      var bx = tris[i0 + 3], by = tris[i0 + 4], bz = tris[i0 + 5];
+      var cx = tris[i0 + 6], cy = tris[i0 + 7], cz = tris[i0 + 8];
+      var ux = bx - ax, uy = by - ay, uz = bz - az;
+      var vx = cx - ax, vy = cy - ay, vz = cz - az;
+      var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      var L = Math.hypot(nx, ny, nz) || 1;
+      dv.setFloat32(o, nx / L, true); dv.setFloat32(o + 4, ny / L, true);
+      dv.setFloat32(o + 8, nz / L, true);
+      dv.setFloat32(o + 12, ax, true); dv.setFloat32(o + 16, ay, true);
+      dv.setFloat32(o + 20, az, true);
+      dv.setFloat32(o + 24, bx, true); dv.setFloat32(o + 28, by, true);
+      dv.setFloat32(o + 32, bz, true);
+      dv.setFloat32(o + 36, cx, true); dv.setFloat32(o + 40, cy, true);
+      dv.setFloat32(o + 44, cz, true);
+      dv.setUint16(o + 48, 0, true);
+      o += 50;
+    }
+    return new Uint8Array(buf);
+  }
+
+  var CRC = (function () {
+    var t = new Int32Array(256);
+    for (var i = 0; i < 256; i++) {
+      var c = i;
+      for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[i] = c;
+    }
+    return t;
+  })();
+  function crc32(u8) {
+    var c = -1;
+    for (var i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ -1) >>> 0;
+  }
+
+  /* Store-only ZIP: no compression, so no deflate implementation needed. */
+  function zipStore(files) {
+    var chunks = [], central = [], offset = 0;
+    function u8(s) {
+      var a = new Uint8Array(s.length);
+      for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) & 0xFF;
+      return a;
+    }
+    function hdr(len) { return new DataView(new ArrayBuffer(len)); }
+    for (var i = 0; i < files.length; i++) {
+      var nameB = u8(files[i].name), data = files[i].data, c = crc32(data);
+      var lh = hdr(30);
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true);
+      lh.setUint16(6, 0, true); lh.setUint16(8, 0, true);
+      lh.setUint16(10, 0, true); lh.setUint16(12, 0x21, true);
+      lh.setUint32(14, c, true); lh.setUint32(18, data.length, true);
+      lh.setUint32(22, data.length, true);
+      lh.setUint16(26, nameB.length, true); lh.setUint16(28, 0, true);
+      chunks.push(new Uint8Array(lh.buffer), nameB, data);
+      var ch = hdr(46);
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true);
+      ch.setUint16(6, 20, true); ch.setUint16(8, 0, true);
+      ch.setUint16(10, 0, true); ch.setUint16(12, 0, true);
+      ch.setUint16(14, 0x21, true); ch.setUint32(16, c, true);
+      ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true);
+      ch.setUint16(28, nameB.length, true); ch.setUint16(30, 0, true);
+      ch.setUint16(32, 0, true); ch.setUint16(34, 0, true);
+      ch.setUint16(36, 0, true); ch.setUint32(38, 0, true);
+      ch.setUint32(42, offset, true);
+      central.push(new Uint8Array(ch.buffer), nameB);
+      offset += 30 + nameB.length + data.length;
+    }
+    var cs = 0;
+    for (i = 0; i < central.length; i++) cs += central[i].length;
+    var eo = hdr(22);
+    eo.setUint32(0, 0x06054b50, true); eo.setUint16(4, 0, true);
+    eo.setUint16(6, 0, true); eo.setUint16(8, files.length, true);
+    eo.setUint16(10, files.length, true); eo.setUint32(12, cs, true);
+    eo.setUint32(16, offset, true); eo.setUint16(20, 0, true);
+    var all = chunks.concat(central, [new Uint8Array(eo.buffer)]);
+    var total = 0;
+    for (i = 0; i < all.length; i++) total += all[i].length;
+    var out = new Uint8Array(total), o = 0;
+    for (i = 0; i < all.length; i++) { out.set(all[i], o); o += all[i].length; }
+    return out;
+  }
+
+  // ------------------------------------------------------------------
+  // Whole model
+  // ------------------------------------------------------------------
+  function buildAll(raw) {
+    var P = derive(raw);
+    var problems = checkFits(P);
+    if (problems.length) return { P: P, problems: problems, parts: null };
+    var pattern = P.pattern;
+    var panel = buildPanel(P, pattern);
+    var post = buildPost(P);
+    var base = buildBase(P);
+    var cap = buildCap(P, pattern);
+    var ring = buildRing(P);
+    var parts = [
+      { id: 'panel_' + pattern, label: 'Kumiko panel', qty: 4, mesh: panel,
+        note: 'lattice face down' },
+      { id: 'post', label: 'Corner post', qty: 4, mesh: post, note: 'upright, use a brim' },
+      { id: 'base', label: 'Base', qty: 1, mesh: base, note: 'as exported' },
+      { id: 'top_cap', label: 'Top cap', qty: 1,
+        mesh: { tris: transform(cap.tris, capPrintTransform(P)), manifold: true },
+        note: 'already flipped for printing' },
+      { id: 'socket_adapter_ring', label: 'E27 adapter ring', qty: 1, mesh: ring,
+        note: 'match to your holder' }
+    ];
+    for (var i = 0; i < parts.length; i++) {
+      parts[i].vol = Math.abs(volume(parts[i].mesh.tris));
+      parts[i].bbox = bbox(parts[i].mesh.tris);
+      parts[i].tris = parts[i].mesh.tris.length / 9;
+      var s = parts[i].bbox.size.slice().sort(function (a, b) { return a - b; });
+      var bed = [P.bedX, P.bedY].sort(function (a, b) { return a - b; });
+      parts[i].fits = s[0] <= bed[0] + 1e-6 && s[1] <= bed[1] + 1e-6 &&
+                      s[2] <= P.bedZ + 1e-6;
+    }
+    return {
+      P: P, problems: [], parts: parts, slats: panel.slats,
+      assembly: assemble(P, panel.tris, post.tris, base.tris, cap.tris)
+    };
+  }
+
+  return {
+    DEFAULTS: DEFAULTS, PATTERNS: PATTERNS, PATTERN_LABEL: PATTERN_LABEL,
+    derive: derive, checkFits: checkFits, buildAll: buildAll,
+    buildPanel: buildPanel, buildPost: buildPost, buildBase: buildBase,
+    buildCap: buildCap, buildRing: buildRing,
+    latticeSegments: latticeSegments, clipRect: clipRect, clipCircle: clipCircle,
+    extrudeStack: extrudeStack, rectLoop: rectLoop, circleLoop: circleLoop,
+    slatLoop: slatLoop, orient: orient, quadPrism: quadPrism,
+    weldTJunctions: weldTJunctions,
+    volume: volume, bbox: bbox, stlBinary: stlBinary, zipStore: zipStore,
+    transform: transform, capPrintTransform: capPrintTransform
+  };
+})();
+</script>
+
+<script id="kumiko-app">
+(function () {
+  'use strict';
+  var K = Kumiko;
+
+  // ---------------------------------------------------------------- state
+  var state = {};
+  for (var k in K.DEFAULTS) state[k] = K.DEFAULTS[k];
+  var model = null, viewMode = 'asm';
+
+  var GROUPS = [
+    { name: 'Lantern', open: true, items: [
+      ['size', 'Width', 120, 245, 1, 'mm'],
+      ['height', 'Height', 130, 250, 1, 'mm']
+    ]},
+    { name: 'Kumiko', open: true, style: true, items: [
+      ['grid', 'Pattern pitch', 12, 45, 0.5, 'mm'],
+      ['slatW', 'Slat width', 0.8, 3.2, 0.4, 'mm']
+    ]},
+    { name: 'Panel', items: [
+      ['panelT', 'Thickness', 3, 7, 0.2, 'mm'],
+      ['panelBorder', 'Frame border', 8, 24, 0.5, 'mm'],
+      ['rebateD', 'Diffuser rebate', 0.4, 1.6, 0.2, 'mm'],
+      ['rebateLip', 'Rebate lip inset', 4, 16, 0.5, 'mm']
+    ]},
+    { name: 'Frame', items: [
+      ['post', 'Post section', 12, 28, 0.5, 'mm'],
+      ['postChamfer', 'Post chamfer', 0, 5, 0.5, 'mm'],
+      ['grooveD', 'Groove depth', 3, 10, 0.5, 'mm'],
+      ['plinth', 'Base reveal', 2, 14, 0.5, 'mm'],
+      ['baseT', 'Base thickness', 10, 26, 0.5, 'mm'],
+      ['capT', 'Cap thickness', 7, 20, 0.5, 'mm'],
+      ['capVentD', 'Cap vent', 40, 110, 1, 'mm']
+    ]},
+    { name: 'Joints', items: [
+      ['slotClear', 'Groove clearance', 0.1, 1.0, 0.05, 'mm'],
+      ['panelClear', 'Panel width clearance', 0.1, 1.0, 0.05, 'mm'],
+      ['socketClear', 'Post socket clearance', 0.1, 1.0, 0.05, 'mm']
+    ]},
+    { name: 'Lamp holder', items: [
+      ['socketBore', 'Bore', 20, 60, 0.5, 'mm'],
+      ['socketCbore', 'Counterbore', 26, 74, 0.5, 'mm'],
+      ['socketNeck', 'Adapter ring bore', 10, 52, 0.5, 'mm'],
+      ['cableW', 'Cord tunnel width', 5, 16, 0.5, 'mm'],
+      ['cableH', 'Cord tunnel height', 3, 12, 0.5, 'mm']
+    ]},
+    { name: 'Printer', items: [
+      ['bedX', 'Bed X', 150, 400, 1, 'mm'],
+      ['bedY', 'Bed Y', 150, 400, 1, 'mm'],
+      ['bedZ', 'Bed Z', 150, 500, 1, 'mm'],
+      ['nozzle', 'Nozzle', 0.2, 0.8, 0.2, 'mm']
+    ]}
+  ];
+
+  function el(tag, cls, txt) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (txt !== undefined) e.textContent = txt;
+    return e;
+  }
+
+  function buildRail() {
+    var rail = document.getElementById('rail');
+    GROUPS.forEach(function (g) {
+      var d = el('details', 'grp');
+      if (g.open) d.open = true;
+      d.appendChild(el('summary', null, g.name));
+      var body = el('div', 'body');
+
+      if (g.style) {
+        var wrap = el('div', 'styles');
+        Object.keys(K.PATTERNS).forEach(function (id) {
+          var b = el('button', null, K.PATTERN_LABEL[id]);
+          b.setAttribute('aria-pressed', String(id === state.pattern));
+          b.dataset.pattern = id;
+          b.addEventListener('click', function () {
+            state.pattern = id;
+            wrap.querySelectorAll('button').forEach(function (o) {
+              o.setAttribute('aria-pressed', String(o.dataset.pattern === id));
+            });
+            rebuild();
+          });
+          wrap.appendChild(b);
+        });
+        body.appendChild(wrap);
+      }
+
+      g.items.forEach(function (it) {
+        var key = it[0], lab = it[1];
+        var c = el('div', 'ctl');
+        var l = el('label');
+        l.appendChild(el('span', null, lab));
+        var v = el('span', 'val', state[key] + ' ' + it[5]);
+        l.appendChild(v);
+        var inp = document.createElement('input');
+        inp.type = 'range';
+        inp.min = it[2]; inp.max = it[3]; inp.step = it[4];
+        inp.value = state[key];
+        inp.id = 'r-' + key;
+        inp.setAttribute('aria-label', lab + ' in millimetres');
+        inp.addEventListener('input', function () {
+          state[key] = +inp.value;
+          v.textContent = (+inp.value) + ' ' + it[5];
+          rebuild();
+        });
+        c.appendChild(l); c.appendChild(inp);
+        body.appendChild(c);
+      });
+      d.appendChild(body);
+      rail.appendChild(d);
+    });
+  }
+
+  // ---------------------------------------------------------------- webgl
+  var gl, prog, buf = {}, canvas, cam = { az: -0.62, el: 0.32, dist: 0, drag: false };
+
+  function initGL() {
+    canvas = document.getElementById('gl');
+    gl = canvas.getContext('webgl',
+      { antialias: true, alpha: false, preserveDrawingBuffer: true });
+    if (!gl) return false;
+    var vs = 'attribute vec3 aPos;attribute vec3 aNor;attribute vec3 aCol;' +
+      'uniform mat4 uMVP;varying vec3 vN;varying vec3 vP;varying vec3 vC;' +
+      'void main(){vN=aNor;vP=aPos;vC=aCol;gl_Position=uMVP*vec4(aPos,1.0);}';
+    var fs = 'precision mediump float;varying vec3 vN;varying vec3 vP;varying vec3 vC;' +
+      'uniform vec3 uBulb;uniform vec3 uKey;' +
+      'void main(){vec3 N=normalize(vN);' +
+      'float key=max(dot(N,normalize(uKey)),0.0);' +
+      'float fill=max(dot(N,normalize(vec3(-0.4,-0.7,0.35))),0.0)*0.3;' +
+      'vec3 L=uBulb-vP;float d=length(L);' +
+      'float pt=max(dot(N,normalize(L)),0.0)*(1.0/(1.0+d*d*0.0007))*1.5;' +
+      'vec3 warm=vec3(1.0,0.80,0.52);' +
+      'vec3 c=vC*(0.24+key*0.72+fill)+warm*vC*pt*0.85;' +
+      'gl_FragColor=vec4(pow(clamp(c,0.0,1.0),vec3(0.85)),1.0);}';
+    function sh(t, src) {
+      var s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
+      return s;
+    }
+    prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+    buf.pos = gl.createBuffer(); buf.nor = gl.createBuffer(); buf.col = gl.createBuffer();
+    gl.enable(gl.DEPTH_TEST);
+
+    var last = null;
+    canvas.addEventListener('pointerdown', function (e) {
+      cam.drag = true; last = [e.clientX, e.clientY]; canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointermove', function (e) {
+      if (!cam.drag) return;
+      cam.az -= (e.clientX - last[0]) * 0.008;
+      cam.el = Math.max(-1.35, Math.min(1.35, cam.el + (e.clientY - last[1]) * 0.006));
+      last = [e.clientX, e.clientY];
+      draw();
+    });
+    canvas.addEventListener('pointerup', function (e) {
+      cam.drag = false; canvas.releasePointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      cam.dist *= Math.exp(e.deltaY * 0.0012);
+      draw();
+    }, { passive: false });
+    return true;
+  }
+
+  var COLORS = {
+    panel: [0.86, 0.75, 0.55], post: [0.66, 0.44, 0.21], plate: [0.49, 0.32, 0.15]
+  };
+
+  function uploadScene() {
+    if (!gl || !model || !model.parts) return;
+    var pos = [], nor = [], col = [];
+    var H = model.P.totalHeight;
+    model.assembly.forEach(function (part) {
+      var c = COLORS[part.kind] || COLORS.panel;
+      var off = 0;
+      if (viewMode === 'exp') {
+        if (part.name === 'cap') off = H * 0.34;
+        else if (part.kind === 'panel') off = H * 0.12;
+      }
+      var t = part.tris;
+      for (var i = 0; i < t.length; i += 9) {
+        var ux = t[i+3]-t[i], uy = t[i+4]-t[i+1], uz = t[i+5]-t[i+2];
+        var vx = t[i+6]-t[i], vy = t[i+7]-t[i+1], vz = t[i+8]-t[i+2];
+        var nx = uy*vz-uz*vy, ny = uz*vx-ux*vz, nz = ux*vy-uy*vx;
+        var L = Math.hypot(nx, ny, nz) || 1;
+        nx /= L; ny /= L; nz /= L;
+        for (var v = 0; v < 3; v++) {
+          pos.push(t[i+v*3], t[i+v*3+1], t[i+v*3+2] + off);
+          nor.push(nx, ny, nz);
+          col.push(c[0], c[1], c[2]);
+        }
+      }
+    });
+    buf.n = pos.length / 3;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.nor);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(nor), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.col);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(col), gl.STATIC_DRAW);
+  }
+
+  function mul4(a, b) {
+    var o = new Float32Array(16);
+    for (var i = 0; i < 4; i++) for (var j = 0; j < 4; j++) {
+      var s = 0;
+      for (var k2 = 0; k2 < 4; k2++) s += a[k2 * 4 + j] * b[i * 4 + k2];
+      o[i * 4 + j] = s;
+    }
+    return o;
+  }
+
+  function draw() {
+    if (!gl || !model || !model.parts || !buf.n) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+      canvas.width = w * dpr; canvas.height = h * dpr;
+    }
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    var bg = getComputedStyle(document.body).getPropertyValue('--stage').trim();
+    var m = /^#(\w\w)(\w\w)(\w\w)$/.exec(bg);
+    gl.clearColor(m ? parseInt(m[1], 16) / 255 : 0.87,
+                  m ? parseInt(m[2], 16) / 255 : 0.82,
+                  m ? parseInt(m[3], 16) / 255 : 0.73, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    var H = model.P.totalHeight, cz = H * 0.5;
+    var d = cam.dist;
+    var ex = d * Math.cos(cam.el) * Math.sin(cam.az);
+    var ey = -d * Math.cos(cam.el) * Math.cos(cam.az);
+    var ez = cz + d * Math.sin(cam.el);
+
+    var f = [0 - ex, 0 - ey, cz - ez];
+    var fl = Math.hypot(f[0], f[1], f[2]); f = [f[0]/fl, f[1]/fl, f[2]/fl];
+    var up = [0, 0, 1];
+    var s = [f[1]*up[2]-f[2]*up[1], f[2]*up[0]-f[0]*up[2], f[0]*up[1]-f[1]*up[0]];
+    var sl = Math.hypot(s[0], s[1], s[2]); s = [s[0]/sl, s[1]/sl, s[2]/sl];
+    var u = [s[1]*f[2]-s[2]*f[1], s[2]*f[0]-s[0]*f[2], s[0]*f[1]-s[1]*f[0]];
+    var view = new Float32Array([
+      s[0], u[0], -f[0], 0, s[1], u[1], -f[1], 0, s[2], u[2], -f[2], 0,
+      -(s[0]*ex+s[1]*ey+s[2]*ez), -(u[0]*ex+u[1]*ey+u[2]*ez), (f[0]*ex+f[1]*ey+f[2]*ez), 1
+    ]);
+    var aspect = w / Math.max(h, 1), fov = 0.72, near = d * 0.05, far = d * 4 + 2000;
+    var t2 = 1 / Math.tan(fov / 2);
+    var proj = new Float32Array([
+      t2 / aspect, 0, 0, 0, 0, t2, 0, 0,
+      0, 0, (far + near) / (near - far), -1,
+      0, 0, (2 * far * near) / (near - far), 0
+    ]);
+    gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'uMVP'), false, mul4(proj, view));
+    gl.uniform3f(gl.getUniformLocation(prog, 'uBulb'), 0, 0, model.P.baseT + 45);
+    gl.uniform3f(gl.getUniformLocation(prog, 'uKey'), 0.45, -0.8, 0.75);
+
+    [['aPos', buf.pos], ['aNor', buf.nor], ['aCol', buf.col]].forEach(function (a) {
+      var loc = gl.getAttribLocation(prog, a[0]);
+      gl.bindBuffer(gl.ARRAY_BUFFER, a[1]);
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
+    });
+    gl.drawArrays(gl.TRIANGLES, 0, buf.n);
+  }
+
+  // ---------------------------------------------------------------- flat swatch
+  function drawFlat() {
+    var c = document.getElementById('flat'), P = K.derive(state);
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var W = c.clientWidth || 208, H2 = Math.round(W * P.height / P.panelW);
+    c.width = W * dpr; c.height = H2 * dpr;
+    c.style.height = H2 + 'px';
+    var x = c.getContext('2d');
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var cs = getComputedStyle(document.body);
+    x.fillStyle = cs.getPropertyValue('--stage').trim();
+    x.fillRect(0, 0, W, H2);
+    var sc = W / P.panelW;
+    x.save();
+    x.translate(W / 2, H2 / 2);
+    x.scale(sc, -sc);
+    // frame
+    x.fillStyle = cs.getPropertyValue('--kigara').trim();
+    x.fillRect(-P.panelW/2, -P.height/2, P.panelW, P.height);
+    x.fillStyle = cs.getPropertyValue('--washi').trim();
+    x.fillRect(-P.openW/2, -P.openH/2, P.openW, P.openH);
+    // lattice
+    var segs = K.latticeSegments(P, state.pattern, P.openW, P.openH, 0);
+    x.strokeStyle = cs.getPropertyValue('--kigara').trim();
+    x.lineWidth = P.slatW; x.lineCap = 'butt';
+    x.beginPath();
+    for (var i = 0; i < segs.length; i++) {
+      x.moveTo(segs[i][0][0], segs[i][0][1]);
+      x.lineTo(segs[i][1][0], segs[i][1][1]);
+    }
+    x.stroke();
+    x.restore();
+    document.getElementById('sw-name').textContent = K.PATTERN_LABEL[state.pattern];
+    document.getElementById('sw-meta').textContent =
+      segs.length + ' slats · ' + P.grid.toFixed(1) + ' mm pitch';
+  }
+
+  // ---------------------------------------------------------------- output
+  function fmt(n, d) { return (+n).toFixed(d === undefined ? 1 : d); }
+
+  function download(name, bytes, mime) {
+    var blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+
+  function renderParts() {
+    var tb = document.getElementById('parts');
+    tb.textContent = '';
+    if (!model.parts) return;
+    model.parts.forEach(function (p) {
+      var tr = el('tr');
+      var td0 = el('td');
+      td0.appendChild(el('div', 'part', p.label));
+      td0.appendChild(el('div', 'note', p.id + '.stl · ' + p.note));
+      tr.appendChild(td0);
+      tr.appendChild(el('td', 'num', String(p.qty)));
+      tr.appendChild(el('td', 'num', p.bbox.size.map(function (v) { return fmt(v); }).join(' × ')));
+      tr.appendChild(el('td', 'num', fmt(p.vol / 1000) + ' cm³'));
+      var td4 = el('td');
+      var chip = el('span', 'chip ' + (p.fits ? 'fit' : 'nofit'), p.fits ? 'fits' : 'too big');
+      td4.appendChild(chip);
+      tr.appendChild(td4);
+      var td5 = el('td');
+      var b = el('button', 'dl', 'STL');
+      b.addEventListener('click', function () {
+        download(p.id + '.stl', K.stlBinary(p.mesh.tris));
+      });
+      td5.appendChild(b);
+      tr.appendChild(td5);
+      tb.appendChild(tr);
+    });
+  }
+
+  function renderProblems() {
+    var box = document.getElementById('problems');
+    box.textContent = '';
+    if (!model.problems.length) return;
+    var d = el('div', 'problems');
+    d.appendChild(el('h3', null, 'This lamp will not go together'));
+    var ul = el('ul');
+    model.problems.forEach(function (m) { ul.appendChild(el('li', null, m)); });
+    d.appendChild(ul);
+    box.appendChild(d);
+  }
+
+  function renderMeta() {
+    var P = model.P;
+    document.getElementById('d-overall').textContent =
+      fmt(P.foot, 0) + ' × ' + fmt(P.foot, 0) + ' × ' + fmt(P.totalHeight, 0) + ' mm';
+    document.getElementById('d-sub').textContent =
+      'panel ' + fmt(P.panelW) + ' × ' + fmt(P.height, 0) + ' × ' + fmt(P.panelT);
+    document.getElementById('s-noz').textContent =
+      fmt(P.nozzle, 1) + ' / ' + (P.nozzle >= 0.6 ? '0.3' : '0.2') + ' mm';
+    var walls = Math.round(P.slatW / P.nozzle);
+    document.getElementById('s-walls').textContent = String(walls);
+    document.getElementById('s-walls-why').textContent =
+      'Slats are ' + fmt(P.slatW) + ' mm wide, exactly ' + walls + ' × ' +
+      fmt(P.nozzle, 1) + ' mm, so at ' + walls +
+      ' wall loops they come out solid with no infill inside them.';
+    document.getElementById('s-diff').textContent =
+      fmt(P.diffuserW) + ' × ' + fmt(P.diffuserH) + ' mm';
+    document.getElementById('s-reb').textContent = fmt(P.rebateD, 1) + ' mm';
+
+    var d = K.DEFAULTS, flags = [];
+    [['size','--size'],['height','--height'],['grid','--grid'],['slatW','--slat'],
+     ['socketNeck','--socket-neck']].forEach(function (f) {
+      if (Math.abs(state[f[0]] - d[f[0]]) > 1e-9) flags.push(f[1] + ' ' + state[f[0]]);
+    });
+    if (state.pattern !== d.pattern) flags.push('--pattern ' + state.pattern);
+    document.getElementById('cli').textContent =
+      'python3 kumiko_lamp.py' + (flags.length ? ' ' + flags.join(' ') : '');
+
+    var bad = model.parts && model.parts.some(function (p) { return !p.fits; });
+    document.getElementById('said').textContent = model.problems.length
+      ? 'Fix the problems above first.'
+      : (bad ? 'Some parts are larger than the bed.' : '');
+    document.getElementById('dl-all').disabled = !!model.problems.length;
+  }
+
+  // ---------------------------------------------------------------- loop
+  var pending = null;
+  function rebuild() {
+    if (pending) clearTimeout(pending);
+    pending = setTimeout(function () {
+      pending = null;
+      model = K.buildAll(state);
+      renderProblems();
+      renderMeta();
+      drawFlat();
+      if (model.parts) {
+        renderParts();
+        if (!cam.dist) cam.dist = model.P.totalHeight * 2.05;
+        uploadScene();
+        draw();
+      } else {
+        document.getElementById('parts').textContent = '';
+      }
+    }, 40);
+  }
+
+  document.getElementById('dl-all').addEventListener('click', function () {
+    if (!model || !model.parts) return;
+    var files = [];
+    model.parts.forEach(function (p) {
+      files.push({ name: p.id + (p.qty > 1 ? '_x' + p.qty : '') + '.stl',
+                   data: K.stlBinary(p.mesh.tris) });
+    });
+    download('kumiko-lamp-' + Math.round(model.P.foot) + 'mm-' + state.pattern + '.zip',
+             K.zipStore(files), 'application/zip');
+  });
+
+  ['v-asm', 'v-exp'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function () {
+      viewMode = id === 'v-asm' ? 'asm' : 'exp';
+      document.getElementById('v-asm').setAttribute('aria-pressed', String(viewMode === 'asm'));
+      document.getElementById('v-exp').setAttribute('aria-pressed', String(viewMode === 'exp'));
+      uploadScene(); draw();
+    });
+  });
+
+  window.addEventListener('resize', function () { drawFlat(); draw(); });
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', function () { drawFlat(); draw(); });
+  }
+
+  buildRail();
+  initGL();
+  rebuild();
+  window.__kumikoReady = true;
+})();
+</script>

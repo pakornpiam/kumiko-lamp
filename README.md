@@ -8,6 +8,21 @@ Assembled: **190 × 190 × 224 mm**. Designed for the 256 mm bed of the A1 / P1S
 
 ![assembled lamp](preview/assembly.png)
 
+## Two ways to build it
+
+**[`web/index.html`](web/index.html) — the configurator.** Open it in a browser: drag
+sliders for size, pattern, joint clearances and E27 sizing, turn the lamp in 3D, and
+download the STLs (individually or as a zip). No install, no network, one self-contained
+file. It re-solves the joinery live and refuses to export a lamp that will not go together.
+
+**`kumiko_lamp.py` — the generator.** Same lamp, same numbers, built with real CSG so
+every part is a strictly manifold shell. Use this if your slicer is fussy, or for the
+pre-generated set in `stl/`.
+
+The two agree: for identical settings the base, posts and adapter ring come out of the
+browser watertight and volume-identical to the Python parts. The difference is in the
+lattices — see [Manifold-ness](#manifold-ness) below.
+
 ---
 
 ## Print list
@@ -127,6 +142,29 @@ python3 kumiko_lamp.py --all
 python3 render_preview.py     # optional, needs matplotlib
 ```
 
+## Manifold-ness
+
+The browser has no CSG engine, so `web/index.html` builds geometry a different way — a
+winding-rule slab decomposition, with T-junctions welded afterwards. The result:
+
+| Part | From the browser |
+|---|---|
+| `base`, `post`, `socket_adapter_ring` | Single **watertight** shell, volume identical to the Python part |
+| `panel_*`, `top_cap` | One closed solid per slat, overlapping where slats cross |
+
+There are **no open edges** in any of it — every edge is shared by an even number of
+faces. But in the lattices the shared ones sit on four faces rather than two, so a strict
+manifold check calls them non-manifold and your slicer may offer to repair them. Every
+slicer unions overlapping closed solids correctly, so they print as drawn.
+
+That is a deliberate trade. Decomposing the crossings into a single shell is exact, but
+costs eighteen times the triangles and takes seconds per change — measured, not guessed —
+which is no way to drive a slider. `kumiko_lamp.py` is the strictly-manifold path.
+
+One consequence worth knowing: the volume the configurator reports for the panel and cap
+counts overlapping slats twice, so it reads a few percent high. The other three parts are
+exact.
+
 ## How this was checked
 
 `kumiko_lamp.py` fails loudly rather than writing a bad file. Per run it asserts:
@@ -141,7 +179,15 @@ python3 render_preview.py     # optional, needs matplotlib
 - **Assembled clearance**: the parts are transformed into place and booleaned against each
   other. Any shared volume at all is an error, so a binding joint fails the build.
 
+The configurator is checked the same way, headlessly: its geometry core runs in Node and
+is compared against the Python generator's measured volumes (`base` matches to 0.00%,
+`post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat. The page
+itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
+a deliberately unassemblable configuration to confirm it blocks rather than exports, and a
+real download whose bytes are loaded back as a mesh. The core is extracted from the
+shipped HTML for those tests, so what is verified is what ships.
+
 What that does **not** cover is a test print — I have not run one. Shrinkage and your
 printer's dimensional accuracy are the remaining unknowns, and the joints are where they
 would show. If something binds, `slot_clear` / `panel_clear` / `socket_clear` are the
-three numbers to adjust.
+three numbers to adjust — the configurator exposes all three.
