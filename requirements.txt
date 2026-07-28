@@ -1,0 +1,8 @@
+# Generator
+numpy
+trimesh
+manifold3d      # CSG engine behind trimesh.boolean
+scipy           # connected-component split and mesh queries
+
+# Optional: render_preview.py only
+# matplotlib
