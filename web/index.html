@@ -615,15 +615,117 @@ var Kumiko = (function () {
     return segs.concat(ss.segs);
   }
 
+  /* Lengthen a segment by d at both ends.  Needed wherever a pattern puts two
+     collinear slats end to end: butted they share one tangent face, which is
+     exactly what the STL round-trip does not survive. */
+  function extend(p, q, d) {
+    var dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy);
+    if (L < 1e-9) return [p, q];
+    var ux = dx / L * d, uy = dy / L * d;
+    return [[p[0] - ux, p[1] - uy], [q[0] + ux, q[1] + uy]];
+  }
+  function mid2(p, q) { return [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]; }
+
+  /* Kagome: the medial lattice of the triangular grid — joining the three edge
+     midpoints of every triangle gives the woven basket net directly. */
+  function patKagome(w, h, s) {
+    var ss = new SegSet(), t = triGrid(w, h, s), ov = s * 0.04;
+    for (var i = 0; i < t.length; i++) {
+      var tri = t[i], m = [];
+      for (var j = 0; j < 3; j++) m.push(mid2(tri[j], tri[(j + 1) % 3]));
+      for (j = 0; j < 3; j++) {
+        var e = extend(m[j], m[(j + 1) % 3], ov);
+        ss.add(e[0], e[1]);
+      }
+    }
+    return ss.segs;
+  }
+
+  /* Masu-tsunagi: square grid with a concentric inner square per cell, bridged
+     at the four side midpoints.  The bridges keep it in one piece once the cap
+     clips the field to a disc. */
+  function patMasu(w, h, s) {
+    var ss = new SegSet(), ov = s * 0.05, inset = s * 0.28;
+    var i0 = Math.floor(-w / 2 / s) - 2, i1 = Math.ceil(w / 2 / s) + 2;
+    var j0 = Math.floor(-h / 2 / s) - 2, j1 = Math.ceil(h / 2 / s) + 2;
+    for (var i = i0; i <= i1; i++) ss.add([i * s, j0 * s], [i * s, j1 * s]);
+    for (var j = j0; j <= j1; j++) ss.add([i0 * s, j * s], [i1 * s, j * s]);
+    for (i = i0; i < i1; i++) {
+      for (j = j0; j < j1; j++) {
+        var x0 = i * s, y0 = j * s;
+        var a = x0 + inset, b = y0 + inset;
+        var c = x0 + s - inset, d = y0 + s - inset;
+        ss.add([a, b], [c, b]); ss.add([c, b], [c, d]);
+        ss.add([c, d], [a, d]); ss.add([a, d], [a, b]);
+        var mx = x0 + s / 2, my = y0 + s / 2;
+        ss.add([mx, y0 - ov], [mx, b + ov]);
+        ss.add([mx, d - ov], [mx, y0 + s + ov]);
+        ss.add([x0 - ov, my], [a + ov, my]);
+        ss.add([c - ov, my], [x0 + s + ov, my]);
+      }
+    }
+    return ss.segs;
+  }
+
+  /* Goma-gara: 45 deg diamond lattice with both axes of every diamond drawn in.
+     Cell centres are (u, v) * s/2 for u + v odd. */
+  function patGoma(w, h, s) {
+    var ss = new SegSet(), ov = s * 0.05, half = s / 2;
+    var r = Math.max(w, h) / 2 + 3 * s, n = Math.ceil(2 * r / s) + 2;
+    for (var k = -n; k <= n; k++) {
+      var c = k * s;
+      ss.add([c / 2 - r, c / 2 + r], [c / 2 + r, c / 2 - r]);
+      ss.add([c / 2 - r, -c / 2 - r], [c / 2 + r, -c / 2 + r]);
+    }
+    for (var u = -n; u <= n; u++) {
+      for (var v = -n; v <= n; v++) {
+        if ((((u + v) % 2) + 2) % 2 === 0) continue;
+        var cx = u * half, cy = v * half;
+        if (Math.abs(cx) > r || Math.abs(cy) > r) continue;
+        ss.add([cx - half - ov, cy], [cx + half + ov, cy]);
+        ss.add([cx, cy - half - ov], [cx, cy + half + ov]);
+      }
+    }
+    return ss.segs;
+  }
+
+  /* Bishamon-kikkou: a concentric hexagon per cell tied to the outer one by six
+     spokes, reading as overlapping armour scales.  Spokes run between edge
+     midpoints, never vertices — at a vertex three hexagons already converge and
+     the boolean leaves a micron-long sliver that costs watertightness. */
+  function patBishamon(w, h, r) {
+    var ss = new SegSet(), hx = hexGrid(w, h, r), ov = r * 0.06;
+    for (var i = 0; i < hx.length; i++) {
+      var H = hx[i], inner = [];
+      for (var j = 0; j < 6; j++)
+        inner.push([H.c[0] + (H.v[j][0] - H.c[0]) * 0.55,
+                    H.c[1] + (H.v[j][1] - H.c[1]) * 0.55]);
+      for (j = 0; j < 6; j++) {
+        ss.add(H.v[j], H.v[(j + 1) % 6]);
+        ss.add(inner[j], inner[(j + 1) % 6]);
+        var e = extend(mid2(inner[j], inner[(j + 1) % 6]),
+                       mid2(H.v[j], H.v[(j + 1) % 6]), ov);
+        ss.add(e[0], e[1]);
+      }
+    }
+    return ss.segs;
+  }
+
   var PATTERNS = {
     asanoha: patAsanoha,
     mitsukude: patMitsukude,
     kikkou: patKikkou,
-    kawari_asanoha: patKawari
+    kawari_asanoha: patKawari,
+    kagome: patKagome,
+    masu_tsunagi: patMasu,
+    goma_gara: patGoma,
+    bishamon_kikkou: patBishamon
   };
   var PATTERN_LABEL = {
     asanoha: 'Asanoha', mitsukude: 'Mitsukude',
-    kikkou: 'Kikkou', kawari_asanoha: 'Kawari-asanoha'
+    kikkou: 'Kikkou', kawari_asanoha: 'Kawari-asanoha',
+    kagome: 'Kagome', masu_tsunagi: 'Masu-tsunagi',
+    goma_gara: 'Goma-gara', bishamon_kikkou: 'Bishamon-kikkou'
   };
 
   // ------------------------------------------------------------------

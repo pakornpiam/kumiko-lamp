@@ -474,11 +474,150 @@ def pat_kawari(w, h, s):
     return segs + ss.segs
 
 
+def _extend(p, q, d):
+    """
+    Lengthen a segment by `d` at both ends.
+
+    Needed wherever a pattern puts two collinear slats end to end: butted
+    against each other they share a single tangent face, which is the one thing
+    the float32 STL round-trip does not survive.  Overlapping them costs
+    nothing and the union comes back clean.
+    """
+    dx, dy = q[0] - p[0], q[1] - p[1]
+    L = math.hypot(dx, dy)
+    if L < 1e-9:
+        return p, q
+    ux, uy = dx / L * d, dy / L * d
+    return (p[0] - ux, p[1] - uy), (q[0] + ux, q[1] + uy)
+
+
+def pat_kagome(w, h, s):
+    """
+    Kagome (basket weave): the medial lattice of the triangular grid.
+
+    Joining the three edge midpoints of every triangle gives the net directly --
+    each midpoint is shared by two triangles, so the pieces line up into the
+    three continuous straight families that read as woven bamboo.  Those
+    collinear neighbours meet end to end, hence the overshoot.
+    """
+    ss = SegSet()
+    ov = s * 0.04
+    for tri in _triangles(w, h, s):
+        m = [((tri[j][0] + tri[(j + 1) % 3][0]) / 2.0,
+              (tri[j][1] + tri[(j + 1) % 3][1]) / 2.0) for j in range(3)]
+        for j in range(3):
+            ss.add(*_extend(m[j], m[(j + 1) % 3], ov))
+    return ss.segs
+
+
+def pat_masu(w, h, s):
+    """
+    Masu-tsunagi (linked boxes): a square grid with a concentric inner square
+    in every cell, bridged to the cell walls at the four side midpoints.
+
+    The bridges are what keep it in one piece once `build_cap` clips the field
+    to a disc -- an inner square cut loose from the grid would be a floating
+    body and fail the part check.
+    """
+    ss = SegSet()
+    ov = s * 0.05
+    inset = s * 0.28
+    i0 = int(math.floor(-w / 2 / s)) - 2
+    i1 = int(math.ceil(w / 2 / s)) + 2
+    j0 = int(math.floor(-h / 2 / s)) - 2
+    j1 = int(math.ceil(h / 2 / s)) + 2
+
+    # grid lines run the full field, so every crossing is a real overlap
+    for i in range(i0, i1 + 1):
+        ss.add((i * s, j0 * s), (i * s, j1 * s))
+    for j in range(j0, j1 + 1):
+        ss.add((i0 * s, j * s), (i1 * s, j * s))
+
+    for i in range(i0, i1):
+        for j in range(j0, j1):
+            x0, y0 = i * s, j * s
+            a, b = x0 + inset, y0 + inset
+            c, d = x0 + s - inset, y0 + s - inset
+            ss.add((a, b), (c, b))
+            ss.add((c, b), (c, d))
+            ss.add((c, d), (a, d))
+            ss.add((a, d), (a, b))
+            mx, my = x0 + s / 2.0, y0 + s / 2.0
+            ss.add((mx, y0 - ov), (mx, b + ov))
+            ss.add((mx, d - ov), (mx, y0 + s + ov))
+            ss.add((x0 - ov, my), (a + ov, my))
+            ss.add((c - ov, my), (x0 + s + ov, my))
+    return ss.segs
+
+
+def pat_goma(w, h, s):
+    """
+    Goma-gara (sesame husk): a 45 deg diamond lattice with both axes of every
+    diamond drawn in, so each cell reads as a split sesame seed.
+
+    Cell centres sit at (u, v) * s/2 for u + v odd -- that is exactly the set of
+    intersections of the two diagonal families offset by half a cell.
+    """
+    ss = SegSet()
+    ov = s * 0.05
+    half = s / 2.0
+    r = max(w, h) / 2.0 + 3 * s
+    n = int(math.ceil(2 * r / s)) + 2
+
+    # the two 45 deg families, drawn long so all crossings genuinely overlap
+    for k in range(-n, n + 1):
+        c = k * s
+        ss.add((c / 2 - r, c / 2 + r), (c / 2 + r, c / 2 - r))     # x + y = c
+        ss.add((c / 2 - r, -c / 2 - r), (c / 2 + r, -c / 2 + r))   # x - y = c
+
+    for u in range(-n, n + 1):
+        for v in range(-n, n + 1):
+            if (u + v) % 2 == 0:
+                continue
+            cx, cy = u * half, v * half
+            if abs(cx) > r or abs(cy) > r:
+                continue
+            ss.add((cx - half - ov, cy), (cx + half + ov, cy))
+            ss.add((cx, cy - half - ov), (cx, cy + half + ov))
+    return ss.segs
+
+
+def pat_bishamon(w, h, r):
+    """
+    Bishamon-kikkou: the armour pattern -- a concentric hexagon inside every
+    cell, tied to the outer one by six radial spokes, so the field reads as
+    overlapping scales rather than kikkou's tumbling blocks.
+
+    This is the heavy end of the hexagon family; kikkou is the light one.
+
+    The spokes run between edge *midpoints*, not vertices.  Aimed at a vertex
+    they land where three hexagons and six slats already converge, and the
+    boolean there produces a micron-long sliver that costs watertightness; a
+    midpoint is a clean T-overlap with one edge and nothing else nearby.
+    """
+    ss = SegSet()
+    ov = r * 0.06
+    mid = lambda p, q: ((p[0] + q[0]) / 2.0, (p[1] + q[1]) / 2.0)
+    for _rc, c, verts in _hexes(w, h, r):
+        inner = [(c[0] + (v[0] - c[0]) * 0.55,
+                  c[1] + (v[1] - c[1]) * 0.55) for v in verts]
+        for j in range(6):
+            ss.add(verts[j], verts[(j + 1) % 6])
+            ss.add(inner[j], inner[(j + 1) % 6])
+            ss.add(*_extend(mid(inner[j], inner[(j + 1) % 6]),
+                            mid(verts[j], verts[(j + 1) % 6]), ov))
+    return ss.segs
+
+
 PATTERNS = {
     "asanoha": pat_asanoha,
     "mitsukude": pat_mitsukude,
     "kikkou": pat_kikkou,
     "kawari_asanoha": pat_kawari,
+    "kagome": pat_kagome,
+    "masu_tsunagi": pat_masu,
+    "goma_gara": pat_goma,
+    "bishamon_kikkou": pat_bishamon,
 }
 
 

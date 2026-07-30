@@ -35,8 +35,11 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `top_cap.stl` | **1** | 190 × 190 × 10 | Flat, as exported — **already flipped** into print orientation. |
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 holder* below. |
 
-Swap in `panel_kikkou.stl`, `panel_mitsukude.stl` or `panel_kawari_asanoha.stl` for a
-different motif — they are dimensionally identical and interchangeable.
+Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
+`panel_kagome.stl`, `panel_masu_tsunagi.stl`, `panel_goma_gara.stl` or
+`panel_bishamon_kikkou.stl` for a different motif — all eight are dimensionally identical
+and interchangeable. Roughly in order of open area: kikkou and bishamon-kikkou are the
+airiest, asanoha and goma-gara the densest.
 
 `post_lower.stl` + `post_upper.stl` are an **optional** two-piece post joined by an 8 mm
 pin (117 mm and 105 mm tall). Use them only if you would rather not print a 210 mm tall
@@ -183,7 +186,8 @@ exact.
 
 The configurator is checked the same way, headlessly: its geometry core runs in Node and
 is compared against the Python generator's measured volumes (`base` matches to 0.00%,
-`post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat. The page
+`post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat,
+across all eight patterns. The page
 itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
 a deliberately unassemblable configuration to confirm it blocks rather than exports, and a
 real download whose bytes are loaded back as a mesh. The core is extracted from the

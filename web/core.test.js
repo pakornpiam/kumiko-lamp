@@ -38,7 +38,9 @@ check(K.checkFits(K.derive({ slatW: 1.5 })).length > 0, 'non-nozzle-multiple sla
 check(K.checkFits(K.derive({ grooveD: 9 })).length > 0, 'groove deeper than half the post rejected');
 
 console.log('\npattern segment counts (vs Python)');
-const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118 };
+const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
+                    kagome: 248, masu_tsunagi: 292, goma_gara: 162,
+                    bishamon_kikkou: 204 };
 for (const name of Object.keys(K.PATTERNS)) {
   const segs = K.clipRect(K.PATTERNS[name](P.openW, P.openH, P.grid),
                           -P.openW/2, -P.openH/2, P.openW/2, P.openH/2);
@@ -96,7 +98,9 @@ check(zip[0] === 0x50 && zip[1] === 0x4b, 'ZIP magic bytes');
 
 console.log('\nvariations');
 for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
-                 { pattern: 'mitsukude', slatW: 2.4 }, { grid: 20 }]) {
+                 { pattern: 'mitsukude', slatW: 2.4 }, { grid: 20 },
+                 { pattern: 'kagome' }, { pattern: 'masu_tsunagi' },
+                 { pattern: 'goma_gara' }, { pattern: 'bishamon_kikkou' }]) {
   const r = K.buildAll(v);
   check(r.problems.length === 0 && r.parts && r.parts.every(p => p.vol > 0),
         'builds: ' + JSON.stringify(v));
