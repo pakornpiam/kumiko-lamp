@@ -191,3 +191,7 @@ What that does **not** cover is a test print — I have not run one. Shrinkage a
 printer's dimensional accuracy are the remaining unknowns, and the joints are where they
 would show. If something binds, `slot_clear` / `panel_clear` / `socket_clear` are the
 three numbers to adjust — the configurator exposes all three.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Print it, sell prints of it, fork it, change it.
