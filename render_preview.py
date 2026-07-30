@@ -18,8 +18,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import LineCollection
 
-from kumiko_lamp import (PATTERNS, Params, build_base, build_cap, build_panel,
-                         build_post, clip_rect, place_parts)
+from kumiko_lamp import (PATTERNS, Params, build_base, build_cap, build_leg,
+                         build_panel, build_post, clip_rect, place_parts)
 
 OUT = Path(__file__).parent / "preview"
 
@@ -51,7 +51,8 @@ def render_assembly(P, pattern="asanoha"):
                         build_panel(P, pattern),
                         build_post(P, "full"),
                         build_base(P),
-                        build_cap(P, pattern))
+                        build_cap(P, pattern),
+                        build_leg(P))
 
     fig = plt.figure(figsize=(13, 6))
     for i, ((elev, azim), title) in enumerate(
@@ -62,7 +63,7 @@ def render_assembly(P, pattern="asanoha"):
             colour = "#d8bc8a"
             if name in ("base", "cap"):
                 colour = "#8a5a2b"
-            elif name.startswith("post"):
+            elif name.startswith("post") or name.startswith("leg"):
                 colour = "#a06a33"
             v = m.vertices
             ax.plot_trisurf(v[:, 0], v[:, 1], m.faces, v[:, 2],

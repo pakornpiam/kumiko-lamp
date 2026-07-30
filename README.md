@@ -4,7 +4,8 @@ A square four-panel kumiko lantern for an E27 LED bulb. Every part prints flat w
 **no supports**, and the whole thing assembles with sliding mortise-and-groove joints —
 no glue, no screws, no fasteners of any kind.
 
-Assembled: **190 × 190 × 224 mm**. Designed for the 256 mm bed of the A1 / P1S / X1C.
+Assembled: **190 × 190 × 236 mm** on its four legs. Designed for the 256 mm bed of the
+A1 / P1S / X1C.
 
 ![assembled lamp](preview/assembly.png)
 
@@ -33,6 +34,7 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `post.stl` | **4** | 18 × 18 × 210 | Standing upright, as exported. Use a brim. |
 | `base.stl` | **1** | 190 × 190 × 16 | Flat, as exported. Underside is dead flat. |
 | `top_cap.stl` | **1** | 190 × 190 × 10 | Flat, as exported — **already flipped** into print orientation. |
+| `leg.stl` | **4** | 20 × 20 × 20 | Standing on its foot, as exported. Tenon points up. |
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 holder* below. |
 
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
@@ -60,22 +62,33 @@ fit in a viewer.
 | Supports | **Off** for every part |
 | Brim | 5 mm on the posts and panels; optional elsewhere |
 
-Rough filament: one full set is 1309 cm³ of solid volume (1624 g if it were 100 % dense).
+Rough filament: one full set is 1323 cm³ of solid volume (1641 g if it were 100 % dense).
 The panels and posts are effectively solid; the base and cap are slabs that infill
 hollows out considerably. At 15 % infill expect very roughly **700–800 g** — your
 slicer's estimate is the one to trust.
 
 ## Assembly
 
-1. Drop the four **posts** into the corner sockets of the **base**.
-2. Slide each **panel** down between two posts — the grooves in the posts catch its
+1. Press the four **legs** into the blind sockets in the underside of the **base**.
+2. Drop the four **posts** into the corner sockets on top of the base.
+3. Slide each **panel** down between two posts — the grooves in the posts catch its
    side edges, and its bottom edge lands in the groove in the base. Lattice faces out.
-3. Fit the **top cap** over the four post tops and the four panel top edges.
+4. Fit the **top cap** over the four post tops and the four panel top edges.
 
 It is a friction fit throughout, so the cap lifts off to change the bulb. Joint
-clearances are 0.4 mm on the grooves and 0.3 mm on panel width. If your printer runs
-tight and the panels bind, raise `slot_clear` and reprint the posts — that is the one
-part you would need to redo.
+clearances are 0.4 mm on the grooves, 0.3 mm on panel width and 0.35 mm on the leg
+tenons. If your printer runs tight and the panels bind, raise `slot_clear` and reprint
+the posts — that is the one part you would need to redo.
+
+## Legs
+
+The legs are separate parts rather than moulded onto the base, and that is deliberate:
+hung off the underside they would turn the whole 190 mm slab into an unsupported ceiling,
+and every part here prints without supports. A 10 mm square tenon plugs into a blind
+socket under each corner post, so the load runs straight down post → base → leg. Square
+rather than a round pin, so a leg cannot rotate out of line with the base edges.
+
+They also lift the base 12 mm off the table, which gives the cord somewhere to go.
 
 ## Diffuser
 
@@ -154,7 +167,7 @@ winding-rule slab decomposition, with T-junctions welded afterwards. The result:
 
 | Part | From the browser |
 |---|---|
-| `base`, `post`, `socket_adapter_ring` | Single **watertight** shell, volume identical to the Python part |
+| `base`, `post`, `leg`, `socket_adapter_ring` | Single **watertight** shell, volume identical to the Python part |
 | `panel_*`, `top_cap` | One closed solid per slat, overlapping where slats cross |
 
 There are **no open edges** in any of it — every edge is shared by an even number of
@@ -185,8 +198,8 @@ exact.
   other. Any shared volume at all is an error, so a binding joint fails the build.
 
 The configurator is checked the same way, headlessly: its geometry core runs in Node and
-is compared against the Python generator's measured volumes (`base` matches to 0.00%,
-`post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat,
+is compared against the Python generator's measured volumes (`base` and `leg` match to
+0.00%, `post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat,
 across all eight patterns. The page
 itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
 a deliberately unassemblable configuration to confirm it blocks rather than exports, and a

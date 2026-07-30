@@ -70,6 +70,16 @@ class Params:
     base_t: float = 16.0
     cap_t: float = 10.0
 
+    # --- legs ------------------------------------------------------------
+    # Separate parts rather than moulded onto the base: hung off the underside
+    # they would turn the whole slab into an unsupported ceiling, and this lamp
+    # prints every part without supports.
+    leg: float = 20.0            # square cross-section
+    leg_h: float = 12.0          # stand-off below the base
+    leg_tenon: float = 10.0      # square tenon plugging into the base
+    leg_tenon_h: float = 8.0     # tenon length == socket depth
+    leg_clear: float = 0.35      # socket size minus tenon size
+
     # --- E27 lamp holder -------------------------------------------------
     socket_bore: float = 40.0        # clear bore through the base
     socket_cbore: float = 50.0       # counterbore that seats the adapter ring
@@ -132,8 +142,14 @@ class Params:
         return self.post + self.socket_clear
 
     @property
+    def leg_socket_sz(self) -> float:
+        """Square socket in the base underside that receives a leg tenon."""
+        return self.leg_tenon + self.leg_clear
+
+    @property
     def total_height(self) -> float:
-        return self.base_t + (self.height - 2 * self.groove_d) + self.cap_t
+        return (self.leg_h + self.base_t + (self.height - 2 * self.groove_d)
+                + self.cap_t)
 
 
 # --------------------------------------------------------------------------
@@ -743,13 +759,39 @@ def _joint_cutters(P: Params, z_top: float, downward: bool):
     return cutters
 
 
+def build_leg(P: Params) -> trimesh.Trimesh:
+    """
+    One leg, standing on its foot for printing.
+
+    A square tenon rather than a round pin like the two-piece post: a round one
+    would let a square leg rotate out of line with the base edges.  The shoulder
+    at the tenon faces up on the plate, so there is nothing to support.
+    """
+    a = P.leg / 2.0
+    b = P.leg_tenon / 2.0
+    body = box(-a, -a, 0, a, a, P.leg_h)
+    tenon = box(-b, -b, P.leg_h - EPS, b, b, P.leg_h + P.leg_tenon_h)
+    return cleanup(union([body, tenon]))
+
+
+def _leg_sockets(P: Params):
+    """Blind sockets in the base underside, one under each corner post."""
+    s = P.leg_socket_sz / 2.0
+    pc = P.post_center
+    return [box(sx * pc - s, sy * pc - s, -EPS, sx * pc + s, sy * pc + s,
+                P.leg_tenon_h)
+            for sx in (-1, 1) for sy in (-1, 1)]
+
+
 def build_base(P: Params) -> trimesh.Trimesh:
-    """Base plate with E27 bore, adapter counterbore, vents and cord channel."""
+    """Base plate with E27 bore, adapter counterbore, vents, cord channel and
+    the four leg sockets."""
     f = P.foot / 2.0
     t = P.base_t
     base = box(-f, -f, 0, f, f, t)
 
     cutters = _joint_cutters(P, t, downward=True)
+    cutters += _leg_sockets(P)
 
     # lamp holder bore + counterbore for the adapter ring
     cutters.append(cyl(P.socket_bore, -EPS, t + EPS, sections=P.arc))
@@ -832,7 +874,7 @@ def _rotx(deg):
     return trimesh.transformations.rotation_matrix(math.radians(deg), (1, 0, 0))
 
 
-def place_parts(P: Params, panel, post, base, cap):
+def place_parts(P: Params, panel, post, base, cap, leg=None):
     """
     Return {name: transformed copy} for every part in assembled position.
 
@@ -869,11 +911,19 @@ def place_parts(P: Params, panel, post, base, cap):
     c = cap.copy()
     c.apply_translation((0, 0, z_base + P.height - P.groove_d))
     out["cap"] = c
+
+    # Legs hang below z = 0, so the assembly's origin is the base underside and
+    # its z-extent comes out as total_height.  Only ever a preview, never printed.
+    if leg is not None:
+        for idx, (sx, sy) in enumerate([(-1, -1), (1, -1), (1, 1), (-1, 1)]):
+            g = leg.copy()
+            g.apply_translation((sx * pc, sy * pc, -P.leg_h))
+            out[f"leg{idx}"] = g
     return out
 
 
-def build_assembly(P: Params, panel, post, base, cap):
-    parts = place_parts(P, panel, post, base, cap)
+def build_assembly(P: Params, panel, post, base, cap, leg=None):
+    parts = place_parts(P, panel, post, base, cap, leg)
     return trimesh.util.concatenate(list(parts.values())), parts
 
 
@@ -937,12 +987,22 @@ def check_fits(P: Params):
         issues.append("panel frame narrower than its groove engagement")
     if P.rebate_lip >= P.panel_border:
         issues.append("rebate pocket eats the whole frame lip")
+    if P.leg_tenon_h >= P.base_t - P.groove_d:
+        issues.append("leg socket breaks into the panel groove above it")
+    if P.leg_tenon >= P.leg:
+        issues.append("leg tenon is not narrower than the leg, so it has no shoulder")
+    if P.post_center + P.leg / 2 > P.foot / 2:
+        issues.append("leg overhangs the edge of the base")
+    if P.post_center - P.leg_socket_sz / 2 <= P.base_vent_r1:
+        issues.append("leg socket runs into the ventilation slots")
+    if P.leg_h < 3 * 0.2:
+        issues.append("leg is under three layers tall")
     return issues
 
 
 def check_clearances(parts):
     """No two assembled parts may share any volume."""
-    names = ["base", "cap", "post0", "panel0", "panel2"]
+    names = ["base", "cap", "post0", "panel0", "panel2", "leg0"]
     issues = []
     for i, a in enumerate(names):
         for b in names[i + 1:]:
@@ -1088,8 +1148,11 @@ def main(argv=None):
     print("  building socket ring ...", flush=True)
     emit("socket_adapter_ring", build_socket_ring(P))
 
+    print("  building leg ...", flush=True)
+    leg = emit("leg", build_leg(P))
+
     print("  assembling ...", flush=True)
-    asm, parts = build_assembly(P, panel, post, base, cap)
+    asm, parts = build_assembly(P, panel, post, base, cap, leg)
     emit("assembly_preview", asm, bodies=len(parts), printable=False)
 
     # ---- report ---------------------------------------------------------

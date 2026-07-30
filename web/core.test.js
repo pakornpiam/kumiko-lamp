@@ -32,7 +32,7 @@ console.log('parameters');
 const P = K.derive({});
 check(Math.abs(P.panelW - 155.7) < 1e-9, 'panel width 155.7', P.panelW.toFixed(2));
 check(Math.abs(P.foot - 190) < 1e-9, 'base/cap footprint 190', P.foot.toFixed(1));
-check(Math.abs(P.totalHeight - 224) < 1e-9, 'assembled height 224', P.totalHeight.toFixed(1));
+check(Math.abs(P.totalHeight - 236) < 1e-9, 'assembled height 236', P.totalHeight.toFixed(1));
 check(K.checkFits(P).length === 0, 'stock parameters pass checkFits');
 check(K.checkFits(K.derive({ slatW: 1.5 })).length > 0, 'non-nozzle-multiple slat rejected');
 check(K.checkFits(K.derive({ grooveD: 9 })).length > 0, 'groove deeper than half the post rejected');
@@ -54,13 +54,15 @@ console.log('\nparts vs Python trimesh');
    theorem double-counts every crossing: their volume can only come out HIGH,
    and is bounded rather than matched.  The cap is additionally ~1.5 cm3 up on
    Python because the browser build omits the cosmetic top-edge chamfer. */
-const PY = { post: 56.5, base: 512.4, top_cap: 318.3, socket_adapter_ring: 5.5 };
+const PY = { post: 56.5, base: 509.0, top_cap: 318.3, socket_adapter_ring: 5.5,
+             leg: 5.6 };
 const LATTICE = { top_cap: 1 };
 const built = {
   post: K.buildPost(P),
   base: K.buildBase(P),
   top_cap: K.buildCap(P, 'asanoha'),
-  socket_adapter_ring: K.buildRing(P)
+  socket_adapter_ring: K.buildRing(P),
+  leg: K.buildLeg(P)
 };
 for (const [name, m] of Object.entries(built)) {
   const v = Math.abs(K.volume(m.tris)) / 1000;
@@ -100,7 +102,8 @@ console.log('\nvariations');
 for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'mitsukude', slatW: 2.4 }, { grid: 20 },
                  { pattern: 'kagome' }, { pattern: 'masu_tsunagi' },
-                 { pattern: 'goma_gara' }, { pattern: 'bishamon_kikkou' }]) {
+                 { pattern: 'goma_gara' }, { pattern: 'bishamon_kikkou' },
+                 { legH: 30 }, { legTenonH: 4, legClear: 0.5 }]) {
   const r = K.buildAll(v);
   check(r.problems.length === 0 && r.parts && r.parts.every(p => p.vol > 0),
         'builds: ' + JSON.stringify(v));

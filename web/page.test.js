@@ -35,11 +35,11 @@ const check = (ok, msg, extra) => {
 
   // header reflects the stock design
   const overall = await page.textContent('#d-overall');
-  check(overall.trim() === '190 × 190 × 224 mm', 'header dimensions', overall.trim());
+  check(overall.trim() === '190 × 190 × 236 mm', 'header dimensions', overall.trim());
 
   // part table populated
   const rows = await page.$$eval('#parts tr', r => r.length);
-  check(rows === 5, 'five parts listed', String(rows));
+  check(rows === 6, 'six parts listed', String(rows));
   const chips = await page.$$eval('#parts .chip', c => c.map(x => x.textContent));
   check(chips.every(c => c === 'fits'), 'all parts fit the default bed', chips.join(','));
 
@@ -66,7 +66,7 @@ const check = (ok, msg, extra) => {
   await page.dispatchEvent('#r-size', 'input');
   await page.waitForTimeout(500);
   const grown = await page.textContent('#d-overall');
-  check(grown.trim() === '240 × 240 × 224 mm', 'size slider re-solves the lamp', grown.trim());
+  check(grown.trim() === '240 × 240 × 236 mm', 'size slider re-solves the lamp', grown.trim());
 
   // exceed the bed and confirm it is reported, not hidden
   await page.fill('#r-bedX', '150'); await page.dispatchEvent('#r-bedX', 'input');

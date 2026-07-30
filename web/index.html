@@ -388,6 +388,7 @@ var Kumiko = (function () {
     rebateD: 0.6, rebateLip: 8,
     grooveD: 6, slotClear: 0.4, panelClear: 0.3, socketClear: 0.4,
     plinth: 5, baseT: 16, capT: 10,
+    leg: 20, legH: 12, legTenon: 10, legTenonH: 8, legClear: 0.35,
     socketBore: 40, socketCbore: 50, socketCboreD: 4, socketNeck: 26.5,
     cableW: 9, cableH: 5, cableFloor: 2,
     baseVents: 16, baseVentR0: 29, baseVentR1: 37,
@@ -406,7 +407,8 @@ var Kumiko = (function () {
     p.panelW = p.grooveSpan - p.panelClear;
     p.foot = p.size + 2 * p.plinth;
     p.socketSz = p.post + p.socketClear;
-    p.totalHeight = p.baseT + (p.height - 2 * p.grooveD) + p.capT;
+    p.legSocketSz = p.legTenon + p.legClear;
+    p.totalHeight = p.legH + p.baseT + (p.height - 2 * p.grooveD) + p.capT;
     p.openW = p.panelW - 2 * p.panelBorder;
     p.openH = p.height - 2 * p.panelBorder;
     p.diffuserW = p.panelW - 2 * p.rebateLip;
@@ -450,6 +452,16 @@ var Kumiko = (function () {
       bad('Lamp holder bore is not smaller than its counterbore.');
     if (P.cableW / 2 >= P.socketBore / 2)
       bad('Cord tunnel is wider than the lamp holder bore.');
+    if (P.legTenonH >= P.baseT - P.grooveD)
+      bad('Leg socket breaks into the panel groove above it.');
+    if (P.legTenon >= P.leg)
+      bad('Leg tenon is not narrower than the leg, so it has no shoulder.');
+    if (P.postCenter + P.leg / 2 > P.foot / 2)
+      bad('Leg overhangs the edge of the base.');
+    if (P.postCenter - P.legSocketSz / 2 <= P.baseVentR1)
+      bad('Leg socket runs into the ventilation slots.');
+    if (P.legH < 3 * 0.2)
+      bad('Leg is under three layers tall.');
     return out;
   }
 
@@ -1175,6 +1187,20 @@ var Kumiko = (function () {
     return v;
   }
 
+  /* Blind sockets in the underside, one under each corner post, that take the
+     leg tenons. */
+  function legSocketVoids(P) {
+    var v = [], pc = P.postCenter, s = P.legSocketSz / 2;
+    for (var sx = -1; sx <= 1; sx += 2)
+      for (var sy = -1; sy <= 1; sy += 2)
+        v.push(rectLoop(sx * pc - s, sy * pc - s, sx * pc + s, sy * pc + s, false));
+    return v;
+  }
+
+  /* The stack is built from sorted breakpoints rather than a fixed list of
+     layers: which feature sits above which depends on the sliders, and an
+     out-of-order stack extrudes to silent garbage.  Each slab picks its voids
+     by testing its own midpoint, so ordering can never be assumed wrong. */
   function buildBase(P) {
     var f = P.foot / 2, t = P.baseT, n = P.arc;
     var bore = circleLoop(0, 0, P.socketBore / 2, n, false);
@@ -1182,21 +1208,40 @@ var Kumiko = (function () {
     var vents = ventVoids(P);
     var outer = rectLoop(-f, -f, f, f, true);
     var joinery = joineryVoids(P);
+    var legs = legSocketVoids(P);
     // The tunnel runs past the bore wall and out through the side; it overlaps
     // both the bore and the outer boundary, which the winding rule handles.
     var tunnel = rectLoop(-P.cableW / 2, -f - EPS, P.cableW / 2,
                           -P.socketBore / 2 + P.cableW, false);
 
-    var z1 = P.cableFloor, z2 = P.cableFloor + P.cableH;
-    var z3 = t - P.grooveD, z4 = t - P.socketCboreD;
-    var layers = [
-      { loops: [outer, bore].concat(vents), z0: 0, z1: z1 },
-      { loops: [outer, bore, tunnel].concat(vents), z0: z1, z1: z2 },
-      { loops: [outer, bore].concat(vents), z0: z2, z1: z3 },
-      { loops: [outer, bore].concat(vents, joinery), z0: z3, z1: z4 },
-      { loops: [outer, cbore].concat(vents, joinery), z0: z4, z1: t }
-    ];
+    var zTunnel0 = P.cableFloor, zTunnel1 = P.cableFloor + P.cableH;
+    var zJoin = t - P.grooveD, zCbore = t - P.socketCboreD;
+    var cuts = [0, zTunnel0, zTunnel1, P.legTenonH, zJoin, zCbore, t]
+      .filter(function (z) { return z > -TOL && z < t + TOL; })
+      .sort(function (a, b) { return a - b; });
+
+    var layers = [];
+    for (var i = 0; i < cuts.length - 1; i++) {
+      var z0 = cuts[i], z1 = cuts[i + 1];
+      if (z1 - z0 < TOL) continue;               // dedupe coincident breakpoints
+      var zm = (z0 + z1) / 2;
+      var loops = [outer, zm >= zCbore ? cbore : bore].concat(vents);
+      if (zm >= zTunnel0 && zm <= zTunnel1) loops.push(tunnel);
+      if (zm >= zJoin) loops = loops.concat(joinery);
+      if (zm <= P.legTenonH) loops = loops.concat(legs);
+      layers.push({ loops: loops, z0: z0, z1: z1 });
+    }
     return { tris: extrudeStack(layers), manifold: true };
+  }
+
+  /* One leg.  Square tenon, not a round pin like the two-piece post: a round
+     one would let a square leg rotate out of line with the base edges. */
+  function buildLeg(P) {
+    var a = P.leg / 2, b = P.legTenon / 2;
+    return { tris: extrudeStack([
+      { loops: [rectLoop(-a, -a, a, a, true)], z0: 0, z1: P.legH },
+      { loops: [rectLoop(-b, -b, b, b, true)], z0: P.legH, z1: P.legH + P.legTenonH }
+    ]), manifold: true };
   }
 
   /* Cap, modelled joinery-side-up; exported flipped so it prints as-is.
@@ -1270,7 +1315,7 @@ var Kumiko = (function () {
   function capPrintTransform(P) { return mul(trans(0, 0, P.capT), rotX(180)); }
 
   /* Port of place_parts(). */
-  function assemble(P, panel, post, base, cap) {
+  function assemble(P, panel, post, base, cap, leg) {
     var pc = P.postCenter, t = P.panelT, zb = P.baseT - P.grooveD, out = [];
     out.push({ name: 'base', tris: base, kind: 'plate' });
     var ang = { '-1,-1': 0, '1,-1': 90, '1,1': 180, '-1,1': 270 };
@@ -1292,6 +1337,13 @@ var Kumiko = (function () {
                                    places[i][0])) });
     out.push({ name: 'cap', kind: 'plate',
       tris: transform(cap, trans(0, 0, zb + P.height - P.grooveD)) });
+    // Legs sit below z = 0, so the assembly's origin is the base underside and
+    // its z-extent comes out as totalHeight.
+    if (leg) {
+      for (i = 0; i < 4; i++)
+        out.push({ name: 'leg' + i, kind: 'post',
+          tris: transform(leg, trans(corners[i][0] * pc, corners[i][1] * pc, -P.legH)) });
+    }
     return out;
   }
 
@@ -1426,6 +1478,7 @@ var Kumiko = (function () {
     var base = buildBase(P);
     var cap = buildCap(P, pattern);
     var ring = buildRing(P);
+    var leg = buildLeg(P);
     var parts = [
       { id: 'panel_' + pattern, label: 'Kumiko panel', qty: 4, mesh: panel,
         note: 'lattice face down' },
@@ -1434,6 +1487,7 @@ var Kumiko = (function () {
       { id: 'top_cap', label: 'Top cap', qty: 1,
         mesh: { tris: transform(cap.tris, capPrintTransform(P)), manifold: true },
         note: 'already flipped for printing' },
+      { id: 'leg', label: 'Leg', qty: 4, mesh: leg, note: 'tenon up, as exported' },
       { id: 'socket_adapter_ring', label: 'E27 adapter ring', qty: 1, mesh: ring,
         note: 'match to your holder' }
     ];
@@ -1448,7 +1502,7 @@ var Kumiko = (function () {
     }
     return {
       P: P, problems: [], parts: parts, slats: panel.slats,
-      assembly: assemble(P, panel.tris, post.tris, base.tris, cap.tris)
+      assembly: assemble(P, panel.tris, post.tris, base.tris, cap.tris, leg.tris)
     };
   }
 
@@ -1456,7 +1510,7 @@ var Kumiko = (function () {
     DEFAULTS: DEFAULTS, PATTERNS: PATTERNS, PATTERN_LABEL: PATTERN_LABEL,
     derive: derive, checkFits: checkFits, buildAll: buildAll,
     buildPanel: buildPanel, buildPost: buildPost, buildBase: buildBase,
-    buildCap: buildCap, buildRing: buildRing,
+    buildCap: buildCap, buildRing: buildRing, buildLeg: buildLeg,
     latticeSegments: latticeSegments, clipRect: clipRect, clipCircle: clipCircle,
     extrudeStack: extrudeStack, rectLoop: rectLoop, circleLoop: circleLoop,
     slatLoop: slatLoop, orient: orient, quadPrism: quadPrism,
@@ -1500,6 +1554,13 @@ var Kumiko = (function () {
       ['baseT', 'Base thickness', 10, 26, 0.5, 'mm'],
       ['capT', 'Cap thickness', 7, 20, 0.5, 'mm'],
       ['capVentD', 'Cap vent', 40, 110, 1, 'mm']
+    ]},
+    { name: 'Legs', items: [
+      ['leg', 'Leg section', 12, 34, 0.5, 'mm'],
+      ['legH', 'Leg height', 4, 40, 0.5, 'mm'],
+      ['legTenon', 'Tenon section', 5, 20, 0.5, 'mm'],
+      ['legTenonH', 'Tenon depth', 3, 9, 0.5, 'mm'],
+      ['legClear', 'Tenon clearance', 0.1, 1.0, 0.05, 'mm']
     ]},
     { name: 'Joints', items: [
       ['slotClear', 'Groove clearance', 0.1, 1.0, 0.05, 'mm'],
