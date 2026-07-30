@@ -142,6 +142,8 @@ python3 kumiko_lamp.py --all
 python3 render_preview.py     # optional, needs matplotlib
 ```
 
+On Windows the interpreter is normally `python`, not `python3` — substitute it throughout.
+
 ## Manifold-ness
 
 The browser has no CSG engine, so `web/index.html` builds geometry a different way — a
