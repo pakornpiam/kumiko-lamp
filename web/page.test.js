@@ -11,7 +11,11 @@ const check = (ok, msg, extra) => {
 };
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  /* PW_CHROMIUM overrides the browser binary for sandboxes that ship their own;
+     unset, Playwright uses the one `playwright install chromium` downloaded, so
+     this runs on Linux, macOS and Windows alike. */
+  const browser = await chromium.launch(
+    process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await ctx.newPage();
 
