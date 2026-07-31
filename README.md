@@ -38,10 +38,17 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 holder* below. |
 
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
-`panel_kagome.stl`, `panel_masu_tsunagi.stl`, `panel_goma_gara.stl` or
-`panel_bishamon_kikkou.stl` for a different motif — all eight are dimensionally identical
-and interchangeable. Roughly in order of open area: kikkou and bishamon-kikkou are the
-airiest, asanoha and goma-gara the densest.
+`panel_kagome.stl`, `panel_masu_tsunagi.stl`, `panel_goma_gara.stl`,
+`panel_bishamon_kikkou.stl` or `panel_kranok_kan_khot.stl` for a different motif — all nine
+are dimensionally identical and interchangeable. Roughly in order of open area: kranok,
+kikkou and bishamon-kikkou are the airiest, asanoha and goma-gara the densest.
+
+Eight are Japanese kumiko. The ninth, **Kranok Kan Khot** (กระหนกก้านขด), is Thai — a
+running vine of coiled stems each throwing off a kranok flame leaf. It is the only
+curvilinear pattern in the set, so it is stroked as a polyline rather than laid out on a
+lattice. The top cap keeps a kumiko grille when it is selected: the cap's field is clipped
+to a circle, and a lattice always survives that in one piece where a vine is not guaranteed
+to.
 
 `post_lower.stl` + `post_upper.stl` are an **optional** two-piece post joined by an 8 mm
 pin (117 mm and 105 mm tall). Use them only if you would rather not print a 210 mm tall
@@ -200,7 +207,7 @@ exact.
 The configurator is checked the same way, headlessly: its geometry core runs in Node and
 is compared against the Python generator's measured volumes (`base` and `leg` match to
 0.00%, `post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat,
-across all eight patterns. The page
+across all nine patterns. The page
 itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
 a deliberately unassemblable configuration to confirm it blocks rather than exports, and a
 real download whose bytes are loaded back as a mesh. The core is extracted from the
