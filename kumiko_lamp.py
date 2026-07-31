@@ -625,6 +625,92 @@ def pat_bishamon(w, h, r):
     return ss.segs
 
 
+# --------------------------------------------------------------------------
+# Lai Thai (ลายไทย) patterns
+#
+# Unlike every kumiko pattern above, these are curvilinear: they are stroked as
+# polylines rather than laid out on a lattice.  That costs far more in the
+# browser core than it does here -- see the note in CLAUDE.md -- so the
+# tessellation counts below are deliberately frugal.
+# --------------------------------------------------------------------------
+
+def _stroke(ss, pts, ov):
+    """Add a polyline as a chain of overlapping slats."""
+    for i in range(len(pts) - 1):
+        ss.add(*_extend(pts[i], pts[i + 1], ov))
+
+
+def _cubic(p0, p1, p2, p3, n):
+    """Cubic Bezier, sampled at n+1 points."""
+    out = []
+    for i in range(n + 1):
+        t = i / n
+        u = 1.0 - t
+        out.append((u*u*u*p0[0] + 3*u*u*t*p1[0] + 3*u*t*t*p2[0] + t*t*t*p3[0],
+                    u*u*u*p0[1] + 3*u*u*t*p1[1] + 3*u*t*t*p2[1] + t*t*t*p3[1]))
+    return out
+
+
+def _coil(px, py, R, turns, n, sign, tight=0.15):
+    """
+    A volute rooted at (px, py), winding inward over `turns`.
+
+    Parametrised by the *outer* radius, not the inner one: a log spiral grown
+    outward from a small r0 is exponential in the turn count and sprawls right
+    out of its cell.  Winding inward from R keeps the whole coil inside R, and
+    rooting it on the stem is both what ก้านขด ("coiled stem") means and what
+    keeps the panel a single connected body.
+    """
+    T = 2.0 * math.pi * turns
+    k = -math.log(tight) / T
+    cx, cy = px, py + R
+    return [(cx + R*math.exp(-k*T*i/n)*math.cos(-math.pi/2 + sign*T*i/n),
+             cy + R*math.exp(-k*T*i/n)*math.sin(-math.pi/2 + sign*T*i/n))
+            for i in range(n + 1)]
+
+
+def pat_kranok_kan_khot(w, h, s):
+    """
+    Kranok Kan Khot (กระหนกก้านขด): a running vine of coiled stems, each
+    throwing off a kranok flame leaf.
+
+    Horizontal stems at every row both tie the units together and reach the
+    frame on each side; every flame springs from one stem and lands its tip on
+    the one above.  That is what makes the panel one connected, printable net --
+    a free-floating vine would fail the single-body check.
+    """
+    ss = SegSet()
+    U, Ph = 1.8 * s, 2.0 * s
+    ov = s * 0.05
+    bw, bulge, tipx = 0.19, 0.42, 0.05
+    R, turns, vx = 0.17, 1.75, -0.02
+    nb, nv = 14, 22          # the coil is what needs the samples, not the leaf
+
+    i0 = int(math.floor(-w / 2 / U)) - 1
+    i1 = int(math.ceil(w / 2 / U)) + 1
+    j0 = int(math.floor(-h / 2 / Ph)) - 1
+    j1 = int(math.ceil(h / 2 / Ph)) + 1
+
+    for j in range(j0, j1 + 1):
+        ss.add((i0 * U - U, j * Ph), (i1 * U + U, j * Ph))
+
+    for j in range(j0, j1 + 1):
+        for i in range(i0, i1 + 1):
+            cx = i * U + (U / 2.0 if j % 2 else 0.0)
+            cy = j * Ph
+            sg = 1 if j % 2 == 0 else -1        # the vine runs the other way each row
+            x = lambda f: cx + sg * f * U
+            tip = (x(tipx), cy + Ph)
+            # outer edge of the flame, bulging out and sweeping up to the tip
+            _stroke(ss, _cubic((x(bw), cy), (x(bulge), cy + Ph * 0.24),
+                               (x(bulge * 0.86), cy + Ph * 0.66), tip, nb), ov)
+            # inner edge, returning tight to the stem
+            _stroke(ss, _cubic(tip, (x(-bw * 0.55), cy + Ph * 0.60),
+                               (x(-bw * 1.05), cy + Ph * 0.24), (x(-bw), cy), nb), ov)
+            _stroke(ss, _coil(x(vx), cy, U * R, turns, nv, sg), ov)
+    return ss.segs
+
+
 PATTERNS = {
     "asanoha": pat_asanoha,
     "mitsukude": pat_mitsukude,
@@ -634,7 +720,22 @@ PATTERNS = {
     "masu_tsunagi": pat_masu,
     "goma_gara": pat_goma,
     "bishamon_kikkou": pat_bishamon,
+    "kranok_kan_khot": pat_kranok_kan_khot,
 }
+
+PATTERN_FAMILY = {name: "laithai" if name.startswith("kranok") else "kumiko"
+                  for name in PATTERNS}
+
+# Patterns the cap grille can use.  build_cap clips the field to a disc, and a
+# curvilinear motif fragments into floating islands when it does, which fails
+# the single-body check on top_cap.  Lattices survive it; the vine does not.
+CAP_FALLBACK = "kikkou"
+PATTERN_CAP_SAFE = {name: fam == "kumiko" for name, fam in PATTERN_FAMILY.items()}
+
+
+def cap_pattern(pattern: str) -> str:
+    """The pattern the cap grille should actually be built from."""
+    return pattern if PATTERN_CAP_SAFE.get(pattern, True) else CAP_FALLBACK
 
 
 # --------------------------------------------------------------------------
@@ -835,7 +936,7 @@ def build_cap(P: Params, pattern: str) -> trimesh.Trimesh:
 
     # coarse grille filling the vent
     g = P.grid * P.cap_grille_f
-    segs = PATTERNS[pattern](P.cap_vent_d, P.cap_vent_d, g)
+    segs = PATTERNS[cap_pattern(pattern)](P.cap_vent_d, P.cap_vent_d, g)
     segs = clip_circle(segs, 0.0, 0.0, r + 0.8)
     grille = [slat_box(p, q, P.slat_w + 0.4, 0.0, t) for p, q in segs]
     cap = union([cap] + grille)

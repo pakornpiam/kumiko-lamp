@@ -40,12 +40,26 @@ check(K.checkFits(K.derive({ grooveD: 9 })).length > 0, 'groove deeper than half
 console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
                     kagome: 248, masu_tsunagi: 292, goma_gara: 162,
-                    bishamon_kikkou: 204 };
+                    bishamon_kikkou: 204, kranok_kan_khot: 410 };
 for (const name of Object.keys(K.PATTERNS)) {
   const segs = K.clipRect(K.PATTERNS[name](P.openW, P.openH, P.grid),
                           -P.openW/2, -P.openH/2, P.openW/2, P.openH/2);
   const want = segCounts[name];
   check(Math.abs(segs.length - want) <= 2, `${name}: ${segs.length} slats`, `python ${want}`);
+}
+
+console.log('\npattern families and cap safety');
+check(K.PATTERN_FAMILY.kranok_kan_khot === 'laithai', 'kranok is in the Lai Thai family');
+check(Object.keys(K.PATTERNS).filter(n => K.PATTERN_FAMILY[n] === 'kumiko').length === 8,
+      'eight kumiko patterns');
+check(K.capPattern('kranok_kan_khot') === 'kikkou', 'cap falls back off a Lai Thai pattern');
+check(K.capPattern('asanoha') === 'asanoha', 'cap keeps a kumiko pattern');
+/* The fallback is what stops a curved motif fragmenting the grille, so prove
+   the cap built through it is identical to the one the fallback names. */
+{
+  const a = K.buildCap(P, 'kranok_kan_khot').tris.length;
+  const b = K.buildCap(P, 'kikkou').tris.length;
+  check(a === b, 'cap built off kranok equals the kikkou cap', `${a/9} vs ${b/9} tris`);
 }
 
 console.log('\nparts vs Python trimesh');
@@ -103,6 +117,8 @@ for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'mitsukude', slatW: 2.4 }, { grid: 20 },
                  { pattern: 'kagome' }, { pattern: 'masu_tsunagi' },
                  { pattern: 'goma_gara' }, { pattern: 'bishamon_kikkou' },
+                 { pattern: 'kranok_kan_khot' },
+                 { pattern: 'kranok_kan_khot', grid: 16 },
                  { legH: 30 }, { legTenonH: 4, legClear: 0.5 }]) {
   const r = K.buildAll(v);
   check(r.problems.length === 0 && r.parts && r.parts.every(p => p.vol > 0),
