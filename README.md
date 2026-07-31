@@ -43,12 +43,15 @@ Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
 are dimensionally identical and interchangeable. Roughly in order of open area: kranok,
 kikkou and bishamon-kikkou are the airiest, asanoha and goma-gara the densest.
 
-Eight are Japanese kumiko. The ninth, **Kranok Kan Khot** (กระหนกก้านขด), is Thai — a
-running vine of coiled stems each throwing off a kranok flame leaf. It is the only
-curvilinear pattern in the set, so it is stroked as a polyline rather than laid out on a
-lattice. The cap grille follows it like any other pattern: the cap clips its field to a
-circle and has to come back as one piece, which a lattice always does and a curve need not,
-but the vine's full-width stems survive the clip as chords still tied to the rim.
+Eight are Japanese kumiko. The ninth, **Kranok Kan Khot** (กระหนกก้านขด), is Thai, and it
+is a different kind of thing: not a repeating lattice but **one composition filling the
+whole panel** — kranok flame leaves growing inward from a border around a single diagonal
+stem, each with a volute coiled in its base. All four panels carry the same artwork.
+
+Two consequences worth knowing. Because there is no tile, `--grid` has no pitch to set for
+this pattern and drives curve tessellation instead. And the top cap keeps a kumiko grille
+when it is selected: scaled into the 70 mm vent the composition is just a shrunken copy of
+the panel, ~19k triangles in a hole you can barely see into.
 
 `post_lower.stl` + `post_upper.stl` are an **optional** two-piece post joined by an 8 mm
 pin (117 mm and 105 mm tall). Use them only if you would rather not print a 210 mm tall

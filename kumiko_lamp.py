@@ -651,63 +651,119 @@ def _cubic(p0, p1, p2, p3, n):
     return out
 
 
-def _coil(px, py, R, turns, n, sign, tight=0.15):
+def _coil(cx, cy, R, turns, n, sign, a0=-math.pi / 2, tight=0.15):
     """
-    A volute rooted at (px, py), winding inward over `turns`.
+    A volute centred on (cx, cy), starting at radius R and winding inward.
 
     Parametrised by the *outer* radius, not the inner one: a log spiral grown
     outward from a small r0 is exponential in the turn count and sprawls right
-    out of its cell.  Winding inward from R keeps the whole coil inside R, and
-    rooting it on the stem is both what ก้านขด ("coiled stem") means and what
-    keeps the panel a single connected body.
+    out of whatever is meant to contain it.  Winding inward from R bounds the
+    whole coil inside R.
     """
     T = 2.0 * math.pi * turns
     k = -math.log(tight) / T
-    cx, cy = px, py + R
-    return [(cx + R*math.exp(-k*T*i/n)*math.cos(-math.pi/2 + sign*T*i/n),
-             cy + R*math.exp(-k*T*i/n)*math.sin(-math.pi/2 + sign*T*i/n))
+    return [(cx + R*math.exp(-k*T*i/n)*math.cos(a0 + sign*T*i/n),
+             cy + R*math.exp(-k*T*i/n)*math.sin(a0 + sign*T*i/n))
             for i in range(n + 1)]
+
+
+# Proportions of one kranok leaf, as fractions of its own base-to-tip length.
+LEAF_BELLY = 2.4        # how far the outer edge bulges
+LEAF_SHOULDER = 0.9     # where it starts converging on the tip
+LEAF_CURL = 0.26        # lateral offset of the tip, which gives it the hook
+
+
+def _leaf(ss, base, tip, ov, n, bow=1, wide=0.15, eye=True):
+    """
+    One kranok leaf: a closed outline with a convex outer sweep, a concave
+    inner return, a sharp hooked tip, and a volute coiled in its base.
+
+    Local frame runs base -> tip; `bow` picks which side the belly falls on, so
+    the same leaf mirrors without a separate code path.
+    """
+    bx, by = base
+    dx, dy = tip[0] - bx, tip[1] - by
+    L = math.hypot(dx, dy)
+    if L < 1e-9:
+        return
+    uy = (dx / L, dy / L)
+    ux = (-uy[1] * bow, uy[0] * bow)
+
+    def P(a, c):
+        return (bx + ux[0]*a*L + uy[0]*c*L, by + ux[1]*a*L + uy[1]*c*L)
+
+    wd = wide
+    T = P(-LEAF_CURL, 1.0)
+    _stroke(ss, _cubic(P(wd, 0.05), P(wd*LEAF_BELLY, 0.30),
+                       P(wd*LEAF_SHOULDER, 0.74), T, n), ov)
+    _stroke(ss, _cubic(T, P(-wd*0.30, 0.62), P(-wd*0.78, 0.30),
+                       P(-wd*0.70, 0.05), n), ov)
+    _stroke(ss, _cubic(P(-wd*0.70, 0.05), P(-wd*0.58, -0.08),
+                       P(wd*0.58, -0.08), P(wd, 0.05), max(4, n // 2)), ov)
+    if eye:
+        # The coil has to be tied to the leaf, not just sit inside it.  Centred
+        # on its own it touches nothing and the panel comes back as two bodies.
+        Rl = wd * 0.60
+        root = P(wd * 0.12, 0.055)
+        cen = P(wd * 0.12, 0.055 + Rl)
+        a0 = math.atan2(root[1] - cen[1], root[0] - cen[0])
+        pts = _coil(cen[0], cen[1], Rl * L, 1.55, 13, bow, a0, tight=0.16)
+        _stroke(ss, pts, ov)
+        _stroke(ss, [pts[0], P(wd * 0.12, -0.05)], ov)      # stem down to the base
+
+
+# base and tip in fractions of the opening, then bow, leaf width, volute
+_KRANOK_LAYOUT = [
+    ((-0.140, -0.455), ( 0.240,  0.220),  1, 0.145, True),   # dominant sweep
+    ((-0.455, -0.220), (-0.100,  0.100),  1, 0.150, True),   # left mid
+    ((-0.455,  0.060), (-0.140,  0.320),  1, 0.150, True),   # left upper
+    ((-0.340, -0.455), (-0.180, -0.160),  1, 0.150, True),   # bottom left
+    (( 0.040, -0.455), ( 0.160, -0.190),  1, 0.150, True),   # bottom centre
+    (( 0.380, -0.455), ( 0.280, -0.190), -1, 0.150, True),   # bottom right
+    (( 0.455, -0.160), ( 0.190,  0.060), -1, 0.150, True),   # right mid
+    (( 0.455,  0.140), ( 0.190,  0.350), -1, 0.150, True),   # right upper
+    ((-0.455,  0.240), (-0.150,  0.430),  1, 0.150, True),   # top left
+    ((-0.200, -0.080), ( 0.000,  0.160),  1, 0.155, False),  # interior fill
+    (( 0.100,  0.200), ( 0.280,  0.420), -1, 0.155, False),  # upper interior
+]
 
 
 def pat_kranok_kan_khot(w, h, s):
     """
-    Kranok Kan Khot (กระหนกก้านขด): a running vine of coiled stems, each
-    throwing off a kranok flame leaf.
+    Kranok Kan Khot (กระหนกก้านขด): one composition filling the whole panel,
+    not a repeating tile.  A bordered field of kranok leaves growing inward,
+    around a single diagonal stem.
 
-    Horizontal stems at every row both tie the units together and reach the
-    frame on each side; every flame springs from one stem and lands its tip on
-    the one above.  That is what makes the panel one connected, printable net --
-    a free-floating vine would fail the single-body check.
+    Every leaf springs from the border and the border runs past the opening on
+    all four sides, so the artwork buries into the frame instead of floating
+    inside it -- a free composition connects to nothing by default, and the
+    single-body check on the panel is what would catch that.
+
+    There is no tile here, so `s` has no pitch to set; it drives curve
+    tessellation instead, which is the honest thing left for it to do.
     """
     ss = SegSet()
-    U, Ph = 1.8 * s, 2.0 * s
-    ov = s * 0.05
-    bw, bulge, tipx = 0.19, 0.42, 0.05
-    R, turns, vx = 0.17, 1.75, -0.02
-    nb, nv = 14, 22          # the coil is what needs the samples, not the leaf
+    ov = 0.010 * min(w, h)
+    n = int(max(8, min(16, round(360.0 / s))))
+    p = lambda u, v: (u * w, v * h)
 
-    i0 = int(math.floor(-w / 2 / U)) - 1
-    i1 = int(math.ceil(w / 2 / U)) + 1
-    j0 = int(math.floor(-h / 2 / Ph)) - 1
-    j1 = int(math.ceil(h / 2 / Ph)) + 1
+    for base, tip, bow, wide, eye in _KRANOK_LAYOUT:
+        _leaf(ss, p(*base), p(*tip), ov, n, bow, wide, eye)
 
-    for j in range(j0, j1 + 1):
-        ss.add((i0 * U - U, j * Ph), (i1 * U + U, j * Ph))
-
-    for j in range(j0, j1 + 1):
-        for i in range(i0, i1 + 1):
-            cx = i * U + (U / 2.0 if j % 2 else 0.0)
-            cy = j * Ph
-            sg = 1 if j % 2 == 0 else -1        # the vine runs the other way each row
-            x = lambda f: cx + sg * f * U
-            tip = (x(tipx), cy + Ph)
-            # outer edge of the flame, bulging out and sweeping up to the tip
-            _stroke(ss, _cubic((x(bw), cy), (x(bulge), cy + Ph * 0.24),
-                               (x(bulge * 0.86), cy + Ph * 0.66), tip, nb), ov)
-            # inner edge, returning tight to the stem
-            _stroke(ss, _cubic(tip, (x(-bw * 0.55), cy + Ph * 0.60),
-                               (x(-bw * 1.05), cy + Ph * 0.24), (x(-bw), cy), nb), ov)
-            _stroke(ss, _coil(x(vx), cy, U * R, turns, nv, sg), ov)
+    # Border just inside the opening, overshooting the corners so the clip in
+    # build_panel buries it in the frame on all four sides.
+    e = 0.455
+    _stroke(ss, _cubic(p(-e, -e), p(-0.20, -e - 0.02),
+                       p(0.20, -e - 0.02), p(e, -e), 12), ov)
+    _stroke(ss, _cubic(p(-e, e), p(-0.20, e + 0.02),
+                       p(0.20, e + 0.02), p(e, e), 12), ov)
+    _stroke(ss, _cubic(p(-e, -e), p(-e - 0.02, -0.16),
+                       p(-e - 0.02, 0.16), p(-e, e), 12), ov)
+    _stroke(ss, _cubic(p(e, -e), p(e + 0.02, -0.16),
+                       p(e + 0.02, 0.16), p(e, e), 12), ov)
+    # the single interior stem the composition is built around
+    _stroke(ss, _cubic(p(-e, -0.30), p(-0.18, -0.20),
+                       p(0.06, 0.00), p(0.34, 0.30), 14), ov)
     return ss.segs
 
 
@@ -730,12 +786,13 @@ PATTERN_FAMILY = {name: "laithai" if name.startswith("kranok") else "kumiko"
 # body.  A lattice always survives that; a curvilinear motif is not guaranteed
 # to, since the clip can cut a curve loose from everything it touched.
 #
-# kranok_kan_khot does survive -- its full-width stems come out of the clip as
-# chords still tied to the rim -- checked across the whole grid and cap-vent
-# slider range, so it keeps its own grille.  Anything listed here falls back
-# instead, and the single-body assertion in check_part is the backstop.
+# kranok_kan_khot is a single panel-sized composition, not a repeating field.
+# Squeezed into the vent it survives the clip in one piece, but it lands 540
+# slats and ~19.5k triangles in a 70 mm hole and reads as a shrunken copy of
+# the panel rather than a grille, so it falls back.  The single-body assertion
+# in check_part is the backstop for anything else that opts out.
 CAP_FALLBACK = "kikkou"
-CAP_UNSAFE = frozenset()
+CAP_UNSAFE = frozenset({"kranok_kan_khot"})
 PATTERN_CAP_SAFE = {name: name not in CAP_UNSAFE for name in PATTERNS}
 
 

@@ -84,9 +84,18 @@ Patterns also carry metadata in both files: `PATTERN_FAMILY` (`kumiko` | `laitha
 the tab strip in the rail, which is generated, so a new family needs no UI code) and
 `PATTERN_CAP_SAFE`, built from the `CAP_UNSAFE` list. The cap clips its field to a disc and
 `check_part` requires one body; a lattice always survives that, a curve need not. Name a
-pattern in `CAP_UNSAFE` and `cap_pattern()` / `capPattern()` swaps in `CAP_FALLBACK`. The
-list is currently empty — the kranok vine survives the clip because its full-width stems
-come out as chords tied to the rim. Verify a new curved pattern before trusting it.
+pattern in `CAP_UNSAFE` and `cap_pattern()` / `capPattern()` swaps in `CAP_FALLBACK`.
+
+**Not every pattern is a tile.** `kranok_kan_khot` is a single panel-sized composition laid
+out in `_KRANOK_LAYOUT` / `KRANOK_LAYOUT` as fractions of the opening. Two things follow:
+`s` has no pitch to set and drives tessellation instead, and it is in `CAP_UNSAFE` because
+scaled into the vent it is a shrunken copy of the panel rather than a grille.
+
+**A composition connects to nothing by default.** A tile gets frame contact and inter-unit
+contact for free; a composition gets neither, and `bodies == 1` is what catches it. Every
+element must reach the border, and the border must overshoot the opening so `build_panel`'s
+`grow = 1.0` clip buries it in the frame. A volute merely sitting *inside* a leaf is a
+separate body — root it to the outline.
 
 **Aim spokes at edge midpoints, not vertices.** Where several cells already converge, the
 boolean tends to leave a micron-scale sliver that costs the part its watertightness — this

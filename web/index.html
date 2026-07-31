@@ -757,45 +757,95 @@ var Kumiko = (function () {
     }
     return o;
   }
-  /* Volute rooted at (px, py), winding inward over `turns`.  Parametrised by
-     the OUTER radius: grown outward from a small r0 a log spiral is exponential
-     in turn count and sprawls out of its cell. Rooting it on the stem is what
-     ก้านขด means, and is what keeps the panel one connected body. */
-  function coil(px, py, R, turns, n, sign, tight) {
+  /* Volute centred on (cx, cy), starting at radius R and winding inward.
+     Parametrised by the OUTER radius: grown outward from a small r0 a log
+     spiral is exponential in turn count and sprawls out of whatever is meant
+     to contain it. */
+  function coil(cx, cy, R, turns, n, sign, a0, tight) {
     tight = tight || 0.15;
+    if (a0 === undefined) a0 = -Math.PI / 2;
     var T = 2 * Math.PI * turns, k = -Math.log(tight) / T, o = [];
     for (var i = 0; i <= n; i++) {
       var t = T * i / n, r = R * Math.exp(-k * t);
-      o.push([px + r * Math.cos(-Math.PI / 2 + sign * t),
-              py + R + r * Math.sin(-Math.PI / 2 + sign * t)]);
+      o.push([cx + r * Math.cos(a0 + sign * t), cy + r * Math.sin(a0 + sign * t)]);
     }
     return o;
   }
 
-  /* Kranok Kan Khot: a running vine of coiled stems, each throwing off a
-     flame leaf.  The horizontal stems tie the units together and reach the
-     frame; every flame springs from one stem and lands its tip on the one
-     above, so the whole field is a single connected net. */
-  function patKranok(w, h, s) {
-    var ss = new SegSet(), U = 1.8 * s, Ph = 2.0 * s, ov = s * 0.05;
-    var bw = 0.19, bulge = 0.42, tipx = 0.05;
-    var R = 0.17, turns = 1.75, vx = -0.02, nb = 14, nv = 22;
-    var i0 = Math.floor(-w / 2 / U) - 1, i1 = Math.ceil(w / 2 / U) + 1;
-    var j0 = Math.floor(-h / 2 / Ph) - 1, j1 = Math.ceil(h / 2 / Ph) + 1;
-    for (var j = j0; j <= j1; j++) ss.add([i0 * U - U, j * Ph], [i1 * U + U, j * Ph]);
-    for (j = j0; j <= j1; j++) {
-      for (var i = i0; i <= i1; i++) {
-        var odd = (((j % 2) + 2) % 2) === 1;
-        var cx = i * U + (odd ? U / 2 : 0), cy = j * Ph, sg = odd ? -1 : 1;
-        var x = function (f) { return cx + sg * f * U; };
-        var tip = [x(tipx), cy + Ph];
-        strokePts(ss, cubic([x(bw), cy], [x(bulge), cy + Ph * 0.24],
-                            [x(bulge * 0.86), cy + Ph * 0.66], tip, nb), ov);
-        strokePts(ss, cubic(tip, [x(-bw * 0.55), cy + Ph * 0.60],
-                            [x(-bw * 1.05), cy + Ph * 0.24], [x(-bw), cy], nb), ov);
-        strokePts(ss, coil(x(vx), cy, U * R, turns, nv, sg), ov);
-      }
+  // Proportions of one kranok leaf, as fractions of its base-to-tip length.
+  var LEAF_BELLY = 2.4, LEAF_SHOULDER = 0.9, LEAF_CURL = 0.26;
+
+  /* One kranok leaf: closed outline, convex outer sweep, concave inner return,
+     sharp hooked tip, volute coiled in the base. `bow` mirrors it. */
+  function leafShape(ss, base, tip, ov, n, bow, wd, eye) {
+    var bx = base[0], by = base[1];
+    var dx = tip[0] - bx, dy = tip[1] - by, L = Math.hypot(dx, dy);
+    if (L < 1e-9) return;
+    var uyx = dx / L, uyy = dy / L, uxx = -uyy * bow, uxy = uyx * bow;
+    function P(a, c) {
+      return [bx + uxx*a*L + uyx*c*L, by + uxy*a*L + uyy*c*L];
     }
+    var T = P(-LEAF_CURL, 1.0);
+    strokePts(ss, cubic(P(wd, 0.05), P(wd*LEAF_BELLY, 0.30),
+                        P(wd*LEAF_SHOULDER, 0.74), T, n), ov);
+    strokePts(ss, cubic(T, P(-wd*0.30, 0.62), P(-wd*0.78, 0.30),
+                        P(-wd*0.70, 0.05), n), ov);
+    strokePts(ss, cubic(P(-wd*0.70, 0.05), P(-wd*0.58, -0.08),
+                        P(wd*0.58, -0.08), P(wd, 0.05), Math.max(4, n >> 1)), ov);
+    if (eye) {
+      // Tie the coil to the leaf. Centred on its own it touches nothing and the
+      // panel comes back as two bodies.
+      var Rl = wd * 0.60;
+      var root = P(wd * 0.12, 0.055), cen = P(wd * 0.12, 0.055 + Rl);
+      var a0 = Math.atan2(root[1] - cen[1], root[0] - cen[0]);
+      var pts = coil(cen[0], cen[1], Rl * L, 1.55, 13, bow, a0, 0.16);
+      strokePts(ss, pts, ov);
+      strokePts(ss, [pts[0], P(wd * 0.12, -0.05)], ov);
+    }
+  }
+
+  // base, tip (fractions of the opening), bow, leaf width, volute
+  var KRANOK_LAYOUT = [
+    [[-0.140, -0.455], [ 0.240,  0.220],  1, 0.145, true],
+    [[-0.455, -0.220], [-0.100,  0.100],  1, 0.150, true],
+    [[-0.455,  0.060], [-0.140,  0.320],  1, 0.150, true],
+    [[-0.340, -0.455], [-0.180, -0.160],  1, 0.150, true],
+    [[ 0.040, -0.455], [ 0.160, -0.190],  1, 0.150, true],
+    [[ 0.380, -0.455], [ 0.280, -0.190], -1, 0.150, true],
+    [[ 0.455, -0.160], [ 0.190,  0.060], -1, 0.150, true],
+    [[ 0.455,  0.140], [ 0.190,  0.350], -1, 0.150, true],
+    [[-0.455,  0.240], [-0.150,  0.430],  1, 0.150, true],
+    [[-0.200, -0.080], [ 0.000,  0.160],  1, 0.155, false],
+    [[ 0.100,  0.200], [ 0.280,  0.420], -1, 0.155, false]
+  ];
+
+  /* Kranok Kan Khot: ONE composition filling the panel, not a repeating tile.
+     A bordered field of leaves growing inward around a single diagonal stem.
+     The border overshoots the opening on all four sides so the artwork buries
+     into the frame instead of floating inside it. No tile means `s` has no
+     pitch to set, so it drives curve tessellation instead. */
+  function patKranok(w, h, s) {
+    var ss = new SegSet();
+    var ov = 0.010 * Math.min(w, h);
+    var n = Math.max(8, Math.min(16, Math.round(360 / s)));
+    function p(u, v) { return [u * w, v * h]; }
+
+    for (var i = 0; i < KRANOK_LAYOUT.length; i++) {
+      var it = KRANOK_LAYOUT[i];
+      leafShape(ss, p(it[0][0], it[0][1]), p(it[1][0], it[1][1]),
+                ov, n, it[2], it[3], it[4]);
+    }
+    var e = 0.455;
+    strokePts(ss, cubic(p(-e, -e), p(-0.20, -e - 0.02),
+                        p(0.20, -e - 0.02), p(e, -e), 12), ov);
+    strokePts(ss, cubic(p(-e, e), p(-0.20, e + 0.02),
+                        p(0.20, e + 0.02), p(e, e), 12), ov);
+    strokePts(ss, cubic(p(-e, -e), p(-e - 0.02, -0.16),
+                        p(-e - 0.02, 0.16), p(-e, e), 12), ov);
+    strokePts(ss, cubic(p(e, -e), p(e + 0.02, -0.16),
+                        p(e + 0.02, 0.16), p(e, e), 12), ov);
+    strokePts(ss, cubic(p(-e, -0.30), p(-0.18, -0.20),
+                        p(0.06, 0.00), p(0.34, 0.30), 14), ov);
     return ss.segs;
   }
 
@@ -829,7 +879,7 @@ var Kumiko = (function () {
      still tied to the rim — so it keeps its own grille. Anything named in
      CAP_UNSAFE falls back instead. */
   var CAP_FALLBACK = 'kikkou';
-  var CAP_UNSAFE = [];
+  var CAP_UNSAFE = ['kranok_kan_khot'];
   var PATTERN_CAP_SAFE = {};
   Object.keys(PATTERNS).forEach(function (n) {
     PATTERN_CAP_SAFE[n] = CAP_UNSAFE.indexOf(n) < 0;

@@ -40,7 +40,7 @@ check(K.checkFits(K.derive({ grooveD: 9 })).length > 0, 'groove deeper than half
 console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
                     kagome: 248, masu_tsunagi: 292, goma_gara: 162,
-                    bishamon_kikkou: 204, kranok_kan_khot: 410 };
+                    bishamon_kikkou: 204, kranok_kan_khot: 538 };
 for (const name of Object.keys(K.PATTERNS)) {
   const segs = K.clipRect(K.PATTERNS[name](P.openW, P.openH, P.grid),
                           -P.openW/2, -P.openH/2, P.openW/2, P.openH/2);
@@ -53,22 +53,13 @@ check(K.PATTERN_FAMILY.kranok_kan_khot === 'laithai', 'kranok is in the Lai Thai
 check(Object.keys(K.PATTERNS).filter(n => K.PATTERN_FAMILY[n] === 'kumiko').length === 8,
       'eight kumiko patterns');
 check(K.capPattern('asanoha') === 'asanoha', 'cap keeps a kumiko pattern');
-check(K.capPattern('kranok_kan_khot') === 'kranok_kan_khot',
-      'kranok survives the disc clip, so the cap wears it too');
+/* kranok is a panel-sized composition, not a repeating field: squeezed into the
+   vent it is a shrunken copy of the panel, so the cap falls back. */
+check(K.capPattern('kranok_kan_khot') === 'kikkou', 'cap falls back off the composition');
 {
-  const a = K.buildCap(P, 'kranok_kan_khot').tris.length;
-  const b = K.buildCap(P, 'kikkou').tris.length;
-  check(a !== b, 'kranok cap really is its own grille', `${a/9} vs ${b/9} tris`);
-}
-/* The fallback is the backstop for any future curved motif that does NOT
-   survive the clip, so prove the mechanism still works by flipping the flag. */
-{
-  K.PATTERN_CAP_SAFE.kranok_kan_khot = false;
-  check(K.capPattern('kranok_kan_khot') === 'kikkou', 'cap falls back when a pattern opts out');
   const a = K.buildCap(P, 'kranok_kan_khot').tris.length;
   const b = K.buildCap(P, 'kikkou').tris.length;
   check(a === b, 'the fallback cap is the kikkou cap', `${a/9} vs ${b/9} tris`);
-  K.PATTERN_CAP_SAFE.kranok_kan_khot = true;
 }
 
 console.log('\nparts vs Python trimesh');
