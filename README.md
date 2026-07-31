@@ -58,7 +58,8 @@ the panel, ~19k triangles in a hole you can barely see into.
 
 **Dok Phut Tan** (ดอกพุดตาน) is a broad, layered flower derived from the peony-like motif
 used in early-Rattanakosin Thai ornament. Three scalloped petal tiers grow from a common
-heart, while four scrolling stems and paired leaves reach the panel corners. Like Kranok,
+heart, while four scrolling stems, paired leaves and forked perimeter braces tie it into
+the side, top and bottom rails. Like Kranok,
 it is one panel-sized composition rather than a repeating tile, and the cap uses the
 Kikkou fallback grille.
 

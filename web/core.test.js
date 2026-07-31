@@ -41,7 +41,7 @@ console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
                     kagome: 248, masu_tsunagi: 292, goma_gara: 162,
                     bishamon_kikkou: 204, kranok_kan_khot: 550,
-                    dok_phut_tan: 948 };
+                    dok_phut_tan: 980 };
 for (const name of Object.keys(K.PATTERNS)) {
   const segs = K.clipRect(K.PATTERNS[name](P.openW, P.openH, P.grid),
                           -P.openW/2, -P.openH/2, P.openW/2, P.openH/2);

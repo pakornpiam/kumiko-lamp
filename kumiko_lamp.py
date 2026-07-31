@@ -776,12 +776,23 @@ def pat_dok_phut_tan(w, h, s):
                             (0.018 if i % 2 else -0.018))
 
     # Four scrolling stems reach beyond the opening and therefore weld the
-    # whole flower into the frame.  Paired leaves are rooted directly on them.
+    # whole flower into the frame.  Each one forks near the perimeter so the
+    # ornament has independent side and top/bottom anchors instead of relying
+    # on one diagonal contact at a corner.  Paired leaves root on the stems.
     for m in (1, -1):
         for v in (1, -1):
             stem = _cubic(p(m*0.18, v*0.08), p(m*0.30, v*0.14),
                           p(m*0.37, v*0.36), p(m*0.53, v*0.54), n + 2)
             _stroke(ss, stem, ov)
+            fork = stem[round(0.72 * (len(stem) - 1))]
+            # Organic-looking perimeter braces: one terminates through the
+            # side rail, the other through the top or bottom rail.
+            _stroke(ss, _cubic(fork, p(m*0.43, v*0.34),
+                               p(m*0.49, v*0.36), p(m*0.54, v*0.38),
+                               max(5, n // 2)), ov)
+            _stroke(ss, _cubic(fork, p(m*0.32, v*0.43),
+                               p(m*0.34, v*0.49), p(m*0.36, v*0.54),
+                               max(5, n // 2)), ov)
             for t, side in ((0.38, 1), (0.62, -1)):
                 j = min(len(stem) - 2, max(1, round(t * (len(stem) - 1))))
                 base = stem[j]
