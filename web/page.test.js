@@ -68,6 +68,8 @@ const check = (ok, msg, extra) => {
   check(fams.join(',') === 'Kumiko,Lai Thai', 'both family tabs present', fams.join(','));
   await page.click('.famtabs button[data-family="laithai"]');
   await page.waitForTimeout(200);
+  check(await page.$('button[data-pattern="dok_phut_tan"]') !== null,
+        'Dok Phut Tan appears in the Lai Thai family');
   await page.click('button[data-pattern="kranok_kan_khot"]');
   await page.waitForTimeout(900);
   const thai = await page.textContent('#sw-name');

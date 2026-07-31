@@ -724,6 +724,77 @@ def _mandorla(ss, cx, cy, hw, hh, ov, n, p):
                            p(cx + sgn*hw, cy + hh*0.42), t, n), ov)
 
 
+def _phut_tan_petal(ss, p, a, r0, r1, half, ov, n, curl=0.0):
+    """One pointed, softly asymmetric petal in a radial Phut Tan blossom."""
+    def q(r, da=0.0):
+        aa = a + da
+        return p(r * math.cos(aa), r * math.sin(aa))
+
+    left, tip, right = q(r0, -half), q(r1, curl), q(r0, half)
+    shoulder = r0 + (r1 - r0) * 0.58
+    _stroke(ss, _cubic(left, q(shoulder, -half * 1.15),
+                       q(r1 * 0.92, -half * 0.42 + curl), tip, n), ov)
+    _stroke(ss, _cubic(tip, q(r1 * 0.92, half * 0.42 + curl),
+                       q(shoulder, half * 1.15), right, n), ov)
+    # Close across, and slightly through, the supporting ring.  Merely touching
+    # the ring at the two endpoints is not robust after STL float32 export.
+    _stroke(ss, [right, q(r0 * 0.88), left], ov)
+
+
+def pat_dok_phut_tan(w, h, s):
+    """
+    Dok Phut Tan (ดอกพุดตาน): a panel-sized floral composition based on the
+    layered, peony-like blossom used in early-Rattanakosin Thai ornament.
+
+    The blossom has three overlapping petal tiers.  Four diagonal kan khot
+    stems bury themselves in the frame and carry paired leaves, making every
+    decorative stroke part of one printable body.  Like the kranok panel this
+    is a composition, so ``s`` controls curve tessellation rather than pitch.
+    """
+    ss = SegSet()
+    ov = 0.010 * min(w, h)
+    n = int(max(7, min(14, round(300.0 / s))))
+    p = lambda u, v: (u * w, v * h)
+
+    # Concentric structural rings are both the flower's layered heart and the
+    # reliable common root for all petals and stems.
+    for ru, rv, count, phase in ((0.245, 0.175, 12, math.pi / 12),
+                                 (0.155, 0.112, 8, 0.0),
+                                 (0.075, 0.055, 6, math.pi / 6)):
+        ring = [p(ru * math.cos(2*math.pi*i/32),
+                  rv * math.sin(2*math.pi*i/32)) for i in range(33)]
+        _stroke(ss, ring, ov)
+        for i in range(count):
+            a = phase + 2 * math.pi * i / count
+            # Work in normalised coordinates; p then gives the flower the
+            # broad horizontal proportion seen in carved Phut Tan flowers.
+            scale = ru / 0.245
+            pp = lambda x, y: p(x, y * (rv / ru))
+            _phut_tan_petal(ss, pp, a, ru * 0.82,
+                            ru + (0.105 if count == 12 else 0.070 * scale),
+                            math.pi / count * 0.72, ov, n,
+                            (0.018 if i % 2 else -0.018))
+
+    # Four scrolling stems reach beyond the opening and therefore weld the
+    # whole flower into the frame.  Paired leaves are rooted directly on them.
+    for m in (1, -1):
+        for v in (1, -1):
+            stem = _cubic(p(m*0.18, v*0.08), p(m*0.30, v*0.14),
+                          p(m*0.37, v*0.36), p(m*0.53, v*0.54), n + 2)
+            _stroke(ss, stem, ov)
+            for t, side in ((0.38, 1), (0.62, -1)):
+                j = min(len(stem) - 2, max(1, round(t * (len(stem) - 1))))
+                base = stem[j]
+                dx, dy = stem[j+1][0] - stem[j-1][0], stem[j+1][1] - stem[j-1][1]
+                L = math.hypot(dx, dy)
+                nx, ny = -dy / L * side, dx / L * side
+                tip = (base[0] + nx * 0.105*w + dx/L * 0.035*w,
+                       base[1] + ny * 0.075*h + dy/L * 0.025*h)
+                _leaf(ss, base, tip, ov, max(7, n - 2), side,
+                      wide=0.19, eye=False)
+    return ss.segs
+
+
 # One side of the medallion, mirrored about the vertical axis at emit time.
 # base, tip, bow, leaf width, volute, volute scale
 _KRANOK_SIDE = [
@@ -788,9 +859,10 @@ PATTERNS = {
     "goma_gara": pat_goma,
     "bishamon_kikkou": pat_bishamon,
     "kranok_kan_khot": pat_kranok_kan_khot,
+    "dok_phut_tan": pat_dok_phut_tan,
 }
 
-PATTERN_FAMILY = {name: "laithai" if name.startswith("kranok") else "kumiko"
+PATTERN_FAMILY = {name: "laithai" if name in {"kranok_kan_khot", "dok_phut_tan"} else "kumiko"
                   for name in PATTERNS}
 
 # build_cap clips the field to a disc, and top_cap has to come back as a single
@@ -803,7 +875,7 @@ PATTERN_FAMILY = {name: "laithai" if name.startswith("kranok") else "kumiko"
 # the panel rather than a grille, so it falls back.  The single-body assertion
 # in check_part is the backstop for anything else that opts out.
 CAP_FALLBACK = "kikkou"
-CAP_UNSAFE = frozenset({"kranok_kan_khot"})
+CAP_UNSAFE = frozenset({"kranok_kan_khot", "dok_phut_tan"})
 PATTERN_CAP_SAFE = {name: name not in CAP_UNSAFE for name in PATTERNS}
 
 

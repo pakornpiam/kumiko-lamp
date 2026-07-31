@@ -817,6 +817,65 @@ var Kumiko = (function () {
     }
   }
 
+  function phutTanPetal(ss, p, a, r0, r1, half, ov, n, curl) {
+    function q(r, da) {
+      var aa = a + (da || 0);
+      return p(r * Math.cos(aa), r * Math.sin(aa));
+    }
+    var left = q(r0, -half), tip = q(r1, curl), right = q(r0, half);
+    var shoulder = r0 + (r1 - r0) * 0.58;
+    strokePts(ss, cubic(left, q(shoulder, -half * 1.15),
+                        q(r1 * 0.92, -half * 0.42 + curl), tip, n), ov);
+    strokePts(ss, cubic(tip, q(r1 * 0.92, half * 0.42 + curl),
+                        q(shoulder, half * 1.15), right, n), ov);
+    strokePts(ss, [right, q(r0 * 0.88), left], ov);
+  }
+
+  /* Dok Phut Tan: one panel-sized floral composition. Three scalloped petal
+     tiers give the broad, layered peony-like flower used in Thai ornament;
+     four scrolling stems carry paired leaves and overshoot into the frame. */
+  function patDokPhutTan(w, h, s) {
+    var ss = new SegSet(), ov = 0.010 * Math.min(w, h);
+    var n = Math.max(7, Math.min(14, Math.round(300 / s)));
+    function p(u, v) { return [u * w, v * h]; }
+    var tiers = [[0.245, 0.175, 12, Math.PI/12],
+                 [0.155, 0.112, 8, 0],
+                 [0.075, 0.055, 6, Math.PI/6]];
+    for (var z = 0; z < tiers.length; z++) {
+      var ru = tiers[z][0], rv = tiers[z][1], count = tiers[z][2], phase = tiers[z][3];
+      var ring = [];
+      for (var k = 0; k <= 32; k++)
+        ring.push(p(ru * Math.cos(2*Math.PI*k/32), rv * Math.sin(2*Math.PI*k/32)));
+      strokePts(ss, ring, ov);
+      for (var i = 0; i < count; i++) {
+        var a = phase + 2*Math.PI*i/count, scale = ru / 0.245;
+        var pp = (function(yr) { return function(x, y) { return p(x, y * yr); }; })(rv/ru);
+        phutTanPetal(ss, pp, a, ru*0.82,
+                    ru + (count === 12 ? 0.105 : 0.070*scale),
+                    Math.PI/count*0.72, ov, n, i % 2 ? 0.018 : -0.018);
+      }
+    }
+    for (var m = 1; m >= -1; m -= 2) {
+      for (var v = 1; v >= -1; v -= 2) {
+        var stem = cubic(p(m*0.18, v*0.08), p(m*0.30, v*0.14),
+                         p(m*0.37, v*0.36), p(m*0.53, v*0.54), n+2);
+        strokePts(ss, stem, ov);
+        var leaves = [[0.38, 1], [0.62, -1]];
+        for (var li = 0; li < leaves.length; li++) {
+          var j = Math.min(stem.length-2,
+                           Math.max(1, Math.round(leaves[li][0]*(stem.length-1))));
+          var base = stem[j], side = leaves[li][1];
+          var dx = stem[j+1][0]-stem[j-1][0], dy = stem[j+1][1]-stem[j-1][1];
+          var L = Math.hypot(dx, dy), nx = -dy/L*side, ny = dx/L*side;
+          var tip = [base[0]+nx*0.105*w+dx/L*0.035*w,
+                     base[1]+ny*0.075*h+dy/L*0.025*h];
+          leafShape(ss, base, tip, ov, Math.max(7, n-2), side, 0.19, false, 1);
+        }
+      }
+    }
+    return ss.segs;
+  }
+
   // One side of the medallion, mirrored about the vertical axis at emit time.
   // base, tip, bow, leaf width, volute, volute scale
   var KRANOK_SIDE = [
@@ -875,28 +934,27 @@ var Kumiko = (function () {
     masu_tsunagi: patMasu,
     goma_gara: patGoma,
     bishamon_kikkou: patBishamon,
-    kranok_kan_khot: patKranok
+    kranok_kan_khot: patKranok,
+    dok_phut_tan: patDokPhutTan
   };
   var PATTERN_LABEL = {
     asanoha: 'Asanoha', mitsukude: 'Mitsukude',
     kikkou: 'Kikkou', kawari_asanoha: 'Kawari-asanoha',
     kagome: 'Kagome', masu_tsunagi: 'Masu-tsunagi',
     goma_gara: 'Goma-gara', bishamon_kikkou: 'Bishamon-kikkou',
-    kranok_kan_khot: 'Kranok Kan Khot'
+    kranok_kan_khot: 'Kranok Kan Khot', dok_phut_tan: 'Dok Phut Tan'
   };
   var PATTERN_FAMILY = {};
   Object.keys(PATTERNS).forEach(function (n) {
-    PATTERN_FAMILY[n] = n.indexOf('kranok') === 0 ? 'laithai' : 'kumiko';
+    PATTERN_FAMILY[n] = (n === 'kranok_kan_khot' || n === 'dok_phut_tan') ? 'laithai' : 'kumiko';
   });
   var FAMILY_LABEL = { kumiko: 'Kumiko', laithai: 'Lai Thai' };
 
   /* The cap grille clips the field to a disc and must stay a single body.
-     A lattice always survives that; a curvilinear motif is not guaranteed to.
-     kranok_kan_khot does — its full-width stems come out of the clip as chords
-     still tied to the rim — so it keeps its own grille. Anything named in
-     CAP_UNSAFE falls back instead. */
+     A lattice always survives that; panel-sized compositions also become too
+     dense to read at vent scale. Anything in CAP_UNSAFE uses Kikkou instead. */
   var CAP_FALLBACK = 'kikkou';
-  var CAP_UNSAFE = ['kranok_kan_khot'];
+  var CAP_UNSAFE = ['kranok_kan_khot', 'dok_phut_tan'];
   var PATTERN_CAP_SAFE = {};
   Object.keys(PATTERNS).forEach(function (n) {
     PATTERN_CAP_SAFE[n] = CAP_UNSAFE.indexOf(n) < 0;

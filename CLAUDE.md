@@ -86,8 +86,8 @@ the tab strip in the rail, which is generated, so a new family needs no UI code)
 `check_part` requires one body; a lattice always survives that, a curve need not. Name a
 pattern in `CAP_UNSAFE` and `cap_pattern()` / `capPattern()` swaps in `CAP_FALLBACK`.
 
-**Not every pattern is a tile.** `kranok_kan_khot` is a single panel-sized composition laid
-out in `_KRANOK_LAYOUT` / `KRANOK_LAYOUT` as fractions of the opening. Two things follow:
+**Not every pattern is a tile.** `kranok_kan_khot` and `dok_phut_tan` are single panel-sized
+compositions laid out as fractions of the opening. Two things follow:
 `s` has no pitch to set and drives tessellation instead, and it is in `CAP_UNSAFE` because
 scaled into the vent it is a shrunken copy of the panel rather than a grille.
 
