@@ -110,6 +110,19 @@ a { color: var(--ai); }
 }
 .ctl input[type=range]:focus-visible { outline: 2px solid var(--ai); outline-offset: 3px; }
 
+.famtabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.famtabs button {
+  flex: 1; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+  text-transform: uppercase; padding: 6px 4px; cursor: pointer;
+  background: transparent; color: var(--sumi-3);
+  border: 1px solid var(--edge); border-radius: 2px;
+}
+.famtabs button:hover { border-color: var(--kigara); color: var(--sumi); }
+.famtabs button[aria-selected="true"] {
+  background: var(--ai); border-color: var(--ai); color: var(--washi);
+}
+.famtabs button:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+
 .styles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .styles button {
   font-family: var(--serif); font-size: 13px; padding: 8px 6px; cursor: pointer;
@@ -1563,8 +1576,8 @@ var Kumiko = (function () {
     var ring = buildRing(P);
     var leg = buildLeg(P);
     var parts = [
-      { id: 'panel_' + pattern, label: 'Kumiko panel', qty: 4, mesh: panel,
-        note: 'lattice face down' },
+      { id: 'panel_' + pattern, qty: 4, mesh: panel, note: 'lattice face down',
+        label: (FAMILY_LABEL[PATTERN_FAMILY[pattern]] || 'Kumiko') + ' panel' },
       { id: 'post', label: 'Corner post', qty: 4, mesh: post, note: 'upright, use a brim' },
       { id: 'base', label: 'Base', qty: 1, mesh: base, note: 'as exported' },
       { id: 'top_cap', label: 'Top cap', qty: 1,
@@ -1621,7 +1634,7 @@ var Kumiko = (function () {
       ['size', 'Width', 120, 245, 1, 'mm'],
       ['height', 'Height', 130, 250, 1, 'mm']
     ]},
-    { name: 'Kumiko', open: true, style: true, items: [
+    { name: 'Pattern', open: true, style: true, items: [
       ['grid', 'Pattern pitch', 12, 45, 0.5, 'mm'],
       ['slatW', 'Slat width', 0.8, 3.2, 0.4, 'mm']
     ]},
@@ -1683,20 +1696,49 @@ var Kumiko = (function () {
       var body = el('div', 'body');
 
       if (g.style) {
-        var wrap = el('div', 'styles');
+        /* One tab per pattern family, then only that family's buttons.  Nine
+           patterns in a single grid had become a wall; the families also read
+           as what they are — two different traditions, not one long list. */
+        var fams = [];
         Object.keys(K.PATTERNS).forEach(function (id) {
-          var b = el('button', null, K.PATTERN_LABEL[id]);
-          b.setAttribute('aria-pressed', String(id === state.pattern));
-          b.dataset.pattern = id;
-          b.addEventListener('click', function () {
-            state.pattern = id;
-            wrap.querySelectorAll('button').forEach(function (o) {
-              o.setAttribute('aria-pressed', String(o.dataset.pattern === id));
-            });
-            rebuild();
-          });
-          wrap.appendChild(b);
+          var f = K.PATTERN_FAMILY[id];
+          if (fams.indexOf(f) < 0) fams.push(f);
         });
+        var active = K.PATTERN_FAMILY[state.pattern] || fams[0];
+        var tabs = el('div', 'famtabs');
+        tabs.setAttribute('role', 'tablist');
+        var wrap = el('div', 'styles');
+
+        function paint() {
+          tabs.querySelectorAll('button').forEach(function (t) {
+            t.setAttribute('aria-selected', String(t.dataset.family === active));
+          });
+          wrap.textContent = '';
+          Object.keys(K.PATTERNS).forEach(function (id) {
+            if (K.PATTERN_FAMILY[id] !== active) return;
+            var b = el('button', null, K.PATTERN_LABEL[id]);
+            b.setAttribute('aria-pressed', String(id === state.pattern));
+            b.dataset.pattern = id;
+            b.addEventListener('click', function () {
+              state.pattern = id;
+              wrap.querySelectorAll('button').forEach(function (o) {
+                o.setAttribute('aria-pressed', String(o.dataset.pattern === id));
+              });
+              rebuild();
+            });
+            wrap.appendChild(b);
+          });
+        }
+
+        fams.forEach(function (f) {
+          var t = el('button', null, K.FAMILY_LABEL[f] || f);
+          t.dataset.family = f;
+          t.setAttribute('role', 'tab');
+          t.addEventListener('click', function () { active = f; paint(); });
+          tabs.appendChild(t);
+        });
+        paint();
+        body.appendChild(tabs);
         body.appendChild(wrap);
       }
 

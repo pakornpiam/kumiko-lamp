@@ -61,6 +61,26 @@ const check = (ok, msg, extra) => {
   const swName = await page.textContent('#sw-name');
   check(swName.trim() === 'Kikkou', 'pattern switch updates swatch', swName.trim());
 
+  // family tabs: Lai Thai is a separate tab, and its patterns are hidden until picked
+  check(await page.$('button[data-pattern="kranok_kan_khot"]') === null,
+        'Lai Thai patterns hidden while the Kumiko tab is active');
+  const fams = await page.$$eval('.famtabs button', b => b.map(x => x.textContent));
+  check(fams.join(',') === 'Kumiko,Lai Thai', 'both family tabs present', fams.join(','));
+  await page.click('.famtabs button[data-family="laithai"]');
+  await page.waitForTimeout(200);
+  await page.click('button[data-pattern="kranok_kan_khot"]');
+  await page.waitForTimeout(900);
+  const thai = await page.textContent('#sw-name');
+  check(thai.trim() === 'Kranok Kan Khot', 'Lai Thai tab selects the vine', thai.trim());
+  const meta = await page.textContent('#sw-meta');
+  check(/^410 slats/.test(meta.trim()), 'kranok slat count matches Python', meta.trim());
+  // the cap must still build (off the kikkou fallback) rather than block export
+  check(!(await page.isDisabled('#dl-all')), 'kranok still exports');
+  await page.click('.famtabs button[data-family="kumiko"]');
+  await page.waitForTimeout(200);
+  await page.click('button[data-pattern="kikkou"]');
+  await page.waitForTimeout(400);
+
   // size slider drives the joinery
   await page.fill('#r-size', '230');
   await page.dispatchEvent('#r-size', 'input');
