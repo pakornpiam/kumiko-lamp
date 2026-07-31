@@ -105,6 +105,29 @@ bit `bishamon_kikkou` and is why its spokes run midpoint-to-midpoint.
 exponential in turn count and will sprawl clean out of its cell; `_coil` / `coil` wind inward
 from `R` instead.
 
+## Two kinds of pattern
+
+`PATTERNS` holds **segment** patterns: `f(w, h, s) -> [segments]`, swept into fixed-width
+slats. `PATTERN_REGIONS` holds **region** patterns: `f(w, h, s) -> [contours]`, an outer
+contour plus holes, extruded directly. Use `pattern_names()` / `patternNames()` and
+`is_region()` / `isRegion()` — iterating `PATTERNS` alone silently skips the regions, which
+is how `render_preview.py` and the rail generator first lost `thai_rosette`.
+
+Regions exist because imported artwork has **varying stroke thickness**, which fixed-width
+slats cannot express. Python extrudes them with `manifold3d.CrossSection(...).extrude()`
+(shapely is not a dependency, so `trimesh.creation.extrude_polygon` is unavailable); the JS
+core feeds them straight to `extrudeStack`, whose winding rule (`> 0`) matches
+`FillRule.Positive`.
+
+**Winding is load-bearing.** Outer contours positive, holes negative. A helper that emits a
+rectangle clockwise produces a *hole*: the rosette's struts did exactly that and cut the
+border into pieces instead of tying the artwork to it, giving 8 disconnected components.
+`CrossSection.decompose()` is the fastest way to count them in 2D before paying for a build.
+
+**Contours are baked, never parsed at runtime.** `web/index.html` has no file access and both
+implementations must emit identical geometry. Regenerate with `tools/svg2pattern.py` and
+paste into both. Source artwork lives in `reference/`.
+
 ## Cost model: what is actually expensive
 
 Non-obvious, and worth knowing before optimising the wrong thing:

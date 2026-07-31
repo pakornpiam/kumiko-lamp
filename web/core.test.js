@@ -60,6 +60,27 @@ check(K.capPattern('asanoha') === 'asanoha', 'cap keeps a kumiko pattern');
    vent it is a shrunken copy of the panel, so the cap falls back. */
 check(K.capPattern('kranok_kan_khot') === 'kikkou', 'cap falls back off the composition');
 check(K.capPattern('dok_phut_tan') === 'kikkou', 'Phut Tan cap falls back off the composition');
+check(K.capPattern('thai_rosette') === 'kikkou', 'rosette cap falls back off the composition');
+
+/* Region patterns: imported artwork, a filled outer contour plus holes rather
+   than swept slats.  There is no slat count to compare, so the contract with
+   Python is the contour count and the fact that it resolves to one piece. */
+console.log('');
+console.log('region patterns');
+check(K.isRegion('thai_rosette'), 'thai_rosette is a region pattern');
+check(!K.isRegion('asanoha'), 'asanoha is not a region pattern');
+check(K.patternNames().length === 11, `11 selectable patterns`,
+      String(K.patternNames().length));
+{
+  const cont = K.PATTERN_REGIONS.thai_rosette(P.openW, P.openH);
+  check(cont.length === 26, `rosette contours ${cont.length}`, 'python 26');
+  const m = K.buildPanel(P, 'thai_rosette');
+  check(m.region === true && m.slats === 0, 'rosette panel built as a region');
+  const bb = K.bbox(m.tris);
+  check(Math.abs(bb.size[0] - 155.7) < 0.01 && Math.abs(bb.size[1] - 210) < 0.01,
+        'rosette panel bbox 155.7 x 210',
+        bb.size.map(v => v.toFixed(1)).join(' x '));
+}
 {
   const a = K.buildCap(P, 'kranok_kan_khot').tris.length;
   const b = K.buildCap(P, 'kikkou').tris.length;
@@ -124,6 +145,8 @@ for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'kranok_kan_khot' },
                  { pattern: 'kranok_kan_khot', grid: 16 },
                  { pattern: 'dok_phut_tan' },
+                 { pattern: 'thai_rosette' },
+                 { pattern: 'thai_rosette', size: 150, height: 170 },
                  { legH: 30 }, { legTenonH: 4, legClear: 0.5 }]) {
   const r = K.buildAll(v);
   check(r.problems.length === 0 && r.parts && r.parts.every(p => p.vol > 0),

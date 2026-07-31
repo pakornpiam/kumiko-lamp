@@ -18,8 +18,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import LineCollection
 
-from kumiko_lamp import (PATTERNS, Params, build_base, build_cap, build_leg,
-                         build_panel, build_post, clip_rect, place_parts)
+from matplotlib.patches import PathPatch
+from matplotlib.path import Path as MplPath
+
+from kumiko_lamp import (PATTERNS, PATTERN_REGIONS, Params, build_base, build_cap,
+                         build_leg, build_panel, build_post, clip_rect,
+                         is_region, pattern_names, place_parts)
 
 OUT = Path(__file__).parent / "preview"
 
@@ -28,18 +32,33 @@ def render_patterns(P):
     W, H, b = P.panel_w, P.height, P.panel_border
     ow, oh = W - 2 * b, H - 2 * b
 
-    fig, axes = plt.subplots(1, len(PATTERNS), figsize=(4 * len(PATTERNS), 6))
-    for ax, name in zip(axes, sorted(PATTERNS)):
-        segs = clip_rect(PATTERNS[name](ow, oh, P.grid),
-                         -ow / 2, -oh / 2, ow / 2, oh / 2)
-        ax.add_collection(LineCollection(segs, colors="#7a4a20",
-                                         linewidths=P.slat_w * 1.6))
+    names = pattern_names()
+    fig, axes = plt.subplots(1, len(names), figsize=(4 * len(names), 6))
+    for ax, name in zip(axes, names):
+        if is_region(name):
+            # a region is filled, not stroked: its thickness varies, so an
+            # outline would misreport what actually prints
+            contours = PATTERN_REGIONS[name](ow, oh, P.grid)
+            verts, codes = [], []
+            for lp in contours:
+                verts += list(lp) + [lp[0]]
+                codes += ([MplPath.MOVETO] + [MplPath.LINETO] * (len(lp) - 1)
+                          + [MplPath.CLOSEPOLY])
+            ax.add_patch(PathPatch(MplPath(verts, codes), facecolor="#7a4a20",
+                                   edgecolor="none"))
+            label = f"{name}   ({len(contours)} contours)"
+        else:
+            segs = clip_rect(PATTERNS[name](ow, oh, P.grid),
+                             -ow / 2, -oh / 2, ow / 2, oh / 2)
+            ax.add_collection(LineCollection(segs, colors="#7a4a20",
+                                             linewidths=P.slat_w * 1.6))
+            label = f"{name}   ({len(segs)} slats)"
         ax.add_patch(plt.Rectangle((-W / 2, -H / 2), W, H, fill=False,
                                    ec="#c8a06a", lw=2))
         ax.set_xlim(-W / 2 - 5, W / 2 + 5)
         ax.set_ylim(-H / 2 - 5, H / 2 + 5)
         ax.set_aspect("equal")
-        ax.set_title(f"{name}   ({len(segs)} slats)")
+        ax.set_title(label)
         ax.axis("off")
     fig.tight_layout()
     fig.savefig(OUT / "patterns.png", dpi=110, facecolor="#faf6ee")

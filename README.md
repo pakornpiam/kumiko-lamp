@@ -40,7 +40,8 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
 `panel_kagome.stl`, `panel_masu_tsunagi.stl`, `panel_goma_gara.stl`,
 `panel_bishamon_kikkou.stl`, `panel_kranok_kan_khot.stl` or
-`panel_dok_phut_tan.stl` for a different motif — all ten are dimensionally identical
+`panel_dok_phut_tan.stl` or `panel_thai_rosette.stl` for a different motif — all
+eleven are dimensionally identical
 and interchangeable. Roughly in order of open area: kranok,
 kikkou and bishamon-kikkou are the airiest, asanoha and goma-gara the densest.
 
@@ -62,6 +63,18 @@ heart, while four scrolling stems, paired leaves and forked perimeter braces tie
 the side, top and bottom rails. Like Kranok,
 it is one panel-sized composition rather than a repeating tile, and the cap uses the
 Kikkou fallback grille.
+
+**Thai Rosette** is different again: it is not drawn in code at all but **imported**
+from `reference/laithai.svg`. Where every other pattern is line work swept into
+fixed 1.6 mm slats, this one is a *filled region* — an outer contour plus 13 holes —
+so its stroke thickness varies the way the original artwork does. It is fitted to the
+panel width undistorted, which leaves a plain band top and bottom, and a thin border
+with four diagonal ties and four centre spokes holds it together: on its own the
+artwork is two loose pieces and neither reaches the frame.
+
+To change it, edit the SVG and re-run `python tools/svg2pattern.py reference/laithai.svg`,
+then paste the table into both implementations — the browser core has no file access,
+so the contours have to be baked in.
 
 `post_lower.stl` + `post_upper.stl` are an **optional** two-piece post joined by an 8 mm
 pin (117 mm and 105 mm tall). Use them only if you would rather not print a 210 mm tall
