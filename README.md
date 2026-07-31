@@ -45,8 +45,10 @@ kikkou and bishamon-kikkou are the airiest, asanoha and goma-gara the densest.
 
 Eight are Japanese kumiko. The ninth, **Kranok Kan Khot** (กระหนกก้านขด), is Thai, and it
 is a different kind of thing: not a repeating lattice but **one composition filling the
-whole panel** — kranok flame leaves growing inward from a border around a single diagonal
-stem, each with a volute coiled in its base. All four panels carry the same artwork.
+whole panel** — a diamond medallion of Thai flame work, with a column of nested pointed
+lenses on the axis, a spike to the apex, and volutes at the waist throwing flames out along
+the diamond's edges. It is bilaterally symmetric, so only the right half is authored and
+mirrored. All four panels carry the same artwork.
 
 Two consequences worth knowing. Because there is no tile, `--grid` has no pitch to set for
 this pattern and drives curve tessellation instead. And the top cap keeps a kumiko grille

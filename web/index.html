@@ -777,7 +777,8 @@ var Kumiko = (function () {
 
   /* One kranok leaf: closed outline, convex outer sweep, concave inner return,
      sharp hooked tip, volute coiled in the base. `bow` mirrors it. */
-  function leafShape(ss, base, tip, ov, n, bow, wd, eye) {
+  function leafShape(ss, base, tip, ov, n, bow, wd, eye, eyescale) {
+    if (eyescale === undefined) eyescale = 1.0;
     var bx = base[0], by = base[1];
     var dx = tip[0] - bx, dy = tip[1] - by, L = Math.hypot(dx, dy);
     if (L < 1e-9) return;
@@ -795,57 +796,73 @@ var Kumiko = (function () {
     if (eye) {
       // Tie the coil to the leaf. Centred on its own it touches nothing and the
       // panel comes back as two bodies.
-      var Rl = wd * 0.60;
+      var Rl = wd * 0.60 * eyescale;
       var root = P(wd * 0.12, 0.055), cen = P(wd * 0.12, 0.055 + Rl);
       var a0 = Math.atan2(root[1] - cen[1], root[0] - cen[0]);
-      var pts = coil(cen[0], cen[1], Rl * L, 1.55, 13, bow, a0, 0.16);
+      var pts = coil(cen[0], cen[1], Rl * L, 1.7, 15, bow, a0, 0.15);
       strokePts(ss, pts, ov);
       strokePts(ss, [pts[0], P(wd * 0.12, -0.05)], ov);
     }
   }
 
-  // base, tip (fractions of the opening), bow, leaf width, volute
-  var KRANOK_LAYOUT = [
-    [[-0.140, -0.455], [ 0.240,  0.220],  1, 0.145, true],
-    [[-0.455, -0.220], [-0.100,  0.100],  1, 0.150, true],
-    [[-0.455,  0.060], [-0.140,  0.320],  1, 0.150, true],
-    [[-0.340, -0.455], [-0.180, -0.160],  1, 0.150, true],
-    [[ 0.040, -0.455], [ 0.160, -0.190],  1, 0.150, true],
-    [[ 0.380, -0.455], [ 0.280, -0.190], -1, 0.150, true],
-    [[ 0.455, -0.160], [ 0.190,  0.060], -1, 0.150, true],
-    [[ 0.455,  0.140], [ 0.190,  0.350], -1, 0.150, true],
-    [[-0.455,  0.240], [-0.150,  0.430],  1, 0.150, true],
-    [[-0.200, -0.080], [ 0.000,  0.160],  1, 0.155, false],
-    [[ 0.100,  0.200], [ 0.280,  0.420], -1, 0.155, false]
+  /* Pointed oval: two arcs meeting at a sharp point top and bottom. The
+     medallion's central column is a stack of these; leafShape cannot express
+     one because a leaf has a rounded base, not a second point. */
+  function mandorla(ss, cx, cy, hw, hh, ov, n, p) {
+    var b = p(cx, cy - hh), t = p(cx, cy + hh);
+    for (var k = 0; k < 2; k++) {
+      var sgn = k ? -1 : 1;
+      strokePts(ss, cubic(b, p(cx + sgn*hw, cy - hh*0.42),
+                          p(cx + sgn*hw, cy + hh*0.42), t, n), ov);
+    }
+  }
+
+  // One side of the medallion, mirrored about the vertical axis at emit time.
+  // base, tip, bow, leaf width, volute, volute scale
+  var KRANOK_SIDE = [
+    [[0.09, -0.06], [0.35,  0.20], -1, 0.150, true,  1.30],
+    [[0.26, -0.13], [0.47,  0.02], -1, 0.140, false, 1.0],
+    [[0.06,  0.22], [0.20,  0.44], -1, 0.145, false, 1.0],
+    [[0.17,  0.10], [0.33,  0.33], -1, 0.140, false, 1.0],
+    [[0.08, -0.20], [0.24, -0.38],  1, 0.148, false, 1.0],
+    [[0.21, -0.16], [0.40, -0.24],  1, 0.140, false, 1.0]
+  ];
+  // Central column on the axis: centre, half-width, half-height.
+  var KRANOK_COLUMN = [
+    [0.0,  0.30, 0.075, 0.21],
+    [0.0,  0.02, 0.150, 0.30],
+    [0.0,  0.02, 0.090, 0.20],
+    [0.0,  0.02, 0.042, 0.11],
+    [0.0, -0.30, 0.100, 0.20]
   ];
 
-  /* Kranok Kan Khot: ONE composition filling the panel, not a repeating tile.
-     A bordered field of leaves growing inward around a single diagonal stem.
-     The border overshoots the opening on all four sides so the artwork buries
-     into the frame instead of floating inside it. No tile means `s` has no
-     pitch to set, so it drives curve tessellation instead. */
+  /* Kranok Kan Khot: ONE composition filling the panel, not a repeating tile —
+     a diamond medallion of Thai flame work. Bilaterally symmetric, so only the
+     right half is authored and mirrored. The diamond's strokes overshoot their
+     vertices, which is what buries the artwork in the frame. No tile means `s`
+     has no pitch to set, so it drives curve tessellation instead. */
   function patKranok(w, h, s) {
     var ss = new SegSet();
     var ov = 0.010 * Math.min(w, h);
     var n = Math.max(8, Math.min(16, Math.round(360 / s)));
     function p(u, v) { return [u * w, v * h]; }
 
-    for (var i = 0; i < KRANOK_LAYOUT.length; i++) {
-      var it = KRANOK_LAYOUT[i];
-      leafShape(ss, p(it[0][0], it[0][1]), p(it[1][0], it[1][1]),
-                ov, n, it[2], it[3], it[4]);
+    var vt = 0.50, vb = -0.50, vs = -0.02, e = 0.50, m, i;
+    for (m = 1; m >= -1; m -= 2) {
+      strokePts(ss, [p(0.0, vt + 0.05), p(m * (e + 0.05), vs)], ov);
+      strokePts(ss, [p(m * (e + 0.05), vs), p(0.0, vb - 0.05)], ov);
     }
-    var e = 0.455;
-    strokePts(ss, cubic(p(-e, -e), p(-0.20, -e - 0.02),
-                        p(0.20, -e - 0.02), p(e, -e), 12), ov);
-    strokePts(ss, cubic(p(-e, e), p(-0.20, e + 0.02),
-                        p(0.20, e + 0.02), p(e, e), 12), ov);
-    strokePts(ss, cubic(p(-e, -e), p(-e - 0.02, -0.16),
-                        p(-e - 0.02, 0.16), p(-e, e), 12), ov);
-    strokePts(ss, cubic(p(e, -e), p(e + 0.02, -0.16),
-                        p(e + 0.02, 0.16), p(e, e), 12), ov);
-    strokePts(ss, cubic(p(-e, -0.30), p(-0.18, -0.20),
-                        p(0.06, 0.00), p(0.34, 0.30), 14), ov);
+    for (i = 0; i < KRANOK_COLUMN.length; i++) {
+      var c = KRANOK_COLUMN[i];
+      mandorla(ss, c[0], c[1], c[2], c[3], ov, n, p);
+    }
+    for (m = 1; m >= -1; m -= 2) {
+      for (i = 0; i < KRANOK_SIDE.length; i++) {
+        var it = KRANOK_SIDE[i];
+        leafShape(ss, p(m * it[0][0], it[0][1]), p(m * it[1][0], it[1][1]),
+                  ov, n, it[2] * m, it[3], it[4], it[5]);
+      }
+    }
     return ss.segs;
   }
 

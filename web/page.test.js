@@ -73,7 +73,7 @@ const check = (ok, msg, extra) => {
   const thai = await page.textContent('#sw-name');
   check(thai.trim() === 'Kranok Kan Khot', 'Lai Thai tab selects the vine', thai.trim());
   const meta = await page.textContent('#sw-meta');
-  check(/^538 slats/.test(meta.trim()), 'kranok slat count matches Python', meta.trim());
+  check(/^550 slats/.test(meta.trim()), 'kranok slat count matches Python', meta.trim());
   // the cap must still build (off the kikkou fallback) rather than block export
   check(!(await page.isDisabled('#dl-all')), 'kranok still exports');
   await page.click('.famtabs button[data-family="kumiko"]');

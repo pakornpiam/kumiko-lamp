@@ -673,7 +673,7 @@ LEAF_SHOULDER = 0.9     # where it starts converging on the tip
 LEAF_CURL = 0.26        # lateral offset of the tip, which gives it the hook
 
 
-def _leaf(ss, base, tip, ov, n, bow=1, wide=0.15, eye=True):
+def _leaf(ss, base, tip, ov, n, bow=1, wide=0.15, eye=True, eyescale=1.0):
     """
     One kranok leaf: a closed outline with a convex outer sweep, a concave
     inner return, a sharp hooked tip, and a volute coiled in its base.
@@ -703,41 +703,57 @@ def _leaf(ss, base, tip, ov, n, bow=1, wide=0.15, eye=True):
     if eye:
         # The coil has to be tied to the leaf, not just sit inside it.  Centred
         # on its own it touches nothing and the panel comes back as two bodies.
-        Rl = wd * 0.60
+        Rl = wd * 0.60 * eyescale
         root = P(wd * 0.12, 0.055)
         cen = P(wd * 0.12, 0.055 + Rl)
         a0 = math.atan2(root[1] - cen[1], root[0] - cen[0])
-        pts = _coil(cen[0], cen[1], Rl * L, 1.55, 13, bow, a0, tight=0.16)
+        pts = _coil(cen[0], cen[1], Rl * L, 1.7, 15, bow, a0, tight=0.15)
         _stroke(ss, pts, ov)
         _stroke(ss, [pts[0], P(wd * 0.12, -0.05)], ov)      # stem down to the base
 
 
-# base and tip in fractions of the opening, then bow, leaf width, volute
-_KRANOK_LAYOUT = [
-    ((-0.140, -0.455), ( 0.240,  0.220),  1, 0.145, True),   # dominant sweep
-    ((-0.455, -0.220), (-0.100,  0.100),  1, 0.150, True),   # left mid
-    ((-0.455,  0.060), (-0.140,  0.320),  1, 0.150, True),   # left upper
-    ((-0.340, -0.455), (-0.180, -0.160),  1, 0.150, True),   # bottom left
-    (( 0.040, -0.455), ( 0.160, -0.190),  1, 0.150, True),   # bottom centre
-    (( 0.380, -0.455), ( 0.280, -0.190), -1, 0.150, True),   # bottom right
-    (( 0.455, -0.160), ( 0.190,  0.060), -1, 0.150, True),   # right mid
-    (( 0.455,  0.140), ( 0.190,  0.350), -1, 0.150, True),   # right upper
-    ((-0.455,  0.240), (-0.150,  0.430),  1, 0.150, True),   # top left
-    ((-0.200, -0.080), ( 0.000,  0.160),  1, 0.155, False),  # interior fill
-    (( 0.100,  0.200), ( 0.280,  0.420), -1, 0.155, False),  # upper interior
+def _mandorla(ss, cx, cy, hw, hh, ov, n, p):
+    """
+    A pointed oval: two arcs meeting at a sharp point top and bottom.  The
+    kranok medallion's central column is a stack of these; `_leaf` cannot
+    express one because a leaf has a rounded base, not a second point.
+    """
+    b, t = p(cx, cy - hh), p(cx, cy + hh)
+    for sgn in (1, -1):
+        _stroke(ss, _cubic(b, p(cx + sgn*hw, cy - hh*0.42),
+                           p(cx + sgn*hw, cy + hh*0.42), t, n), ov)
+
+
+# One side of the medallion, mirrored about the vertical axis at emit time.
+# base, tip, bow, leaf width, volute, volute scale
+_KRANOK_SIDE = [
+    ((0.09, -0.06), (0.35,  0.20), -1, 0.150, True,  1.30),   # waist volute flame
+    ((0.26, -0.13), (0.47,  0.02), -1, 0.140, False, 1.0),    # side-vertex flame
+    ((0.06,  0.22), (0.20,  0.44), -1, 0.145, False, 1.0),    # upper edge, inner
+    ((0.17,  0.10), (0.33,  0.33), -1, 0.140, False, 1.0),    # upper edge, outer
+    ((0.08, -0.20), (0.24, -0.38),  1, 0.148, False, 1.0),    # lower edge, inner
+    ((0.21, -0.16), (0.40, -0.24),  1, 0.140, False, 1.0),    # lower edge, outer
+]
+
+# Central column on the axis: centre, half-width, half-height.
+_KRANOK_COLUMN = [
+    (0.0,  0.30, 0.075, 0.21),   # top spike, to the apex
+    (0.0,  0.02, 0.150, 0.30),   # outer lens
+    (0.0,  0.02, 0.090, 0.20),   # middle lens
+    (0.0,  0.02, 0.042, 0.11),   # inner lens
+    (0.0, -0.30, 0.100, 0.20),   # bottom lobe
 ]
 
 
 def pat_kranok_kan_khot(w, h, s):
     """
-    Kranok Kan Khot (กระหนกก้านขด): one composition filling the whole panel,
-    not a repeating tile.  A bordered field of kranok leaves growing inward,
-    around a single diagonal stem.
+    Kranok Kan Khot (กระหนกก้านขด): one composition filling the panel, not a
+    repeating tile -- a diamond medallion of Thai flame work.
 
-    Every leaf springs from the border and the border runs past the opening on
-    all four sides, so the artwork buries into the frame instead of floating
-    inside it -- a free composition connects to nothing by default, and the
-    single-body check on the panel is what would catch that.
+    Bilaterally symmetric, so only the right half is authored and mirrored.
+    The diamond's four strokes overshoot their vertices, which is what buries
+    the artwork in the frame; a composition connects to nothing by default and
+    the single-body check on the panel is what catches that.
 
     There is no tile here, so `s` has no pitch to set; it drives curve
     tessellation instead, which is the honest thing left for it to do.
@@ -747,23 +763,18 @@ def pat_kranok_kan_khot(w, h, s):
     n = int(max(8, min(16, round(360.0 / s))))
     p = lambda u, v: (u * w, v * h)
 
-    for base, tip, bow, wide, eye in _KRANOK_LAYOUT:
-        _leaf(ss, p(*base), p(*tip), ov, n, bow, wide, eye)
+    vt, vb, vs, e = 0.50, -0.50, -0.02, 0.50
+    for m in (1, -1):
+        _stroke(ss, [p(0.0, vt + 0.05), p(m * (e + 0.05), vs)], ov)
+        _stroke(ss, [p(m * (e + 0.05), vs), p(0.0, vb - 0.05)], ov)
 
-    # Border just inside the opening, overshooting the corners so the clip in
-    # build_panel buries it in the frame on all four sides.
-    e = 0.455
-    _stroke(ss, _cubic(p(-e, -e), p(-0.20, -e - 0.02),
-                       p(0.20, -e - 0.02), p(e, -e), 12), ov)
-    _stroke(ss, _cubic(p(-e, e), p(-0.20, e + 0.02),
-                       p(0.20, e + 0.02), p(e, e), 12), ov)
-    _stroke(ss, _cubic(p(-e, -e), p(-e - 0.02, -0.16),
-                       p(-e - 0.02, 0.16), p(-e, e), 12), ov)
-    _stroke(ss, _cubic(p(e, -e), p(e + 0.02, -0.16),
-                       p(e + 0.02, 0.16), p(e, e), 12), ov)
-    # the single interior stem the composition is built around
-    _stroke(ss, _cubic(p(-e, -0.30), p(-0.18, -0.20),
-                       p(0.06, 0.00), p(0.34, 0.30), 14), ov)
+    for cx, cy, hw, hh in _KRANOK_COLUMN:
+        _mandorla(ss, cx, cy, hw, hh, ov, n, p)
+
+    for m in (1, -1):
+        for (bu, bv), (tu, tv), bow, wide, eye, es in _KRANOK_SIDE:
+            _leaf(ss, p(m * bu, bv), p(m * tu, tv), ov, n,
+                  bow * m, wide, eye, es)
     return ss.segs
 
 
