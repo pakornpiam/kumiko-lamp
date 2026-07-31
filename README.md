@@ -38,10 +38,29 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 holder* below. |
 
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
-`panel_kagome.stl`, `panel_masu_tsunagi.stl`, `panel_goma_gara.stl` or
-`panel_bishamon_kikkou.stl` for a different motif — all eight are dimensionally identical
-and interchangeable. Roughly in order of open area: kikkou and bishamon-kikkou are the
-airiest, asanoha and goma-gara the densest.
+`panel_kagome.stl`, `panel_masu_tsunagi.stl`, `panel_goma_gara.stl`,
+`panel_bishamon_kikkou.stl`, `panel_kranok_kan_khot.stl` or
+`panel_dok_phut_tan.stl` for a different motif — all ten are dimensionally identical
+and interchangeable. Roughly in order of open area: kranok,
+kikkou and bishamon-kikkou are the airiest, asanoha and goma-gara the densest.
+
+Eight are Japanese kumiko. The other two are Thai compositions. **Kranok Kan Khot**
+(กระหนกก้านขด) is a different kind of thing: not a repeating lattice but **one composition filling the
+whole panel** — a diamond medallion of Thai flame work, with a column of nested pointed
+lenses on the axis, a spike to the apex, and volutes at the waist throwing flames out along
+the diamond's edges. It is bilaterally symmetric, so only the right half is authored and
+mirrored. All four panels carry the same artwork.
+
+Two consequences worth knowing. Because there is no tile, `--grid` has no pitch to set for
+this pattern and drives curve tessellation instead. And the top cap keeps a kumiko grille
+when it is selected: scaled into the 70 mm vent the composition is just a shrunken copy of
+the panel, ~19k triangles in a hole you can barely see into.
+
+**Dok Phut Tan** (ดอกพุดตาน) is a broad, layered flower derived from the peony-like motif
+used in early-Rattanakosin Thai ornament. Three scalloped petal tiers grow from a common
+heart, while four scrolling stems and paired leaves reach the panel corners. Like Kranok,
+it is one panel-sized composition rather than a repeating tile, and the cap uses the
+Kikkou fallback grille.
 
 `post_lower.stl` + `post_upper.stl` are an **optional** two-piece post joined by an 8 mm
 pin (117 mm and 105 mm tall). Use them only if you would rather not print a 210 mm tall
@@ -200,7 +219,7 @@ exact.
 The configurator is checked the same way, headlessly: its geometry core runs in Node and
 is compared against the Python generator's measured volumes (`base` and `leg` match to
 0.00%, `post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat,
-across all eight patterns. The page
+across all ten patterns. The page
 itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
 a deliberately unassemblable configuration to confirm it blocks rather than exports, and a
 real download whose bytes are loaded back as a mesh. The core is extracted from the

@@ -69,7 +69,7 @@ test break.
 Adding a parameter means three places: `Params` in Python, `DEFAULTS`/`derive()` in the core,
 and the `GROUPS` slider table in the app ([index.html:1378](web/index.html#L1378)).
 
-## Adding a kumiko pattern
+## Adding a pattern
 
 Write `f(w, h, s) -> [((x0,y0),(x1,y1)), ...]` centred on the origin and register it in
 `PATTERNS` — in both `kumiko_lamp.py` and the core. Two rules, both load-bearing:
@@ -77,7 +77,49 @@ Write `f(w, h, s) -> [((x0,y0),(x1,y1)), ...]` centred on the origin and registe
 - Periodic patterns must **overshoot** the opening; the caller clips.
 - Slats that land on another slat must **overlap** it, never merely touch. Two slats abutting
   along a single tangent edge union into geometry that does not survive the float32 STL
-  round-trip, and the part reloads with unpaired edges.
+  round-trip, and the part reloads with unpaired edges. Use `_extend` / `extend` — and for
+  curves `_stroke` / `strokePts`, which apply it along a whole polyline.
+
+Patterns also carry metadata in both files: `PATTERN_FAMILY` (`kumiko` | `laithai` — drives
+the tab strip in the rail, which is generated, so a new family needs no UI code) and
+`PATTERN_CAP_SAFE`, built from the `CAP_UNSAFE` list. The cap clips its field to a disc and
+`check_part` requires one body; a lattice always survives that, a curve need not. Name a
+pattern in `CAP_UNSAFE` and `cap_pattern()` / `capPattern()` swaps in `CAP_FALLBACK`.
+
+**Not every pattern is a tile.** `kranok_kan_khot` and `dok_phut_tan` are single panel-sized
+compositions laid out as fractions of the opening. Two things follow:
+`s` has no pitch to set and drives tessellation instead, and it is in `CAP_UNSAFE` because
+scaled into the vent it is a shrunken copy of the panel rather than a grille.
+
+**A composition connects to nothing by default.** A tile gets frame contact and inter-unit
+contact for free; a composition gets neither, and `bodies == 1` is what catches it. Every
+element must reach the border, and the border must overshoot the opening so `build_panel`'s
+`grow = 1.0` clip buries it in the frame. A volute merely sitting *inside* a leaf is a
+separate body — root it to the outline.
+
+**Aim spokes at edge midpoints, not vertices.** Where several cells already converge, the
+boolean tends to leave a micron-scale sliver that costs the part its watertightness — this
+bit `bishamon_kikkou` and is why its spokes run midpoint-to-midpoint.
+
+**Bound spirals by their outer radius.** A log spiral grown outward from a small `r0` is
+exponential in turn count and will sprawl clean out of its cell; `_coil` / `coil` wind inward
+from `R` instead.
+
+## Cost model: what is actually expensive
+
+Non-obvious, and worth knowing before optimising the wrong thing:
+
+- **Panel and cap-grille slats do not go through `extrudeStack`.** Each slat is an
+  independent `prismFromLoop` / `quadPrism`, so their cost is linear and trivial — the
+  410-slat curved kranok panel builds in ~37 ms. This is also why those two parts are
+  non-manifold and why their volume double-counts crossings.
+- **`extrudeStack` is where cost lives**, and it is driven by the number of *distinct vertex
+  Y values*, not the loop count: it opens a band at every one. Lattices repeat their Ys and
+  stay cheap; feeding it hundreds of curve loops does not (measured: 800 curve loops →
+  1.7 M triangles, 49 s). It builds the frame, base and cap plate only.
+
+So a curved pattern is cheap in a panel and would be ruinous if anyone routed it through the
+slab extruder. Benchmark the path the part actually takes.
 
 ## Why the code looks the way it does
 

@@ -625,6 +625,230 @@ def pat_bishamon(w, h, r):
     return ss.segs
 
 
+# --------------------------------------------------------------------------
+# Lai Thai (ลายไทย) patterns
+#
+# Unlike every kumiko pattern above, these are curvilinear: they are stroked as
+# polylines rather than laid out on a lattice.  That costs far more in the
+# browser core than it does here -- see the note in CLAUDE.md -- so the
+# tessellation counts below are deliberately frugal.
+# --------------------------------------------------------------------------
+
+def _stroke(ss, pts, ov):
+    """Add a polyline as a chain of overlapping slats."""
+    for i in range(len(pts) - 1):
+        ss.add(*_extend(pts[i], pts[i + 1], ov))
+
+
+def _cubic(p0, p1, p2, p3, n):
+    """Cubic Bezier, sampled at n+1 points."""
+    out = []
+    for i in range(n + 1):
+        t = i / n
+        u = 1.0 - t
+        out.append((u*u*u*p0[0] + 3*u*u*t*p1[0] + 3*u*t*t*p2[0] + t*t*t*p3[0],
+                    u*u*u*p0[1] + 3*u*u*t*p1[1] + 3*u*t*t*p2[1] + t*t*t*p3[1]))
+    return out
+
+
+def _coil(cx, cy, R, turns, n, sign, a0=-math.pi / 2, tight=0.15):
+    """
+    A volute centred on (cx, cy), starting at radius R and winding inward.
+
+    Parametrised by the *outer* radius, not the inner one: a log spiral grown
+    outward from a small r0 is exponential in the turn count and sprawls right
+    out of whatever is meant to contain it.  Winding inward from R bounds the
+    whole coil inside R.
+    """
+    T = 2.0 * math.pi * turns
+    k = -math.log(tight) / T
+    return [(cx + R*math.exp(-k*T*i/n)*math.cos(a0 + sign*T*i/n),
+             cy + R*math.exp(-k*T*i/n)*math.sin(a0 + sign*T*i/n))
+            for i in range(n + 1)]
+
+
+# Proportions of one kranok leaf, as fractions of its own base-to-tip length.
+LEAF_BELLY = 2.4        # how far the outer edge bulges
+LEAF_SHOULDER = 0.9     # where it starts converging on the tip
+LEAF_CURL = 0.26        # lateral offset of the tip, which gives it the hook
+
+
+def _leaf(ss, base, tip, ov, n, bow=1, wide=0.15, eye=True, eyescale=1.0):
+    """
+    One kranok leaf: a closed outline with a convex outer sweep, a concave
+    inner return, a sharp hooked tip, and a volute coiled in its base.
+
+    Local frame runs base -> tip; `bow` picks which side the belly falls on, so
+    the same leaf mirrors without a separate code path.
+    """
+    bx, by = base
+    dx, dy = tip[0] - bx, tip[1] - by
+    L = math.hypot(dx, dy)
+    if L < 1e-9:
+        return
+    uy = (dx / L, dy / L)
+    ux = (-uy[1] * bow, uy[0] * bow)
+
+    def P(a, c):
+        return (bx + ux[0]*a*L + uy[0]*c*L, by + ux[1]*a*L + uy[1]*c*L)
+
+    wd = wide
+    T = P(-LEAF_CURL, 1.0)
+    _stroke(ss, _cubic(P(wd, 0.05), P(wd*LEAF_BELLY, 0.30),
+                       P(wd*LEAF_SHOULDER, 0.74), T, n), ov)
+    _stroke(ss, _cubic(T, P(-wd*0.30, 0.62), P(-wd*0.78, 0.30),
+                       P(-wd*0.70, 0.05), n), ov)
+    _stroke(ss, _cubic(P(-wd*0.70, 0.05), P(-wd*0.58, -0.08),
+                       P(wd*0.58, -0.08), P(wd, 0.05), max(4, n // 2)), ov)
+    if eye:
+        # The coil has to be tied to the leaf, not just sit inside it.  Centred
+        # on its own it touches nothing and the panel comes back as two bodies.
+        Rl = wd * 0.60 * eyescale
+        root = P(wd * 0.12, 0.055)
+        cen = P(wd * 0.12, 0.055 + Rl)
+        a0 = math.atan2(root[1] - cen[1], root[0] - cen[0])
+        pts = _coil(cen[0], cen[1], Rl * L, 1.7, 15, bow, a0, tight=0.15)
+        _stroke(ss, pts, ov)
+        _stroke(ss, [pts[0], P(wd * 0.12, -0.05)], ov)      # stem down to the base
+
+
+def _mandorla(ss, cx, cy, hw, hh, ov, n, p):
+    """
+    A pointed oval: two arcs meeting at a sharp point top and bottom.  The
+    kranok medallion's central column is a stack of these; `_leaf` cannot
+    express one because a leaf has a rounded base, not a second point.
+    """
+    b, t = p(cx, cy - hh), p(cx, cy + hh)
+    for sgn in (1, -1):
+        _stroke(ss, _cubic(b, p(cx + sgn*hw, cy - hh*0.42),
+                           p(cx + sgn*hw, cy + hh*0.42), t, n), ov)
+
+
+def _phut_tan_petal(ss, p, a, r0, r1, half, ov, n, curl=0.0):
+    """One pointed, softly asymmetric petal in a radial Phut Tan blossom."""
+    def q(r, da=0.0):
+        aa = a + da
+        return p(r * math.cos(aa), r * math.sin(aa))
+
+    left, tip, right = q(r0, -half), q(r1, curl), q(r0, half)
+    shoulder = r0 + (r1 - r0) * 0.58
+    _stroke(ss, _cubic(left, q(shoulder, -half * 1.15),
+                       q(r1 * 0.92, -half * 0.42 + curl), tip, n), ov)
+    _stroke(ss, _cubic(tip, q(r1 * 0.92, half * 0.42 + curl),
+                       q(shoulder, half * 1.15), right, n), ov)
+    # Close across, and slightly through, the supporting ring.  Merely touching
+    # the ring at the two endpoints is not robust after STL float32 export.
+    _stroke(ss, [right, q(r0 * 0.88), left], ov)
+
+
+def pat_dok_phut_tan(w, h, s):
+    """
+    Dok Phut Tan (ดอกพุดตาน): a panel-sized floral composition based on the
+    layered, peony-like blossom used in early-Rattanakosin Thai ornament.
+
+    The blossom has three overlapping petal tiers.  Four diagonal kan khot
+    stems bury themselves in the frame and carry paired leaves, making every
+    decorative stroke part of one printable body.  Like the kranok panel this
+    is a composition, so ``s`` controls curve tessellation rather than pitch.
+    """
+    ss = SegSet()
+    ov = 0.010 * min(w, h)
+    n = int(max(7, min(14, round(300.0 / s))))
+    p = lambda u, v: (u * w, v * h)
+
+    # Concentric structural rings are both the flower's layered heart and the
+    # reliable common root for all petals and stems.
+    for ru, rv, count, phase in ((0.245, 0.175, 12, math.pi / 12),
+                                 (0.155, 0.112, 8, 0.0),
+                                 (0.075, 0.055, 6, math.pi / 6)):
+        ring = [p(ru * math.cos(2*math.pi*i/32),
+                  rv * math.sin(2*math.pi*i/32)) for i in range(33)]
+        _stroke(ss, ring, ov)
+        for i in range(count):
+            a = phase + 2 * math.pi * i / count
+            # Work in normalised coordinates; p then gives the flower the
+            # broad horizontal proportion seen in carved Phut Tan flowers.
+            scale = ru / 0.245
+            pp = lambda x, y: p(x, y * (rv / ru))
+            _phut_tan_petal(ss, pp, a, ru * 0.82,
+                            ru + (0.105 if count == 12 else 0.070 * scale),
+                            math.pi / count * 0.72, ov, n,
+                            (0.018 if i % 2 else -0.018))
+
+    # Four scrolling stems reach beyond the opening and therefore weld the
+    # whole flower into the frame.  Paired leaves are rooted directly on them.
+    for m in (1, -1):
+        for v in (1, -1):
+            stem = _cubic(p(m*0.18, v*0.08), p(m*0.30, v*0.14),
+                          p(m*0.37, v*0.36), p(m*0.53, v*0.54), n + 2)
+            _stroke(ss, stem, ov)
+            for t, side in ((0.38, 1), (0.62, -1)):
+                j = min(len(stem) - 2, max(1, round(t * (len(stem) - 1))))
+                base = stem[j]
+                dx, dy = stem[j+1][0] - stem[j-1][0], stem[j+1][1] - stem[j-1][1]
+                L = math.hypot(dx, dy)
+                nx, ny = -dy / L * side, dx / L * side
+                tip = (base[0] + nx * 0.105*w + dx/L * 0.035*w,
+                       base[1] + ny * 0.075*h + dy/L * 0.025*h)
+                _leaf(ss, base, tip, ov, max(7, n - 2), side,
+                      wide=0.19, eye=False)
+    return ss.segs
+
+
+# One side of the medallion, mirrored about the vertical axis at emit time.
+# base, tip, bow, leaf width, volute, volute scale
+_KRANOK_SIDE = [
+    ((0.09, -0.06), (0.35,  0.20), -1, 0.150, True,  1.30),   # waist volute flame
+    ((0.26, -0.13), (0.47,  0.02), -1, 0.140, False, 1.0),    # side-vertex flame
+    ((0.06,  0.22), (0.20,  0.44), -1, 0.145, False, 1.0),    # upper edge, inner
+    ((0.17,  0.10), (0.33,  0.33), -1, 0.140, False, 1.0),    # upper edge, outer
+    ((0.08, -0.20), (0.24, -0.38),  1, 0.148, False, 1.0),    # lower edge, inner
+    ((0.21, -0.16), (0.40, -0.24),  1, 0.140, False, 1.0),    # lower edge, outer
+]
+
+# Central column on the axis: centre, half-width, half-height.
+_KRANOK_COLUMN = [
+    (0.0,  0.30, 0.075, 0.21),   # top spike, to the apex
+    (0.0,  0.02, 0.150, 0.30),   # outer lens
+    (0.0,  0.02, 0.090, 0.20),   # middle lens
+    (0.0,  0.02, 0.042, 0.11),   # inner lens
+    (0.0, -0.30, 0.100, 0.20),   # bottom lobe
+]
+
+
+def pat_kranok_kan_khot(w, h, s):
+    """
+    Kranok Kan Khot (กระหนกก้านขด): one composition filling the panel, not a
+    repeating tile -- a diamond medallion of Thai flame work.
+
+    Bilaterally symmetric, so only the right half is authored and mirrored.
+    The diamond's four strokes overshoot their vertices, which is what buries
+    the artwork in the frame; a composition connects to nothing by default and
+    the single-body check on the panel is what catches that.
+
+    There is no tile here, so `s` has no pitch to set; it drives curve
+    tessellation instead, which is the honest thing left for it to do.
+    """
+    ss = SegSet()
+    ov = 0.010 * min(w, h)
+    n = int(max(8, min(16, round(360.0 / s))))
+    p = lambda u, v: (u * w, v * h)
+
+    vt, vb, vs, e = 0.50, -0.50, -0.02, 0.50
+    for m in (1, -1):
+        _stroke(ss, [p(0.0, vt + 0.05), p(m * (e + 0.05), vs)], ov)
+        _stroke(ss, [p(m * (e + 0.05), vs), p(0.0, vb - 0.05)], ov)
+
+    for cx, cy, hw, hh in _KRANOK_COLUMN:
+        _mandorla(ss, cx, cy, hw, hh, ov, n, p)
+
+    for m in (1, -1):
+        for (bu, bv), (tu, tv), bow, wide, eye, es in _KRANOK_SIDE:
+            _leaf(ss, p(m * bu, bv), p(m * tu, tv), ov, n,
+                  bow * m, wide, eye, es)
+    return ss.segs
+
+
 PATTERNS = {
     "asanoha": pat_asanoha,
     "mitsukude": pat_mitsukude,
@@ -634,7 +858,30 @@ PATTERNS = {
     "masu_tsunagi": pat_masu,
     "goma_gara": pat_goma,
     "bishamon_kikkou": pat_bishamon,
+    "kranok_kan_khot": pat_kranok_kan_khot,
+    "dok_phut_tan": pat_dok_phut_tan,
 }
+
+PATTERN_FAMILY = {name: "laithai" if name in {"kranok_kan_khot", "dok_phut_tan"} else "kumiko"
+                  for name in PATTERNS}
+
+# build_cap clips the field to a disc, and top_cap has to come back as a single
+# body.  A lattice always survives that; a curvilinear motif is not guaranteed
+# to, since the clip can cut a curve loose from everything it touched.
+#
+# kranok_kan_khot is a single panel-sized composition, not a repeating field.
+# Squeezed into the vent it survives the clip in one piece, but it lands 540
+# slats and ~19.5k triangles in a 70 mm hole and reads as a shrunken copy of
+# the panel rather than a grille, so it falls back.  The single-body assertion
+# in check_part is the backstop for anything else that opts out.
+CAP_FALLBACK = "kikkou"
+CAP_UNSAFE = frozenset({"kranok_kan_khot", "dok_phut_tan"})
+PATTERN_CAP_SAFE = {name: name not in CAP_UNSAFE for name in PATTERNS}
+
+
+def cap_pattern(pattern: str) -> str:
+    """The pattern the cap grille should actually be built from."""
+    return pattern if PATTERN_CAP_SAFE.get(pattern, True) else CAP_FALLBACK
 
 
 # --------------------------------------------------------------------------
@@ -835,7 +1082,7 @@ def build_cap(P: Params, pattern: str) -> trimesh.Trimesh:
 
     # coarse grille filling the vent
     g = P.grid * P.cap_grille_f
-    segs = PATTERNS[pattern](P.cap_vent_d, P.cap_vent_d, g)
+    segs = PATTERNS[cap_pattern(pattern)](P.cap_vent_d, P.cap_vent_d, g)
     segs = clip_circle(segs, 0.0, 0.0, r + 0.8)
     grille = [slat_box(p, q, P.slat_w + 0.4, 0.0, t) for p, q in segs]
     cap = union([cap] + grille)
