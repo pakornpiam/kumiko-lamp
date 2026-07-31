@@ -824,12 +824,15 @@ var Kumiko = (function () {
   var FAMILY_LABEL = { kumiko: 'Kumiko', laithai: 'Lai Thai' };
 
   /* The cap grille clips the field to a disc and must stay a single body.
-     Lattices always survive that; a curvilinear motif is not guaranteed to,
-     so patterns declare whether the cap may use them. */
+     A lattice always survives that; a curvilinear motif is not guaranteed to.
+     kranok_kan_khot does — its full-width stems come out of the clip as chords
+     still tied to the rim — so it keeps its own grille. Anything named in
+     CAP_UNSAFE falls back instead. */
   var CAP_FALLBACK = 'kikkou';
+  var CAP_UNSAFE = [];
   var PATTERN_CAP_SAFE = {};
   Object.keys(PATTERNS).forEach(function (n) {
-    PATTERN_CAP_SAFE[n] = PATTERN_FAMILY[n] === 'kumiko';
+    PATTERN_CAP_SAFE[n] = CAP_UNSAFE.indexOf(n) < 0;
   });
   function capPattern(p) {
     return PATTERN_CAP_SAFE[p] === false ? CAP_FALLBACK : p;

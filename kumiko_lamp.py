@@ -726,11 +726,17 @@ PATTERNS = {
 PATTERN_FAMILY = {name: "laithai" if name.startswith("kranok") else "kumiko"
                   for name in PATTERNS}
 
-# Patterns the cap grille can use.  build_cap clips the field to a disc, and a
-# curvilinear motif fragments into floating islands when it does, which fails
-# the single-body check on top_cap.  Lattices survive it; the vine does not.
+# build_cap clips the field to a disc, and top_cap has to come back as a single
+# body.  A lattice always survives that; a curvilinear motif is not guaranteed
+# to, since the clip can cut a curve loose from everything it touched.
+#
+# kranok_kan_khot does survive -- its full-width stems come out of the clip as
+# chords still tied to the rim -- checked across the whole grid and cap-vent
+# slider range, so it keeps its own grille.  Anything listed here falls back
+# instead, and the single-body assertion in check_part is the backstop.
 CAP_FALLBACK = "kikkou"
-PATTERN_CAP_SAFE = {name: fam == "kumiko" for name, fam in PATTERN_FAMILY.items()}
+CAP_UNSAFE = frozenset()
+PATTERN_CAP_SAFE = {name: name not in CAP_UNSAFE for name in PATTERNS}
 
 
 def cap_pattern(pattern: str) -> str:

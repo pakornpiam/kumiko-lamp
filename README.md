@@ -46,9 +46,9 @@ kikkou and bishamon-kikkou are the airiest, asanoha and goma-gara the densest.
 Eight are Japanese kumiko. The ninth, **Kranok Kan Khot** (กระหนกก้านขด), is Thai — a
 running vine of coiled stems each throwing off a kranok flame leaf. It is the only
 curvilinear pattern in the set, so it is stroked as a polyline rather than laid out on a
-lattice. The top cap keeps a kumiko grille when it is selected: the cap's field is clipped
-to a circle, and a lattice always survives that in one piece where a vine is not guaranteed
-to.
+lattice. The cap grille follows it like any other pattern: the cap clips its field to a
+circle and has to come back as one piece, which a lattice always does and a curve need not,
+but the vine's full-width stems survive the clip as chords still tied to the rim.
 
 `post_lower.stl` + `post_upper.stl` are an **optional** two-piece post joined by an 8 mm
 pin (117 mm and 105 mm tall). Use them only if you would rather not print a 210 mm tall

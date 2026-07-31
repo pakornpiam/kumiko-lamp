@@ -52,14 +52,23 @@ console.log('\npattern families and cap safety');
 check(K.PATTERN_FAMILY.kranok_kan_khot === 'laithai', 'kranok is in the Lai Thai family');
 check(Object.keys(K.PATTERNS).filter(n => K.PATTERN_FAMILY[n] === 'kumiko').length === 8,
       'eight kumiko patterns');
-check(K.capPattern('kranok_kan_khot') === 'kikkou', 'cap falls back off a Lai Thai pattern');
 check(K.capPattern('asanoha') === 'asanoha', 'cap keeps a kumiko pattern');
-/* The fallback is what stops a curved motif fragmenting the grille, so prove
-   the cap built through it is identical to the one the fallback names. */
+check(K.capPattern('kranok_kan_khot') === 'kranok_kan_khot',
+      'kranok survives the disc clip, so the cap wears it too');
 {
   const a = K.buildCap(P, 'kranok_kan_khot').tris.length;
   const b = K.buildCap(P, 'kikkou').tris.length;
-  check(a === b, 'cap built off kranok equals the kikkou cap', `${a/9} vs ${b/9} tris`);
+  check(a !== b, 'kranok cap really is its own grille', `${a/9} vs ${b/9} tris`);
+}
+/* The fallback is the backstop for any future curved motif that does NOT
+   survive the clip, so prove the mechanism still works by flipping the flag. */
+{
+  K.PATTERN_CAP_SAFE.kranok_kan_khot = false;
+  check(K.capPattern('kranok_kan_khot') === 'kikkou', 'cap falls back when a pattern opts out');
+  const a = K.buildCap(P, 'kranok_kan_khot').tris.length;
+  const b = K.buildCap(P, 'kikkou').tris.length;
+  check(a === b, 'the fallback cap is the kikkou cap', `${a/9} vs ${b/9} tris`);
+  K.PATTERN_CAP_SAFE.kranok_kan_khot = true;
 }
 
 console.log('\nparts vs Python trimesh');

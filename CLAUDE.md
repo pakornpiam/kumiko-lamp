@@ -82,8 +82,11 @@ Write `f(w, h, s) -> [((x0,y0),(x1,y1)), ...]` centred on the origin and registe
 
 Patterns also carry metadata in both files: `PATTERN_FAMILY` (`kumiko` | `laithai` — drives
 the tab strip in the rail, which is generated, so a new family needs no UI code) and
-`PATTERN_CAP_SAFE`. Anything not cap-safe is swapped for `CAP_FALLBACK` by
-`cap_pattern()` / `capPattern()` when the cap grille is built.
+`PATTERN_CAP_SAFE`, built from the `CAP_UNSAFE` list. The cap clips its field to a disc and
+`check_part` requires one body; a lattice always survives that, a curve need not. Name a
+pattern in `CAP_UNSAFE` and `cap_pattern()` / `capPattern()` swaps in `CAP_FALLBACK`. The
+list is currently empty — the kranok vine survives the clip because its full-width stems
+come out as chords tied to the rim. Verify a new curved pattern before trusting it.
 
 **Aim spokes at edge midpoints, not vertices.** Where several cells already converge, the
 boolean tends to leave a micron-scale sliver that costs the part its watertightness — this
