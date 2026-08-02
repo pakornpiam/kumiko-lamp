@@ -51,10 +51,18 @@ check(K.checkFits(K.derive({ edgeChamfer: 3, cableFloor: 3 })).length === 0,
       'chamfer clears once the tunnel floor is raised');
 check(K.checkFits(K.derive({ edgeChamfer: 5, cableFloor: 5 })).length > 0,
       'chamfer into the socket walls rejected');
-check(K.derive({}).sides.join(',') === '0,0,0,0', 'all sides default to lattice');
-const S = K.derive({ side0: 1, side3: 1 });
-check(S.sides.join(',') === '1,0,0,1' && S.clearSides === 2, 'per-side flags derive');
-check(K.SIDE_NAMES.join(',') === 'front,back,left,right', 'side order matches Python');
+check(Math.abs(K.derive({}).slotW - 4.4) < 1e-9 && K.derive({}).glazed === false,
+      'unglazed groove is 4.4 and takes the panel alone');
+const G = K.derive({ plateT: 1.2 });
+check(Math.abs(G.slotW - 5.6) < 1e-9 && G.glazed === true,
+      'glazed groove widens to 5.6 for panel plus plate', G.slotW.toFixed(2));
+check(K.checkFits(K.derive({ plateT: 1.6 })).length > 0,
+      'plate thick enough to reach the post corner rejected');
+check(K.checkFits(G).length === 0, 'the working 1.2 mm plate passes');
+check(K.checkFits(K.derive({ plateT: 0.4 })).length > 0,
+      'plate under three layers rejected');
+check(K.checkFits(K.derive({ plateT: 0.6 })).length === 0,
+      'plate at exactly three layers accepted');
 
 console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
@@ -115,7 +123,7 @@ console.log('\nparts vs Python trimesh');
    alone -- if this drifts DOWN through the lower bound, the browser's chamfer
    is removing more than Python's. */
 const PY = { post: 56.5, base: 506.0, top_cap: 318.3, socket_adapter_ring: 5.5,
-             leg: 5.6, clear_plate: 130.8 };
+             leg: 5.6, diffuser_plate: 39.2 };
 const LATTICE = { top_cap: 1 };
 const built = {
   post: K.buildPost(P),
@@ -123,7 +131,9 @@ const built = {
   top_cap: K.buildCap(P, 'asanoha'),
   socket_adapter_ring: K.buildRing(P),
   leg: K.buildLeg(P),
-  clear_plate: K.buildClearPlate(P)
+  /* Measured at the working thickness -- the stock lamp is unglazed, so P's
+     own plateT is 0 and would give an empty solid. */
+  diffuser_plate: K.buildDiffuserPlate(K.derive({ plateT: 1.2 }))
 };
 for (const [name, m] of Object.entries(built)) {
   const v = Math.abs(K.volume(m.tris)) / 1000;
@@ -159,23 +169,35 @@ check(dv.getUint32(80, true) === built.post.tris.length/9, 'STL triangle count h
 const zip = K.zipStore([{ name: 'a.stl', data: stl }]);
 check(zip[0] === 0x50 && zip[1] === 0x4b, 'ZIP magic bytes');
 
-/* The clear-plate row is conditional, so the print list stays six rows long
-   until the sides are actually mixed. */
-check(all.parts.length === 6 && all.parts[0].id === 'panel_asanoha',
-      'default print list is six parts, panel first');
-const mixed = K.buildAll({ side0: 1 });
-check(mixed.parts.length === 7 && mixed.parts[1].id === 'clear_plate',
-      'a clear side adds a row under the panel row');
-check(mixed.parts[0].qty === 3 && mixed.parts[1].qty === 1,
-      'quantities split across the two side types',
-      `${mixed.parts[0].qty} + ${mixed.parts[1].qty}`);
-const allClear = K.buildAll({ side0: 1, side1: 1, side2: 1, side3: 1 });
-check(allClear.parts.length === 6 && allClear.parts[0].id === 'clear_plate' &&
-      allClear.parts[0].qty === 4, 'all-clear drops the lattice row entirely');
-check(allClear.assembly.filter(p => p.clear).length === 4,
-      'all four sides render as clear in the assembly');
-check(mixed.assembly.filter(p => p.clear).length === 1,
-      'exactly one clear side in the assembly');
+/* The plate row is conditional, so an unglazed lamp stays six rows long with
+   post second -- which is what the page tests select on. */
+check(all.parts.length === 6 && all.parts[0].id === 'panel_asanoha' &&
+      all.parts[1].id === 'post', 'unglazed print list is six parts, panel then post');
+check(all.assembly.filter(p => p.clear).length === 0, 'nothing translucent unglazed');
+const glazed = K.buildAll({ plateT: 1.2 });
+check(glazed.parts.length === 7 && glazed.parts[1].id === 'diffuser_plate',
+      'glazing adds a plate row under the panel row');
+check(glazed.parts[0].qty === 4 && glazed.parts[1].qty === 4,
+      'four panels and four plates',
+      `${glazed.parts[0].qty} + ${glazed.parts[1].qty}`);
+check(glazed.assembly.filter(p => p.clear).length === 4,
+      'all four plates render translucent');
+check(glazed.assembly.filter(p => p.kind === 'panel').length === 8,
+      'panels and plates both explode as panels');
+/* The plate must sit inboard of the lattice, with the whole slotClear as the
+   gap between them -- the same stacking Python's place_parts uses. */
+const gp = glazed.P, front = glazed.assembly.find(p => p.name === 'panel0');
+const fplate = glazed.assembly.find(p => p.name === 'plate0');
+const ys = t => { let lo = Infinity, hi = -Infinity;
+  for (let i = 1; i < t.length; i += 3) { lo = Math.min(lo, t[i]); hi = Math.max(hi, t[i]); }
+  return [lo, hi]; };
+const [pLo, pHi] = ys(front.tris), [qLo, qHi] = ys(fplate.tris);
+check(Math.abs(pLo + gp.postCenter + gp.slotW / 2) < 1e-6,
+      'panel sits flush against the outer groove wall', pLo.toFixed(3));
+check(Math.abs((qHi - qLo) - gp.plateT) < 1e-6, 'plate is plateT thick');
+check(Math.abs((qLo - pHi) - gp.slotClear) < 1e-6,
+      'slotClear falls entirely between panel and plate',
+      (qLo - pHi).toFixed(3));
 
 console.log('\nvariations');
 for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
@@ -192,8 +214,8 @@ for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  /* thinnest allowed cap with a near-maximal chamfer: only 1 mm
                     of straight wall left between the two tapered bands */
                  { edgeChamfer: 3, capT: 7, baseT: 15, cableFloor: 3 },
-                 { side0: 1 }, { side1: 1, side2: 1, pattern: 'kikkou' },
-                 { side0: 1, side1: 1, side2: 1, side3: 1 }]) {
+                 { plateT: 1.2 }, { plateT: 0.6, pattern: 'kikkou' },
+                 { plateT: 1.4, panelT: 3.6 }]) {
   const r = K.buildAll(v);
   check(r.problems.length === 0 && r.parts && r.parts.every(p => p.vol > 0),
         'builds: ' + JSON.stringify(v));

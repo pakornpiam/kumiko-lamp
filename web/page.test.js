@@ -149,36 +149,39 @@ const check = (ok, msg, extra) => {
   check(zbuf.length > 100000, 'zip carries the whole set',
         (zbuf.length / 1048576).toFixed(2) + ' MB');
 
-  // per-side clear plates.  Left until after the export checks so nothing
-  // above sees a mixed lamp, and reset again before the screenshots.
-  await page.click('#side-0');
-  await page.waitForTimeout(500);
+  // the diffuser plate.  Left until after the export checks so nothing above
+  // sees a glazed lamp, and switched off again before the screenshots.
+  await page.fill('#r-plateT', '1.2');
+  await page.dispatchEvent('#r-plateT', 'input');
+  await page.waitForTimeout(600);
   check(await page.$$eval('#parts tr', r => r.length) === 7,
-        'a clear side adds a print row');
+        'glazing adds a print row');
   const notes = await page.$$eval('#parts .note', n => n.map(x => x.textContent.split(' ')[0]));
-  check(notes[1] === 'clear_plate.stl', 'clear plate row sits under the panel row',
+  check(notes[1] === 'diffuser_plate.stl', 'plate row sits under the panel row',
         notes.join(','));
   const qtys = await page.$$eval('#parts tr', rows =>
     rows.map(r => r.querySelector('td.num').textContent));
-  check(qtys[0] === '3' && qtys[1] === '1', 'quantities split three lattice, one clear',
+  check(qtys[0] === '4' && qtys[1] === '4', 'four panels and four plates',
         qtys.slice(0, 2).join('+'));
-  await page.click('#side-1'); await page.click('#side-2'); await page.click('#side-3');
-  await page.waitForTimeout(800);
-  check(await page.$$eval('#parts tr', r => r.length) === 6,
-        'all-clear drops the lattice row');
   const chips3 = await page.$$eval('#parts .chip', c => c.map(x => x.textContent));
-  check(chips3.every(c => c === 'fits'), 'clear plates fit the bed', chips3.join(','));
-  check(/--clear-sides all/.test(await page.textContent('#cli')),
-        'CLI echo names the clear sides', await page.textContent('#cli'));
-  check(/cap grille only/.test(await page.textContent('#sw-meta')),
-        'swatch says the pattern is cap-only', await page.textContent('#sw-meta'));
-  check(/every side is a clear plate/.test(await page.textContent('#s-diff')),
-        'diffuser sheet spec drops to none');
-  await page.click('#side-0'); await page.click('#side-1');
-  await page.click('#side-2'); await page.click('#side-3');
+  check(chips3.every(c => c === 'fits'), 'plates fit the bed', chips3.join(','));
+  check(/--diffuser-plate 1\.2/.test(await page.textContent('#cli')),
+        'CLI echo carries the plate', await page.textContent('#cli'));
+  check(/printed plate/.test(await page.textContent('#s-diff')),
+        'diffuser spec says the plate supersedes the sheet',
+        await page.textContent('#s-diff'));
+  // the top slider notch is past the post-corner limit, and must say so
+  await page.fill('#r-plateT', '1.6');
+  await page.dispatchEvent('#r-plateT', 'input');
+  await page.waitForTimeout(500);
+  check(!!(await page.$('#problems .problems')) && await page.isDisabled('#dl-all'),
+        'a plate that reaches the post corner blocks export');
+  await page.fill('#r-plateT', '0');
+  await page.dispatchEvent('#r-plateT', 'input');
   await page.waitForTimeout(600);
   check(await page.$$eval('#parts tr', r => r.length) === 6,
-        'back to six rows once every side is a lattice again');
+        'back to six rows once the plate is off');
+  check(!(await page.isDisabled('#dl-all')), 'export re-enabled unglazed');
 
   // screenshots, both themes -- collapse the rail back to its default state
   await page.evaluate(() => {

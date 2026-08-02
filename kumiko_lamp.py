@@ -20,7 +20,7 @@ import argparse
 import math
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -55,9 +55,13 @@ class Params:
     slat_w: float = 1.6          # lattice slat width == 4 walls at 0.4 nozzle
     grid: float = 28.0           # pattern pitch (triangle side / hex radius)
 
-    # --- diffuser rebate -------------------------------------------------
+    # --- diffuser --------------------------------------------------------
     rebate_d: float = 0.6        # pocket depth on the back face
     rebate_lip: float = 8.0      # pocket inset from the panel outer edge
+    # A printed clear plate sharing the groove with the lattice, behind it.
+    # 0 means no plate, and slot_w collapses to the un-glazed width.  Capped
+    # by check_fits at post - 2*groove_d; 1.2 is the working value.
+    plate_t: float = 0.0
 
     # --- joinery ---------------------------------------------------------
     groove_d: float = 6.0        # how deep panels sit into posts/base/cap
@@ -106,19 +110,14 @@ class Params:
     pin_len: float = 12.0
     pin_clear: float = 0.25
 
-    # --- sides -----------------------------------------------------------
-    # 0 = kumiko lattice panel, 1 = plain clear plate, in SIDE_NAMES order.
-    # A tuple, not a list: a dataclass rejects a mutable default.
-    sides: tuple = (0, 0, 0, 0)
-
     # --- meshing ---------------------------------------------------------
     arc: int = 96                # segments per full circle
 
     # ---- derived ---------------------------------------------------------
     @property
     def slot_w(self) -> float:
-        """Width of every groove that receives a panel."""
-        return self.panel_t + self.slot_clear
+        """Width of every groove.  Holds the panel, and the plate behind it."""
+        return self.panel_t + self.plate_t + self.slot_clear
 
     @property
     def post_center(self) -> float:
@@ -1021,10 +1020,6 @@ LAITHAI = {"kranok_kan_khot", "dok_phut_tan", "thai_rosette"}
 PATTERN_FAMILY = {name: "laithai" if name in LAITHAI else "kumiko"
                   for name in list(PATTERNS) + list(PATTERN_REGIONS)}
 
-# Order matches place_parts' panel_place and the browser's `places` table.  A
-# side is either a lattice panel or a plain clear plate; see Params.sides.
-SIDE_NAMES = ("front", "back", "left", "right")
-
 
 def pattern_names():
     """Every selectable pattern id, segment and region alike."""
@@ -1118,16 +1113,19 @@ def build_panel(P: Params, pattern: str) -> trimesh.Trimesh:
     return cleanup(panel)
 
 
-def build_clear_plate(P: Params) -> trimesh.Trimesh:
+def build_diffuser_plate(P: Params) -> trimesh.Trimesh:
     """
-    A side with no lattice, for printing in clear filament.
+    A clear plate sharing each groove with the lattice panel, behind it --
+    where the paper diffuser sheet otherwise goes.
 
-    Exactly a panel's envelope -- panel_w x height x panel_t -- so it drops
-    into the same grooves and nothing about build_post, _joint_cutters, slot_w
-    or panel_clear has to change.  No diffuser rebate: the plate is the
-    diffuser.
+    Same panel_w x height footprint as a panel, so the groove holds it on all
+    four edges; only the thickness differs.  The groove widens to take both
+    (slot_w = panel_t + plate_t + slot_clear), and that is what caps plate_t:
+    past post - 2*groove_d the two post notches meet and the corner falls off.
+
+    Print in clear PETG or PLA.
     """
-    return cleanup(box(-P.panel_w / 2, 0, 0, P.panel_w / 2, P.height, P.panel_t))
+    return cleanup(box(-P.panel_w / 2, 0, 0, P.panel_w / 2, P.height, P.plate_t))
 
 
 def build_post(P: Params, part: str = "full") -> trimesh.Trimesh:
@@ -1373,21 +1371,37 @@ def place_parts(P: Params, panel, post, base, cap, leg=None, plate=None):
         p.apply_translation((sx * pc, sy * pc, z_base))
         out[f"post{idx}"] = p
 
-    # panels, one per side, each with its lattice face outward
-    panel_place = [
-        (_rotz(180) @ _rotx(90), (0.0, -pc - t / 2, z_base)),    # front  (-Y)
-        (_rotx(90), (0.0, pc + t / 2, z_base)),                  # back   (+Y)
-        (_rotz(90) @ _rotx(90), (-pc - t / 2, 0.0, z_base)),     # left   (-X)
-        (_rotz(-90) @ _rotx(90), (pc + t / 2, 0.0, z_base)),     # right  (+X)
-    ]
-    for idx, (M, offset) in enumerate(panel_place):
-        # A clear-plate side shares the panel's envelope exactly, so it takes
-        # the same transform and the same groove.
-        use_plate = plate is not None and P.sides[idx]
-        q = (plate if use_plate else panel).copy()
+    # The four sides.  Each transform maps the panel's local z = 0 -- the
+    # lattice face -- to `d` from the lamp axis, facing outward, so `d` is
+    # always the outward face of whatever is being placed.
+    def _places(d):
+        return [
+            (_rotz(180) @ _rotx(90), (0.0, -d, z_base)),    # front  (-Y)
+            (_rotx(90), (0.0, d, z_base)),                  # back   (+Y)
+            (_rotz(90) @ _rotx(90), (-d, 0.0, z_base)),     # left   (-X)
+            (_rotz(-90) @ _rotx(90), (d, 0.0, z_base)),     # right  (+X)
+        ]
+
+    # Glazed, the panel and the plate sit flush against opposite groove walls,
+    # so the whole slot_clear shows up as the gap between them -- the worst
+    # case for check_clearances, and it keeps the two off a tangent contact.
+    # Unglazed, the panel keeps its centred position.
+    glazed = plate is not None and P.plate_t > 0
+    panel_face = (pc + P.slot_w / 2) if glazed else (pc + t / 2)
+    plate_face = pc - P.slot_w / 2 + P.plate_t
+
+    for idx, (M, offset) in enumerate(_places(panel_face)):
+        q = panel.copy()
         q.apply_transform(M)
         q.apply_translation(offset)
         out[f"panel{idx}"] = q
+
+    if glazed:
+        for idx, (M, offset) in enumerate(_places(plate_face)):
+            q = plate.copy()
+            q.apply_transform(M)
+            q.apply_translation(offset)
+            out[f"plate{idx}"] = q
 
     c = cap.copy()
     c.apply_translation((0, 0, z_base + P.height - P.groove_d))
@@ -1446,8 +1460,12 @@ def check_fits(P: Params):
     issues = []
     if abs((P.panel_w + P.panel_clear) - P.groove_span) > 1e-9:
         issues.append("panel width does not match the post groove span")
-    if abs((P.slot_w - P.panel_t) - P.slot_clear) > 1e-9:
+    if abs((P.slot_w - P.panel_t - P.plate_t) - P.slot_clear) > 1e-9:
         issues.append("groove width does not give the intended slot clearance")
+    # 3 * 0.2 is 0.6000000000000001, and 0.6 is a real slider stop, so this
+    # needs the epsilon or the boundary value rejects itself.
+    if 0 < P.plate_t < 3 * 0.2 - 1e-9:
+        issues.append("diffuser plate is under three layers thick")
     if P.groove_d >= P.post / 2:
         issues.append("groove depth would cut the post in half")
     # The post's two grooves are notches reaching in to post/2 - groove_d.  Once
@@ -1500,12 +1518,12 @@ def check_clearances(parts):
     """
     No two assembled parts may share any volume.
 
-    All four panels are tested, not just one per axis: with per-side clear
-    plates the sides are no longer necessarily identical, so a mixed lamp has
-    pairs that testing panel0 and panel2 alone would never reach.
+    One panel per axis is enough -- all four sides are identical -- but the
+    diffuser plate shares its groove with the panel, so that adjacency is the
+    one this has to prove.  Plates are absent when the lamp is unglazed.
     """
-    names = ["base", "cap", "post0",
-             "panel0", "panel1", "panel2", "panel3", "leg0"]
+    names = [n for n in ("base", "cap", "post0", "panel0", "panel2",
+                         "plate0", "plate2", "leg0") if n in parts]
     issues = []
     for i, a in enumerate(names):
         for b in names[i + 1:]:
@@ -1602,9 +1620,9 @@ def main(argv=None):
                     help="adapter ring bore for your E27 holder (mm)")
     ap.add_argument("--edge-chamfer", type=float,
                     help="bevel on the base and cap perimeter edges (mm)")
-    ap.add_argument("--clear-sides", default="",
-                    help="sides taking a plain clear plate instead of a lattice "
-                         "panel: any of " + ",".join(SIDE_NAMES) + " -- or 'all'")
+    ap.add_argument("--diffuser-plate", type=float,
+                    help="clear plate behind each lattice, in the same groove "
+                         "(mm); 0 for none, 1.2 is the working value")
     ap.add_argument("--split-posts", action="store_true",
                     help="also export the two-piece post")
     ap.add_argument("--all", action="store_true",
@@ -1620,19 +1638,10 @@ def main(argv=None):
     for attr, val in (("size", args.size), ("height", args.height),
                       ("slat_w", args.slat), ("grid", args.grid),
                       ("socket_neck", args.socket_neck),
-                      ("edge_chamfer", args.edge_chamfer)):
+                      ("edge_chamfer", args.edge_chamfer),
+                      ("plate_t", args.diffuser_plate)):
         if val is not None:
             setattr(P, attr, val)
-
-    # Not part of the table above: that one assumes float | None.
-    if args.clear_sides:
-        want = {s.strip().lower() for s in args.clear_sides.split(",") if s.strip()}
-        if want == {"all"}:
-            want = set(SIDE_NAMES)
-        unknown = want - set(SIDE_NAMES)
-        if unknown:
-            ap.error("unknown side(s): " + ", ".join(sorted(unknown)))
-        P.sides = tuple(1 if n in want else 0 for n in SIDE_NAMES)
 
     fit_issues = check_fits(P)
     if fit_issues:
@@ -1701,13 +1710,16 @@ def main(argv=None):
     print("  building leg ...", flush=True)
     leg = emit("leg", build_leg(P))
 
-    # Built unconditionally -- it is one box -- so the assembly can always place
-    # it, but only exported when a side actually uses it (or under --all, which
-    # keeps stl/clear_plate.stl in the checked-in set).
-    plate = build_clear_plate(P)
-    if args.all or any(P.sides):
-        print("  building clear plate ...", flush=True)
-        emit("clear_plate", plate)
+    # --all exports one at the working thickness so stl/diffuser_plate.stl stays
+    # in the checked-in set even though the stock lamp is unglazed.
+    plate = None
+    if P.plate_t > 0:
+        print("  building diffuser plate ...", flush=True)
+        plate = emit("diffuser_plate", build_diffuser_plate(P))
+    elif args.all:
+        ref = replace(P, plate_t=1.2)
+        print("  building diffuser plate ...", flush=True)
+        emit("diffuser_plate", build_diffuser_plate(ref))
 
     print("  assembling ...", flush=True)
     asm, parts = build_assembly(P, panel, post, base, cap, leg, plate)
