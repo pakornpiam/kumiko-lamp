@@ -17,6 +17,7 @@ pip install -r requirements.txt
 python3 kumiko_lamp.py --all              # every pattern, both post styles, all previews
 python3 kumiko_lamp.py --pattern kikkou   # one pattern's part set
 python3 kumiko_lamp.py --size 150 --height 170 --grid 20 --slat 2.0 --socket-neck 23.5
+python3 kumiko_lamp.py --clear-sides front,left --edge-chamfer 1.5
 python3 render_preview.py                 # optional PNG previews, needs matplotlib
 
 # Configurator tests (from web/)
@@ -31,9 +32,10 @@ run that prints `OK`/`FAIL` lines and exits non-zero on failure. To narrow a Pyt
 Docs say `python3` (correct for Linux/macOS, and what the shebangs use). **On Windows the
 interpreter is `python`** — `python3` resolves to the Microsoft Store shim and fails.
 
-`node page.test.js` hardcodes `executablePath: '/opt/pw-browsers/chromium'`
-([page.test.js:14](web/page.test.js#L14)). On Windows/macOS that path does not exist — edit it
-or drop the argument to use Playwright's own download.
+`node page.test.js` takes the browser binary from `PW_CHROMIUM` if that is set, and
+otherwise uses whatever `playwright install chromium` downloaded
+([page.test.js:14-18](web/page.test.js#L14-L18)), so it runs unmodified on all three
+platforms.
 
 ## The two implementations must stay in sync
 
@@ -49,6 +51,13 @@ enforces it: it hardcodes the Python generator's measured volumes and per-patter
 ([core.test.js:41](web/core.test.js#L41), [core.test.js:55](web/core.test.js#L55)). If you
 intentionally change Python geometry, re-run `kumiko_lamp.py` and update those constants —
 they are the contract between the two paths, not incidental fixtures.
+
+The four sides are only *placements* of one or two meshes, in both implementations
+(`place_parts`' `panel_place`, the browser's `places`). `Params.sides` / `side0..side3`
+picks lattice or clear plate per side; because the plate shares the panel envelope
+exactly, no groove, post or clearance dimension varies per side. **A side-varying
+*thickness* would be a much larger change** — it forks `slot_w` per side and makes the
+four posts non-identical, since each post serves two adjacent sides.
 
 The browser's panel and cap volumes read a few percent **high** by design (overlapping slats
 are double-counted by the divergence theorem), so `core.test.js` bounds them rather than
@@ -68,6 +77,16 @@ test break.
 
 Adding a parameter means three places: `Params` in Python, `DEFAULTS`/`derive()` in the core,
 and the `GROUPS` slider table in the app ([index.html:1378](web/index.html#L1378)).
+
+`derive()` coerces every key with unary `+`, and the app copies `DEFAULTS` into `state`
+key by key. **A non-numeric parameter needs an explicit escape hatch** next to the one
+`pattern` already has, and an array default would alias `DEFAULTS` into `state` and be
+mutated in place. That is why the per-side clear plates are four scalars `side0..side3`
+rather than one array.
+
+`GROUPS` items are positional 6-tuples rendered as `input[type=range]` — the **only**
+control type in the file. Anything else is a one-off flag on the group (`style:` for the
+pattern picker, `sides:` for the side picker) handled by its own block in `buildRail`.
 
 ## Adding a pattern
 
@@ -143,6 +162,27 @@ Non-obvious, and worth knowing before optimising the wrong thing:
 
 So a curved pattern is cheap in a panel and would be ruinous if anyone routed it through the
 slab extruder. Benchmark the path the part actually takes.
+
+## Tapered walls in `extrudeStack`
+
+A layer may carry a `loopsTop` profile, and `emitWalls` then interpolates each wall quad
+between `loops` at `z0` and `loopsTop` at `z1`. This is what the base and cap chamfers
+use. Three constraints, all load-bearing:
+
+- **The two profiles must correspond vertex-for-vertex** — same loop count, same length
+  per loop. The fallback is per loop, so an untapered loop reuses its own vertices and
+  every existing part stays bit-identical.
+- **Only the outer loop may actually move**, as a uniform inset. Classification — band
+  cuts, crossing splits, the `windingAt` probe — all runs on the *bottom* profile, so a
+  void crossing the outer boundary would cross at a different parameter top and bottom
+  and the hole would not close. The base's cord tunnel is the one such void, and
+  `checkFits` keeps the chamfer out of its z-range for exactly this reason.
+- **The interface faces compare `Et[i]` against `Eb[i+1]`**, not one edge set against
+  itself. Reusing one would emit a bogus annular shelf the size of the taper.
+
+Python has real CSG and needs none of this: `_edge_chamfers` subtracts four square prisms
+turned 45° about their own edge direction, and the union of two perpendicular wedges is
+the mitred corner.
 
 ## Why the code looks the way it does
 

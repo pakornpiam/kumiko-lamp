@@ -36,6 +36,7 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `top_cap.stl` | **1** | 190 × 190 × 10 | Flat, as exported — **already flipped** into print orientation. |
 | `leg.stl` | **4** | 20 × 20 × 20 | Standing on its foot, as exported. Tenon points up. |
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 holder* below. |
+| `clear_plate.stl` | 0–4 | 155.7 × 210 × 4 | Flat, as exported. Only if you want glazed sides — see *Clear sides* below. |
 
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
 `panel_kagome.stl`, `panel_masu_tsunagi.stl`, `panel_goma_gara.stl`,
@@ -133,6 +134,26 @@ the edge is plenty, but friction alone works.
 
 Leave it out entirely if you want hard-edged shadows thrown on the wall instead.
 
+## Clear sides
+
+Any of the four sides can take a plain transparent plate instead of a lattice panel —
+one lit face and three solid, two facing each other, or all four for a glass box.
+
+```bash
+python3 kumiko_lamp.py --clear-sides front          # one glazed face
+python3 kumiko_lamp.py --clear-sides front,back     # two facing each other
+python3 kumiko_lamp.py --clear-sides all
+```
+
+Sides are named from the lamp's plan view: `front` is −Y, `back` +Y, `left` −X,
+`right` +X. In the configurator they are a plan-view grid under **Sides**, and a clear
+side renders translucent so you can see the bulb and the far lattice through it.
+
+`clear_plate.stl` is dimensionally identical to a panel — same 155.7 × 210 × 4 envelope
+— so it slides into exactly the same grooves and the posts, base and cap do not change.
+Print it in **clear PETG or PLA**. It needs no diffuser sheet: at 4 mm it is its own
+diffuser, and the panel rebate is omitted.
+
 ## E27 holder
 
 The base has a Ø40 mm through-bore, a Ø50 × 4 mm counterbore around it, and a cord tunnel
@@ -175,7 +196,14 @@ python3 kumiko_lamp.py --pattern kikkou         # one pattern's part set
 python3 kumiko_lamp.py --grid 20                # finer lattice
 python3 kumiko_lamp.py --size 150 --height 170  # smaller lamp (fits an A1 mini)
 python3 kumiko_lamp.py --slat 2.0               # chunkier slats (keep it a multiple of 0.4)
+python3 kumiko_lamp.py --edge-chamfer 0         # square off the base and cap edges
+python3 kumiko_lamp.py --clear-sides front,left # glaze two sides
 ```
+
+The base and cap carry a 2 mm 45° chamfer on all four perimeter edges. It is capped at
+the cord tunnel floor (2 mm by default — raise `cable_floor` for a deeper bevel) and, at
+4.8 mm, by the wall left around the post sockets; `check_fits` refuses anything past
+either.
 
 Adding a pattern means writing one `f(w, h, s) -> [segments]` function and registering it
 in `PATTERNS`. Two rules, both learned the hard way:
