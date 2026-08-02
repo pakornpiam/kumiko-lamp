@@ -17,7 +17,7 @@ pip install -r requirements.txt
 python3 kumiko_lamp.py --all              # every pattern, both post styles, all previews
 python3 kumiko_lamp.py --pattern kikkou   # one pattern's part set
 python3 kumiko_lamp.py --size 150 --height 170 --grid 20 --slat 2.0 --socket-neck 23.5
-python3 kumiko_lamp.py --clear-sides front,left --edge-chamfer 1.5
+python3 kumiko_lamp.py --diffuser-plate 1.2 --edge-chamfer 1.5
 python3 render_preview.py                 # optional PNG previews, needs matplotlib
 
 # Configurator tests (from web/)
@@ -52,12 +52,34 @@ enforces it: it hardcodes the Python generator's measured volumes and per-patter
 intentionally change Python geometry, re-run `kumiko_lamp.py` and update those constants —
 they are the contract between the two paths, not incidental fixtures.
 
-The four sides are only *placements* of one or two meshes, in both implementations
-(`place_parts`' `panel_place`, the browser's `places`). `Params.sides` / `side0..side3`
-picks lattice or clear plate per side; because the plate shares the panel envelope
-exactly, no groove, post or clearance dimension varies per side. **A side-varying
-*thickness* would be a much larger change** — it forks `slot_w` per side and makes the
-four posts non-identical, since each post serves two adjacent sides.
+The four sides are only *placements*, in both implementations (`place_parts`, the
+browser's `assemble`). All four are identical, so per-side variation is not expressible
+and adding it would fork `slot_w` per side and make the four posts non-identical — each
+post serves two adjacent sides.
+
+**`slot_w` is capped by the post, not by the panel.** The post carries its two grooves as
+notches reaching in to `post/2 - groove_d`; once a notch is half as wide as the material
+that depth leaves, the two meet across the diagonal and the post's outer corner comes away
+as a separate body:
+
+```
+slot_w  <  post - 2 * groove_d          (6.0 at stock)
+```
+
+`check_fits` enforces it in both implementations. This is the ceiling on `plate_t`
+(1.6 mm at stock), and it is reachable from the sliders by `panel_t` and `slot_clear`
+alone. `slot_w` feeds only `_joint_cutters` / `joineryVoids` and `build_post` / `buildPost`
+— **`panel_w` comes from `groove_d` and `post_center`, not from `slot_w`** — so widening
+the groove moves no other dimension and no test constant.
+
+The diffuser plate shares each groove with the panel, behind it. In the assembly the panel
+sits flush against the outer groove wall and the plate against the inner, so the whole
+`slot_clear` is the gap between them; `check_clearances` tests `plate0`/`plate2` to prove
+it. `plate_t = 0` collapses `slot_w` to the un-glazed width, which is why the stock lamp
+is byte-identical with the feature present.
+
+Minimum-layer checks are written `x < 3 * 0.2`, and `3 * 0.2` is `0.6000000000000001` in
+both languages — subtract an epsilon if the boundary is a reachable slider stop.
 
 The browser's panel and cap volumes read a few percent **high** by design (overlapping slats
 are double-counted by the divergence theorem), so `core.test.js` bounds them rather than
@@ -81,12 +103,12 @@ and the `GROUPS` slider table in the app ([index.html:1378](web/index.html#L1378
 `derive()` coerces every key with unary `+`, and the app copies `DEFAULTS` into `state`
 key by key. **A non-numeric parameter needs an explicit escape hatch** next to the one
 `pattern` already has, and an array default would alias `DEFAULTS` into `state` and be
-mutated in place. That is why the per-side clear plates are four scalars `side0..side3`
-rather than one array.
+mutated in place.
 
 `GROUPS` items are positional 6-tuples rendered as `input[type=range]` — the **only**
 control type in the file. Anything else is a one-off flag on the group (`style:` for the
-pattern picker, `sides:` for the side picker) handled by its own block in `buildRail`.
+pattern picker) handled by its own block in `buildRail`. A slider whose `0` means *off*
+is how an on/off parameter is expressed without inventing a control — see `plateT`.
 
 ## Adding a pattern
 

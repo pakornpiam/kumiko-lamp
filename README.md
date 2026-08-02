@@ -36,7 +36,7 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `top_cap.stl` | **1** | 190 × 190 × 10 | Flat, as exported — **already flipped** into print orientation. |
 | `leg.stl` | **4** | 20 × 20 × 20 | Standing on its foot, as exported. Tenon points up. |
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 holder* below. |
-| `clear_plate.stl` | 0–4 | 155.7 × 210 × 4 | Flat, as exported. Only if you want glazed sides — see *Clear sides* below. |
+| `diffuser_plate.stl` | 0 or **4** | 155.7 × 210 × 1.2 | Flat, as exported. Only if you want a printed diffuser — see *Diffuser* below. |
 
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
 `panel_kagome.stl`, `panel_masu_tsunagi.stl`, `panel_goma_gara.stl`,
@@ -134,25 +134,30 @@ the edge is plenty, but friction alone works.
 
 Leave it out entirely if you want hard-edged shadows thrown on the wall instead.
 
-## Clear sides
+### Or print the diffuser
 
-Any of the four sides can take a plain transparent plate instead of a lattice panel —
-one lit face and three solid, two facing each other, or all four for a glass box.
+Instead of paper, each groove can take a **clear printed plate** that sits behind the
+lattice — same job, no cutting or gluing, and it will not yellow.
 
 ```bash
-python3 kumiko_lamp.py --clear-sides front          # one glazed face
-python3 kumiko_lamp.py --clear-sides front,back     # two facing each other
-python3 kumiko_lamp.py --clear-sides all
+python3 kumiko_lamp.py --diffuser-plate 1.2     # the working thickness
+python3 kumiko_lamp.py --diffuser-plate 0       # none (the default)
 ```
 
-Sides are named from the lamp's plan view: `front` is −Y, `back` +Y, `left` −X,
-`right` +X. In the configurator they are a plan-view grid under **Sides**, and a clear
-side renders translucent so you can see the bulb and the far lattice through it.
+In the configurator it is the **Diffuser plate** slider under *Panel*; `0` means none.
+A glazed side renders translucent so you can see the plate through the lattice.
 
-`clear_plate.stl` is dimensionally identical to a panel — same 155.7 × 210 × 4 envelope
-— so it slides into exactly the same grooves and the posts, base and cap do not change.
-Print it in **clear PETG or PLA**. It needs no diffuser sheet: at 4 mm it is its own
-diffuser, and the panel rebate is omitted.
+`diffuser_plate.stl` shares the panel's 155.7 × 210 footprint, so the groove holds it on
+all four edges. Print it in **clear PETG or PLA** — 1.2 mm is six layers, and it prints
+flat with no supports.
+
+The groove widens to take both, `panel + plate + clearance`, and **that is what caps the
+plate at 1.6 mm**: the post's two grooves are notches cut 6 mm deep into an 18 mm post,
+and once each is half as wide as the 6 mm they leave, the two meet and the post's corner
+falls off. `check_fits` refuses anything that reaches it. Nothing else moves — panel
+width, the patterns and every other part are identical glazed or not.
+
+You can still use paper as well; the 0.6 mm rebate is untouched.
 
 ## E27 holder
 
@@ -197,7 +202,7 @@ python3 kumiko_lamp.py --grid 20                # finer lattice
 python3 kumiko_lamp.py --size 150 --height 170  # smaller lamp (fits an A1 mini)
 python3 kumiko_lamp.py --slat 2.0               # chunkier slats (keep it a multiple of 0.4)
 python3 kumiko_lamp.py --edge-chamfer 0         # square off the base and cap edges
-python3 kumiko_lamp.py --clear-sides front,left # glaze two sides
+python3 kumiko_lamp.py --diffuser-plate 1.2     # printed diffuser behind each lattice
 ```
 
 The base and cap carry a 2 mm 45° chamfer on all four perimeter edges. It is capped at
