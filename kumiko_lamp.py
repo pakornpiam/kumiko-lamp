@@ -106,6 +106,11 @@ class Params:
     pin_len: float = 12.0
     pin_clear: float = 0.25
 
+    # --- sides -----------------------------------------------------------
+    # 0 = kumiko lattice panel, 1 = plain clear plate, in SIDE_NAMES order.
+    # A tuple, not a list: a dataclass rejects a mutable default.
+    sides: tuple = (0, 0, 0, 0)
+
     # --- meshing ---------------------------------------------------------
     arc: int = 96                # segments per full circle
 
@@ -1016,6 +1021,10 @@ LAITHAI = {"kranok_kan_khot", "dok_phut_tan", "thai_rosette"}
 PATTERN_FAMILY = {name: "laithai" if name in LAITHAI else "kumiko"
                   for name in list(PATTERNS) + list(PATTERN_REGIONS)}
 
+# Order matches place_parts' panel_place and the browser's `places` table.  A
+# side is either a lattice panel or a plain clear plate; see Params.sides.
+SIDE_NAMES = ("front", "back", "left", "right")
+
 
 def pattern_names():
     """Every selectable pattern id, segment and region alike."""
@@ -1107,6 +1116,18 @@ def build_panel(P: Params, pattern: str) -> trimesh.Trimesh:
                  W / 2 - lip, H + EPS, T + EPS)
     panel = difference(panel, [pocket])
     return cleanup(panel)
+
+
+def build_clear_plate(P: Params) -> trimesh.Trimesh:
+    """
+    A side with no lattice, for printing in clear filament.
+
+    Exactly a panel's envelope -- panel_w x height x panel_t -- so it drops
+    into the same grooves and nothing about build_post, _joint_cutters, slot_w
+    or panel_clear has to change.  No diffuser rebate: the plate is the
+    diffuser.
+    """
+    return cleanup(box(-P.panel_w / 2, 0, 0, P.panel_w / 2, P.height, P.panel_t))
 
 
 def build_post(P: Params, part: str = "full") -> trimesh.Trimesh:
@@ -1331,7 +1352,7 @@ def _rotx(deg):
     return trimesh.transformations.rotation_matrix(math.radians(deg), (1, 0, 0))
 
 
-def place_parts(P: Params, panel, post, base, cap, leg=None):
+def place_parts(P: Params, panel, post, base, cap, leg=None, plate=None):
     """
     Return {name: transformed copy} for every part in assembled position.
 
@@ -1360,7 +1381,10 @@ def place_parts(P: Params, panel, post, base, cap, leg=None):
         (_rotz(-90) @ _rotx(90), (pc + t / 2, 0.0, z_base)),     # right  (+X)
     ]
     for idx, (M, offset) in enumerate(panel_place):
-        q = panel.copy()
+        # A clear-plate side shares the panel's envelope exactly, so it takes
+        # the same transform and the same groove.
+        use_plate = plate is not None and P.sides[idx]
+        q = (plate if use_plate else panel).copy()
         q.apply_transform(M)
         q.apply_translation(offset)
         out[f"panel{idx}"] = q
@@ -1379,8 +1403,8 @@ def place_parts(P: Params, panel, post, base, cap, leg=None):
     return out
 
 
-def build_assembly(P: Params, panel, post, base, cap, leg=None):
-    parts = place_parts(P, panel, post, base, cap, leg)
+def build_assembly(P: Params, panel, post, base, cap, leg=None, plate=None):
+    parts = place_parts(P, panel, post, base, cap, leg, plate)
     return trimesh.util.concatenate(list(parts.values())), parts
 
 
@@ -1467,8 +1491,15 @@ def check_fits(P: Params):
 
 
 def check_clearances(parts):
-    """No two assembled parts may share any volume."""
-    names = ["base", "cap", "post0", "panel0", "panel2", "leg0"]
+    """
+    No two assembled parts may share any volume.
+
+    All four panels are tested, not just one per axis: with per-side clear
+    plates the sides are no longer necessarily identical, so a mixed lamp has
+    pairs that testing panel0 and panel2 alone would never reach.
+    """
+    names = ["base", "cap", "post0",
+             "panel0", "panel1", "panel2", "panel3", "leg0"]
     issues = []
     for i, a in enumerate(names):
         for b in names[i + 1:]:
@@ -1565,6 +1596,9 @@ def main(argv=None):
                     help="adapter ring bore for your E27 holder (mm)")
     ap.add_argument("--edge-chamfer", type=float,
                     help="bevel on the base and cap perimeter edges (mm)")
+    ap.add_argument("--clear-sides", default="",
+                    help="sides taking a plain clear plate instead of a lattice "
+                         "panel: any of " + ",".join(SIDE_NAMES) + " -- or 'all'")
     ap.add_argument("--split-posts", action="store_true",
                     help="also export the two-piece post")
     ap.add_argument("--all", action="store_true",
@@ -1583,6 +1617,16 @@ def main(argv=None):
                       ("edge_chamfer", args.edge_chamfer)):
         if val is not None:
             setattr(P, attr, val)
+
+    # Not part of the table above: that one assumes float | None.
+    if args.clear_sides:
+        want = {s.strip().lower() for s in args.clear_sides.split(",") if s.strip()}
+        if want == {"all"}:
+            want = set(SIDE_NAMES)
+        unknown = want - set(SIDE_NAMES)
+        if unknown:
+            ap.error("unknown side(s): " + ", ".join(sorted(unknown)))
+        P.sides = tuple(1 if n in want else 0 for n in SIDE_NAMES)
 
     fit_issues = check_fits(P)
     if fit_issues:
@@ -1651,8 +1695,16 @@ def main(argv=None):
     print("  building leg ...", flush=True)
     leg = emit("leg", build_leg(P))
 
+    # Built unconditionally -- it is one box -- so the assembly can always place
+    # it, but only exported when a side actually uses it (or under --all, which
+    # keeps stl/clear_plate.stl in the checked-in set).
+    plate = build_clear_plate(P)
+    if args.all or any(P.sides):
+        print("  building clear plate ...", flush=True)
+        emit("clear_plate", plate)
+
     print("  assembling ...", flush=True)
-    asm, parts = build_assembly(P, panel, post, base, cap, leg)
+    asm, parts = build_assembly(P, panel, post, base, cap, leg, plate)
     emit("assembly_preview", asm, bodies=len(parts), printable=False)
 
     # ---- report ---------------------------------------------------------

@@ -42,6 +42,10 @@ check(K.checkFits(K.derive({ edgeChamfer: 3, cableFloor: 3 })).length === 0,
       'chamfer clears once the tunnel floor is raised');
 check(K.checkFits(K.derive({ edgeChamfer: 5, cableFloor: 5 })).length > 0,
       'chamfer into the socket walls rejected');
+check(K.derive({}).sides.join(',') === '0,0,0,0', 'all sides default to lattice');
+const S = K.derive({ side0: 1, side3: 1 });
+check(S.sides.join(',') === '1,0,0,1' && S.clearSides === 2, 'per-side flags derive');
+check(K.SIDE_NAMES.join(',') === 'front,back,left,right', 'side order matches Python');
 
 console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
@@ -102,14 +106,15 @@ console.log('\nparts vs Python trimesh');
    alone -- if this drifts DOWN through the lower bound, the browser's chamfer
    is removing more than Python's. */
 const PY = { post: 56.5, base: 506.0, top_cap: 318.3, socket_adapter_ring: 5.5,
-             leg: 5.6 };
+             leg: 5.6, clear_plate: 130.8 };
 const LATTICE = { top_cap: 1 };
 const built = {
   post: K.buildPost(P),
   base: K.buildBase(P),
   top_cap: K.buildCap(P, 'asanoha'),
   socket_adapter_ring: K.buildRing(P),
-  leg: K.buildLeg(P)
+  leg: K.buildLeg(P),
+  clear_plate: K.buildClearPlate(P)
 };
 for (const [name, m] of Object.entries(built)) {
   const v = Math.abs(K.volume(m.tris)) / 1000;
@@ -145,6 +150,24 @@ check(dv.getUint32(80, true) === built.post.tris.length/9, 'STL triangle count h
 const zip = K.zipStore([{ name: 'a.stl', data: stl }]);
 check(zip[0] === 0x50 && zip[1] === 0x4b, 'ZIP magic bytes');
 
+/* The clear-plate row is conditional, so the print list stays six rows long
+   until the sides are actually mixed. */
+check(all.parts.length === 6 && all.parts[0].id === 'panel_asanoha',
+      'default print list is six parts, panel first');
+const mixed = K.buildAll({ side0: 1 });
+check(mixed.parts.length === 7 && mixed.parts[1].id === 'clear_plate',
+      'a clear side adds a row under the panel row');
+check(mixed.parts[0].qty === 3 && mixed.parts[1].qty === 1,
+      'quantities split across the two side types',
+      `${mixed.parts[0].qty} + ${mixed.parts[1].qty}`);
+const allClear = K.buildAll({ side0: 1, side1: 1, side2: 1, side3: 1 });
+check(allClear.parts.length === 6 && allClear.parts[0].id === 'clear_plate' &&
+      allClear.parts[0].qty === 4, 'all-clear drops the lattice row entirely');
+check(allClear.assembly.filter(p => p.clear).length === 4,
+      'all four sides render as clear in the assembly');
+check(mixed.assembly.filter(p => p.clear).length === 1,
+      'exactly one clear side in the assembly');
+
 console.log('\nvariations');
 for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'mitsukude', slatW: 2.4 }, { grid: 20 },
@@ -159,7 +182,9 @@ for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { edgeChamfer: 0 }, { edgeChamfer: 3.5, cableFloor: 4 },
                  /* thinnest allowed cap with a near-maximal chamfer: only 1 mm
                     of straight wall left between the two tapered bands */
-                 { edgeChamfer: 3, capT: 7, baseT: 15, cableFloor: 3 }]) {
+                 { edgeChamfer: 3, capT: 7, baseT: 15, cableFloor: 3 },
+                 { side0: 1 }, { side1: 1, side2: 1, pattern: 'kikkou' },
+                 { side0: 1, side1: 1, side2: 1, side3: 1 }]) {
   const r = K.buildAll(v);
   check(r.problems.length === 0 && r.parts && r.parts.every(p => p.vol > 0),
         'builds: ' + JSON.stringify(v));

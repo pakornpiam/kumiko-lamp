@@ -135,6 +135,21 @@ a { color: var(--ai); }
 }
 .styles button:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
 
+/* Per-side picker, laid out as a plan view of the lamp: back at +Y on top,
+   front at -Y below.  Reuses .styles for the pressed-state styling. */
+.sidegrid {
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-areas: ". back ." "left mid right" ". front .";
+  align-items: stretch;
+}
+.sidegrid .mid {
+  grid-area: mid; display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--sumi-3);
+  border: 1px dashed var(--edge); border-radius: 2px;
+}
+.sidehint { font-size: 12.5px; color: var(--sumi-3); margin-bottom: 8px; }
+
 /* ---- stage --------------------------------------------------------- */
 .stage { display: grid; grid-template-columns: minmax(0,1fr) 232px; gap: 16px; }
 @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } }
@@ -334,7 +349,7 @@ pre.cmd {
         <p>The back of each panel is rebated and open at the top edge. Slide in shoji
            paper or vellum before fitting the cap.</p>
         <dl class="spec">
-          <div><dt>Sheet size &times;4</dt><dd id="s-diff">&mdash;</dd></div>
+          <div><dt>Diffuser sheets</dt><dd id="s-diff">&mdash;</dd></div>
           <div><dt>Rebate depth</dt><dd id="s-reb">&mdash;</dd></div>
         </dl>
       </div>
@@ -407,8 +422,16 @@ var Kumiko = (function () {
     baseVents: 16, baseVentR0: 29, baseVentR1: 37,
     capVentD: 70, capGrilleF: 0.75,
     arc: 64,
+    /* Per side: 0 = kumiko lattice panel, 1 = plain clear plate, in
+       SIDE_NAMES order.  Four scalars rather than one array, so they pass
+       through derive()'s numeric coercion untouched and so the app's shallow
+       copy of DEFAULTS into `state` cannot alias them. */
+    side0: 0, side1: 0, side2: 0, side3: 0,
     pattern: 'asanoha'
   };
+
+  /* Matches Python's SIDE_NAMES and the order of `places` in assemble(). */
+  var SIDE_NAMES = ['front', 'back', 'left', 'right'];
 
   function derive(raw) {
     var p = {};
@@ -426,6 +449,12 @@ var Kumiko = (function () {
     p.openH = p.height - 2 * p.panelBorder;
     p.diffuserW = p.panelW - 2 * p.rebateLip;
     p.diffuserH = p.height - p.rebateLip;
+    p.sides = [p.side0, p.side1, p.side2, p.side3].map(function (v) {
+      return v ? 1 : 0;
+    });
+    p.side0 = p.sides[0]; p.side1 = p.sides[1];
+    p.side2 = p.sides[2]; p.side3 = p.sides[3];
+    p.clearSides = p.sides[0] + p.sides[1] + p.sides[2] + p.sides[3];
     return p;
   }
 
@@ -1536,6 +1565,17 @@ var Kumiko = (function () {
     return { tris: tris, slats: segs.length, manifold: false };
   }
 
+  /* A side with no lattice, for printing in clear filament.  Exactly a panel's
+     envelope, so it drops into the same grooves and nothing about buildPost,
+     joineryVoids, slotW or panelClear has to change.  No diffuser rebate: the
+     plate is the diffuser.  Four vertices, so prismFromLoop takes the quadPrism
+     fast path and this costs twelve triangles. */
+  function buildClearPlate(P) {
+    return { tris: prismFromLoop(
+               rectLoop(-P.panelW / 2, 0, P.panelW / 2, P.height, true),
+               0, P.panelT), manifold: true };
+  }
+
   /* Corner post, standing up.  Grooves face +X and +Y; rotated per corner. */
   function buildPost(P) {
     var a = P.post / 2, gin = a - P.grooveD, sw = P.slotW / 2, c = P.postChamfer;
@@ -1736,7 +1776,7 @@ var Kumiko = (function () {
   function capPrintTransform(P) { return mul(trans(0, 0, P.capT), rotX(180)); }
 
   /* Port of place_parts(). */
-  function assemble(P, panel, post, base, cap, leg) {
+  function assemble(P, panel, plate, post, base, cap, leg) {
     var pc = P.postCenter, t = P.panelT, zb = P.baseT - P.grooveD, out = [];
     out.push({ name: 'base', tris: base, kind: 'plate' });
     var ang = { '-1,-1': 0, '1,-1': 90, '1,1': 180, '-1,1': 270 };
@@ -1752,10 +1792,16 @@ var Kumiko = (function () {
       [mul(rotZ(90), rotX(90)), [-pc - t / 2, 0, zb]],
       [mul(rotZ(-90), rotX(90)), [pc + t / 2, 0, zb]]
     ];
-    for (i = 0; i < 4; i++)
-      out.push({ name: 'panel' + i, kind: 'panel',
-        tris: transform(panel, mul(trans(places[i][1][0], places[i][1][1], places[i][1][2]),
-                                   places[i][0])) });
+    for (i = 0; i < 4; i++) {
+      var isClear = P.sides[i] === 1;
+      var src = isClear ? plate : panel;
+      if (!src) continue;                 // no lattice built: every side clear
+      /* `kind` stays 'panel' so the exploded view keeps lifting it with the
+         other sides; `clear` is what drives colour and opacity. */
+      out.push({ name: 'panel' + i, kind: 'panel', clear: isClear,
+        tris: transform(src, mul(trans(places[i][1][0], places[i][1][1], places[i][1][2]),
+                                 places[i][0])) });
+    }
     out.push({ name: 'cap', kind: 'plate',
       tris: transform(cap, trans(0, 0, zb + P.height - P.grooveD)) });
     // Legs sit below z = 0, so the assembly's origin is the base underside and
@@ -1894,15 +1940,27 @@ var Kumiko = (function () {
     var problems = checkFits(P);
     if (problems.length) return { P: P, problems: problems, parts: null };
     var pattern = P.pattern;
-    var panel = buildPanel(P, pattern);
+    var nClear = P.clearSides, nLattice = 4 - nClear;
+    /* Skipping the lattice when no side wants one is worth ~37 ms a rebuild.
+       Nothing downstream reads panel.slats -- drawFlat computes its own. */
+    var panel = nLattice > 0 ? buildPanel(P, pattern) : null;
+    var plate = buildClearPlate(P);
     var post = buildPost(P);
     var base = buildBase(P);
     var cap = buildCap(P, pattern);
     var ring = buildRing(P);
     var leg = buildLeg(P);
-    var parts = [
-      { id: 'panel_' + pattern, qty: 4, mesh: panel, note: 'lattice face down',
-        label: (FAMILY_LABEL[PATTERN_FAMILY[pattern]] || 'Kumiko') + ' panel' },
+    /* The clear-plate row sits directly under the panel row, and either row is
+       omitted at zero quantity rather than listed as nothing to print. */
+    var parts = [];
+    if (nLattice > 0)
+      parts.push({ id: 'panel_' + pattern, qty: nLattice, mesh: panel,
+        note: 'lattice face down',
+        label: (FAMILY_LABEL[PATTERN_FAMILY[pattern]] || 'Kumiko') + ' panel' });
+    if (nClear > 0)
+      parts.push({ id: 'clear_plate', label: 'Clear side plate', qty: nClear,
+        mesh: plate, note: 'plain slab, print in clear PETG' });
+    parts.push(
       { id: 'post', label: 'Corner post', qty: 4, mesh: post, note: 'upright, use a brim' },
       { id: 'base', label: 'Base', qty: 1, mesh: base, note: 'as exported' },
       { id: 'top_cap', label: 'Top cap', qty: 1,
@@ -1910,8 +1968,7 @@ var Kumiko = (function () {
         note: 'already flipped for printing' },
       { id: 'leg', label: 'Leg', qty: 4, mesh: leg, note: 'tenon up, as exported' },
       { id: 'socket_adapter_ring', label: 'E27 adapter ring', qty: 1, mesh: ring,
-        note: 'match to your holder' }
-    ];
+        note: 'match to your holder' });
     for (var i = 0; i < parts.length; i++) {
       parts[i].vol = Math.abs(volume(parts[i].mesh.tris));
       parts[i].bbox = bbox(parts[i].mesh.tris);
@@ -1922,8 +1979,9 @@ var Kumiko = (function () {
                       s[2] <= P.bedZ + 1e-6;
     }
     return {
-      P: P, problems: [], parts: parts, slats: panel.slats,
-      assembly: assemble(P, panel.tris, post.tris, base.tris, cap.tris, leg.tris)
+      P: P, problems: [], parts: parts, slats: panel ? panel.slats : 0,
+      assembly: assemble(P, panel && panel.tris, plate.tris,
+                         post.tris, base.tris, cap.tris, leg.tris)
     };
   }
 
@@ -1936,6 +1994,7 @@ var Kumiko = (function () {
     derive: derive, checkFits: checkFits, buildAll: buildAll,
     buildPanel: buildPanel, buildPost: buildPost, buildBase: buildBase,
     buildCap: buildCap, buildRing: buildRing, buildLeg: buildLeg,
+    buildClearPlate: buildClearPlate, SIDE_NAMES: SIDE_NAMES,
     latticeSegments: latticeSegments, clipRect: clipRect, clipCircle: clipCircle,
     extrudeStack: extrudeStack, rectLoop: rectLoop, circleLoop: circleLoop,
     slatLoop: slatLoop, orient: orient, quadPrism: quadPrism,
@@ -1965,6 +2024,9 @@ var Kumiko = (function () {
       ['grid', 'Pattern pitch', 12, 45, 0.5, 'mm'],
       ['slatW', 'Slat width', 0.8, 3.2, 0.4, 'mm']
     ]},
+    /* Index 2 deliberately: page.test.js reopens the rail with `i < 2`, which
+       has to keep meaning Lantern + Pattern. */
+    { name: 'Sides', sides: true, items: [] },
     { name: 'Panel', items: [
       ['panelT', 'Thickness', 3, 7, 0.2, 'mm'],
       ['panelBorder', 'Frame border', 8, 24, 0.5, 'mm'],
@@ -2025,6 +2087,32 @@ var Kumiko = (function () {
       if (g.open) d.open = true;
       d.appendChild(el('summary', null, g.name));
       var body = el('div', 'body');
+
+      if (g.sides) {
+        /* A plan view of the lamp rather than a list: which side you are
+           toggling is the whole question, and four names in a column does not
+           answer it. */
+        var AREAS = ['front', 'back', 'left', 'right'];
+        body.appendChild(el('div', 'sidehint',
+          'Plan view. Pressed = a plain clear plate instead of a lattice panel.'));
+        var grid = el('div', 'styles sidegrid');
+        AREAS.forEach(function (area, i) {
+          var key = 'side' + i;
+          var b = el('button', null, area.charAt(0).toUpperCase() + area.slice(1));
+          b.id = 'side-' + i;
+          b.dataset.side = String(i);
+          b.style.gridArea = area;
+          b.setAttribute('aria-pressed', String(state[key] === 1));
+          b.addEventListener('click', function () {
+            state[key] = state[key] ? 0 : 1;
+            b.setAttribute('aria-pressed', String(state[key] === 1));
+            rebuild();
+          });
+          grid.appendChild(b);
+        });
+        grid.appendChild(el('div', 'mid', 'bulb'));
+        body.appendChild(grid);
+      }
 
       if (g.style) {
         /* One tab per pattern family, then only that family's buttons.  Nine
@@ -2301,7 +2389,10 @@ var Kumiko = (function () {
         x.lineTo(segs[i][1][0], segs[i][1][1]);
       }
       x.stroke();
-      meta = segs.length + ' slats · ' + P.grid.toFixed(1) + ' mm pitch';
+      /* With every side clear the pattern still drives the cap grille, so the
+         swatch stays live -- it just no longer describes a panel. */
+      meta = segs.length + ' slats · ' + P.grid.toFixed(1) + ' mm pitch' +
+             (P.clearSides === 4 ? ' · cap grille only' : '');
     }
     x.restore();
     document.getElementById('sw-name').textContent = K.PATTERN_LABEL[state.pattern];
@@ -2374,16 +2465,22 @@ var Kumiko = (function () {
       'Slats are ' + fmt(P.slatW) + ' mm wide, exactly ' + walls + ' × ' +
       fmt(P.nozzle, 1) + ' mm, so at ' + walls +
       ' wall loops they come out solid with no infill inside them.';
-    document.getElementById('s-diff').textContent =
-      fmt(P.diffuserW) + ' × ' + fmt(P.diffuserH) + ' mm';
+    /* A clear plate is its own diffuser, so only the lattice sides want a sheet. */
+    document.getElementById('s-diff').textContent = P.clearSides === 4
+      ? 'none — every side is a clear plate'
+      : fmt(P.diffuserW) + ' × ' + fmt(P.diffuserH) + ' mm × ' + (4 - P.clearSides);
     document.getElementById('s-reb').textContent = fmt(P.rebateD, 1) + ' mm';
 
     var d = K.DEFAULTS, flags = [];
     [['size','--size'],['height','--height'],['grid','--grid'],['slatW','--slat'],
-     ['socketNeck','--socket-neck']].forEach(function (f) {
+     ['socketNeck','--socket-neck'],['edgeChamfer','--edge-chamfer']].forEach(function (f) {
       if (Math.abs(state[f[0]] - d[f[0]]) > 1e-9) flags.push(f[1] + ' ' + state[f[0]]);
     });
     if (state.pattern !== d.pattern) flags.push('--pattern ' + state.pattern);
+    if (P.clearSides) {
+      var named = K.SIDE_NAMES.filter(function (n, i) { return state['side' + i]; });
+      flags.push('--clear-sides ' + (P.clearSides === 4 ? 'all' : named.join(',')));
+    }
     document.getElementById('cli').textContent =
       'python3 kumiko_lamp.py' + (flags.length ? ' ' + flags.join(' ') : '');
 
