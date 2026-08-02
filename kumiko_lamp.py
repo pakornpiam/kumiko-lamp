@@ -1450,6 +1450,12 @@ def check_fits(P: Params):
         issues.append("groove width does not give the intended slot clearance")
     if P.groove_d >= P.post / 2:
         issues.append("groove depth would cut the post in half")
+    # The post's two grooves are notches reaching in to post/2 - groove_d.  Once
+    # each is half as wide as that depth leaves, they meet across the diagonal
+    # and the post's outer corner falls off as a separate body.  check_part
+    # catches the symptom as bodies != 1; this says why.
+    if P.slot_w >= P.post - 2 * P.groove_d:
+        issues.append("panel groove cuts the corner off the post")
     if P.slat_w < 2 * P.nozzle:
         issues.append(f"slat width {P.slat_w} is under two extrusions")
     if abs(P.slat_w / P.nozzle - round(P.slat_w / P.nozzle)) > 1e-6:

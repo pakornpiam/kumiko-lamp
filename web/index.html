@@ -468,6 +468,12 @@ var Kumiko = (function () {
       bad('Groove width does not give the intended slot clearance.');
     if (P.grooveD >= P.post / 2)
       bad('Groove depth ' + P.grooveD + ' mm would cut the ' + P.post + ' mm post in half.');
+    /* The post's two grooves are notches reaching in to post/2 - grooveD.  Once
+       each is half as wide as that depth leaves, they meet across the diagonal
+       and the post's outer corner falls off as a separate body. */
+    if (P.slotW >= P.post - 2 * P.grooveD)
+      bad('Panel groove ' + P.slotW.toFixed(1) + ' mm cuts the corner off the ' +
+          P.post + ' mm post. Widen the post or shallow the groove.');
     if (P.slatW < 2 * P.nozzle)
       bad('Slat width ' + P.slatW + ' mm is under two extrusions.');
     if (Math.abs(P.slatW / P.nozzle - Math.round(P.slatW / P.nozzle)) > 1e-6)

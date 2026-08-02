@@ -36,6 +36,15 @@ check(Math.abs(P.totalHeight - 236) < 1e-9, 'assembled height 236', P.totalHeigh
 check(K.checkFits(P).length === 0, 'stock parameters pass checkFits');
 check(K.checkFits(K.derive({ slatW: 1.5 })).length > 0, 'non-nozzle-multiple slat rejected');
 check(K.checkFits(K.derive({ grooveD: 9 })).length > 0, 'groove deeper than half the post rejected');
+/* Reachable from the sliders alone: panelT maxes at 7 and slotClear at 1.0, which
+   gives slotW 8.0 against a 6.0 ceiling.  Python's build_post comes back as two
+   bodies there -- the corner falls off. */
+check(K.checkFits(K.derive({ panelT: 7, slotClear: 1.0 })).length > 0,
+      'groove that cuts the post corner off rejected');
+check(K.checkFits(K.derive({ panelT: 5.6 })).length > 0,
+      'groove exactly at the post-corner limit rejected');
+check(K.checkFits(K.derive({ panelT: 5.4 })).length === 0,
+      'groove just under the post-corner limit accepted');
 check(K.checkFits(K.derive({ edgeChamfer: 3 })).length > 0,
       'chamfer past the cord tunnel floor rejected');
 check(K.checkFits(K.derive({ edgeChamfer: 3, cableFloor: 3 })).length === 0,
