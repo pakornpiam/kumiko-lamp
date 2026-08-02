@@ -113,6 +113,19 @@ const check = (ok, msg, extra) => {
   await page.waitForTimeout(450);
   check(!(await page.isDisabled('#dl-all')), 'download re-enabled once valid');
 
+  // the edge chamfer is capped by the cord tunnel floor, and says so
+  await page.fill('#r-edgeChamfer', '3.5');
+  await page.dispatchEvent('#r-edgeChamfer', 'input');
+  await page.waitForTimeout(450);
+  check(!!(await page.$('#problems .problems')) && await page.isDisabled('#dl-all'),
+        'a chamfer past the cord tunnel floor blocks export');
+  await page.fill('#r-cableFloor', '4'); await page.dispatchEvent('#r-cableFloor', 'input');
+  await page.waitForTimeout(450);
+  check(!(await page.isDisabled('#dl-all')), 'raising the tunnel floor frees the chamfer');
+  await page.fill('#r-edgeChamfer', '2'); await page.dispatchEvent('#r-edgeChamfer', 'input');
+  await page.fill('#r-cableFloor', '2'); await page.dispatchEvent('#r-cableFloor', 'input');
+  await page.waitForTimeout(450);
+
   // download a single STL and validate the bytes
   const [dl] = await Promise.all([
     page.waitForEvent('download', { timeout: 20000 }),

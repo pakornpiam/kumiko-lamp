@@ -400,7 +400,7 @@ var Kumiko = (function () {
     panelT: 4, panelBorder: 12, slatW: 1.6, grid: 28,
     rebateD: 0.6, rebateLip: 8,
     grooveD: 6, slotClear: 0.4, panelClear: 0.3, socketClear: 0.4,
-    plinth: 5, baseT: 16, capT: 10,
+    plinth: 5, baseT: 16, capT: 10, edgeChamfer: 2,
     leg: 20, legH: 12, legTenon: 10, legTenonH: 8, legClear: 0.35,
     socketBore: 40, socketCbore: 50, socketCboreD: 4, socketNeck: 26.5,
     cableW: 9, cableH: 5, cableFloor: 2,
@@ -457,6 +457,24 @@ var Kumiko = (function () {
       bad('Adapter counterbore runs into the ventilation slots.');
     if (P.foot / 2 <= P.postCenter + P.socketSz / 2)
       bad('Post socket breaks out of the side of the base and cap.');
+    if (P.edgeChamfer >= P.foot / 2 - (P.postCenter +
+                                       Math.max(P.socketSz, P.legSocketSz) / 2))
+      bad('Edge chamfer ' + P.edgeChamfer +
+          ' mm cuts into the socket walls of the base and cap.');
+    if (2 * P.edgeChamfer >= P.capT)
+      bad('Edge chamfer ' + P.edgeChamfer + ' mm is more than half the ' +
+          P.capT + ' mm cap thickness.');
+    if (2 * P.edgeChamfer >= P.baseT)
+      bad('Edge chamfer ' + P.edgeChamfer + ' mm is more than half the ' +
+          P.baseT + ' mm base thickness.');
+    /* The cord tunnel is the one void that crosses the outer boundary.  Inside
+       a tapered band it would cross at a different parameter top and bottom,
+       and the crossing splits are computed on the bottom profile alone, so the
+       mouth would not close.  Python's CSG copes; this keeps the two builds
+       agreeing. */
+    if (P.edgeChamfer > P.cableFloor)
+      bad('Edge chamfer ' + P.edgeChamfer + ' mm breaks into the cord tunnel ' +
+          'mouth, which is only ' + P.cableFloor + ' mm off the underside.');
     if (P.openW <= P.grid || P.openH <= P.grid)
       bad('Pattern pitch ' + P.grid + ' mm is too coarse for the panel opening.');
     if (P.socketNeck >= P.socketCbore - 0.4)
@@ -1240,11 +1258,19 @@ var Kumiko = (function () {
    * judged by its midpoint -- which sits in the cord tunnel opening, dropping
    * the entire bottom wall of the plate.
    */
-  function emitWalls(out, loops, E, ys, z0, z1) {
-    var segs = [], i, j;
+  function emitWalls(out, loops, loopsTop, E, ys, z0, z1) {
+    var segs = [], segsTop = [], i, j;
     for (i = 0; i < loops.length; i++) {
       var L = loops[i];
-      for (j = 0; j < L.length; j++) segs.push([L[j], L[(j + 1) % L.length]]);
+      /* Per-loop fallback: an untapered loop reuses its own vertices, so the
+         quad collapses to the vertical case and every existing part comes out
+         bit-identical to before. */
+      var Lt = (loopsTop && loopsTop[i] && loopsTop[i].length === L.length)
+               ? loopsTop[i] : L;
+      for (j = 0; j < L.length; j++) {
+        segs.push([L[j], L[(j + 1) % L.length]]);
+        segsTop.push([Lt[j], Lt[(j + 1) % L.length]]);
+      }
     }
     for (var si = 0; si < segs.length; si++) {
       var A = segs[si][0], B = segs[si][1];
@@ -1271,11 +1297,19 @@ var Kumiko = (function () {
       }
 
       cuts.sort(function (a, b) { return a - b; });
+      /* Classification -- the band cuts, the crossing splits and the winding
+         probe -- all stays on the bottom profile, which is self-consistent
+         because the segment being classified came from `loops`.  Only the
+         emitted quad reaches up to the top profile. */
+      var At = segsTop[si][0], Bt = segsTop[si][1];
+      var tdx = Bt[0] - At[0], tdy = Bt[1] - At[1];
       for (var c = 0; c + 1 < cuts.length; c++) {
         var t0 = cuts[c], t1 = cuts[c + 1];
         if (t1 - t0 < 1e-9) continue;
         var P = t0 <= 0 ? A : [A[0] + dx * t0, A[1] + dy * t0];
         var Q = t1 >= 1 ? B : [A[0] + dx * t1, A[1] + dy * t1];
+        var Pt = t0 <= 0 ? At : [At[0] + tdx * t0, At[1] + tdy * t0];
+        var Qt = t1 >= 1 ? Bt : [At[0] + tdx * t1, At[1] + tdy * t1];
         var sx = Q[0] - P[0], sy = Q[1] - P[1], len = Math.hypot(sx, sy);
         if (len < 1e-9) continue;
         var nx = sy / len, ny = -sx / len;                 // right of travel
@@ -1283,11 +1317,11 @@ var Kumiko = (function () {
         var plus = windingAt(E, mx + nx * SIDE, my + ny * SIDE) > 0;
         var minus = windingAt(E, mx - nx * SIDE, my - ny * SIDE) > 0;
         if (plus === minus) continue;                      // buried, or outside
-        var a = P, b = Q;
-        if (plus) { a = Q; b = P; }                        // face away from solid
+        var a = P, b = Q, at = Pt, bt = Qt;
+        if (plus) { a = Q; b = P; at = Qt; bt = Pt; }      // face away from solid
         pushQuad(out,
           [a[0], a[1], z0], [b[0], b[1], z0],
-          [b[0], b[1], z1], [a[0], a[1], z1]);
+          [bt[0], bt[1], z1], [at[0], at[1], z1]);
       }
     }
   }
@@ -1381,22 +1415,44 @@ var Kumiko = (function () {
     return out;
   }
 
-  /* layers: [{loops, z0, z1}] bottom-to-top and contiguous. */
+  /* layers: [{loops, loopsTop, z0, z1}] bottom-to-top and contiguous.
+   *
+   * `loopsTop` is the profile at z1 for a layer whose walls are not vertical.
+   * It must correspond vertex-for-vertex with `loops` -- same loop count, same
+   * length per loop -- so a wall quad can interpolate between the two.  In
+   * practice only the outer loop moves, and it moves as a uniform inset, which
+   * is what makes the correspondence exact: a point at edge-parameter t below
+   * is the point at parameter t above.
+   *
+   * A void that crossed the outer boundary would break that: it would cross at
+   * a different parameter top and bottom, and the crossing splits are computed
+   * on the bottom profile alone.  checkFits keeps the cord tunnel out of the
+   * tapered bands for exactly this reason. */
   function extrudeStack(layers) {
     var out = [], all = [];
-    for (var i = 0; i < layers.length; i++) all = all.concat(layers[i].loops);
+    for (var i = 0; i < layers.length; i++) {
+      all = all.concat(layers[i].loops);
+      if (layers[i].loopsTop) all = all.concat(layers[i].loopsTop);
+    }
     var ys = bandYs(all);
-    var E = layers.map(function (L) { return edgesOf(L.loops); });
+    var Eb = layers.map(function (L) { return edgesOf(L.loops); });
+    /* The interface faces below compare the layer's TOP profile against the
+       next layer's bottom.  Reusing one edge set for both would emit a bogus
+       annular shelf exactly the size of the taper. */
+    var Et = layers.map(function (L, k) {
+      return L.loopsTop ? edgesOf(L.loopsTop) : Eb[k];
+    });
 
-    emitFaces(out, slabFaces(E[0], null, ys), layers[0].z0, false);
+    emitFaces(out, slabFaces(Eb[0], null, ys), layers[0].z0, false);
     for (i = 0; i < layers.length; i++)
-      emitWalls(out, layers[i].loops, E[i], ys, layers[i].z0, layers[i].z1);
+      emitWalls(out, layers[i].loops, layers[i].loopsTop, Eb[i], ys,
+                layers[i].z0, layers[i].z1);
     for (i = 0; i + 1 < layers.length; i++) {
       var z = layers[i].z1;
-      emitFaces(out, slabFaces(E[i], E[i + 1], ys), z, true);      // shelf
-      emitFaces(out, slabFaces(E[i + 1], E[i], ys), z, false);     // ceiling
+      emitFaces(out, slabFaces(Et[i], Eb[i + 1], ys), z, true);      // shelf
+      emitFaces(out, slabFaces(Eb[i + 1], Et[i], ys), z, false);     // ceiling
     }
-    emitFaces(out, slabFaces(E[E.length - 1], null, ys),
+    emitFaces(out, slabFaces(Et[Et.length - 1], null, ys),
               layers[layers.length - 1].z1, true);
     return weldTJunctions(out);
   }
@@ -1538,9 +1594,20 @@ var Kumiko = (function () {
     var bore = circleLoop(0, 0, P.socketBore / 2, n, false);
     var cbore = circleLoop(0, 0, P.socketCbore / 2, n, false);
     var vents = ventVoids(P);
-    var outer = rectLoop(-f, -f, f, f, true);
     var joinery = joineryVoids(P);
     var legs = legSocketVoids(P);
+    var ch = P.edgeChamfer;
+    /* 45 deg bevel on all four horizontal perimeter edges: the outer square is
+       inset by whatever chamfer depth remains at that z.  Every other loop is
+       constant through the taper, which is the precondition extrudeStack needs. */
+    function outerAt(z) {
+      var d = 0;
+      if (ch > 0) {
+        if (z < ch) d = ch - z;
+        else if (z > t - ch) d = ch - (t - z);
+      }
+      return rectLoop(-f + d, -f + d, f - d, f - d, true);
+    }
     // The tunnel runs past the bore wall and out through the side; it overlaps
     // both the bore and the outer boundary, which the winding rule handles.
     var tunnel = rectLoop(-P.cableW / 2, -f - EPS, P.cableW / 2,
@@ -1548,7 +1615,7 @@ var Kumiko = (function () {
 
     var zTunnel0 = P.cableFloor, zTunnel1 = P.cableFloor + P.cableH;
     var zJoin = t - P.grooveD, zCbore = t - P.socketCboreD;
-    var cuts = [0, zTunnel0, zTunnel1, P.legTenonH, zJoin, zCbore, t]
+    var cuts = [0, ch, zTunnel0, zTunnel1, P.legTenonH, zJoin, zCbore, t - ch, t]
       .filter(function (z) { return z > -TOL && z < t + TOL; })
       .sort(function (a, b) { return a - b; });
 
@@ -1557,11 +1624,13 @@ var Kumiko = (function () {
       var z0 = cuts[i], z1 = cuts[i + 1];
       if (z1 - z0 < TOL) continue;               // dedupe coincident breakpoints
       var zm = (z0 + z1) / 2;
-      var loops = [outer, zm >= zCbore ? cbore : bore].concat(vents);
-      if (zm >= zTunnel0 && zm <= zTunnel1) loops.push(tunnel);
-      if (zm >= zJoin) loops = loops.concat(joinery);
-      if (zm <= P.legTenonH) loops = loops.concat(legs);
-      layers.push({ loops: loops, z0: z0, z1: z1 });
+      var rest = [zm >= zCbore ? cbore : bore].concat(vents);
+      if (zm >= zTunnel0 && zm <= zTunnel1) rest.push(tunnel);
+      if (zm >= zJoin) rest = rest.concat(joinery);
+      if (zm <= P.legTenonH) rest = rest.concat(legs);
+      layers.push({ loops: [outerAt(z0)].concat(rest),
+                    loopsTop: ch > 0 ? [outerAt(z1)].concat(rest) : undefined,
+                    z0: z0, z1: z1 });
     }
     return { tris: extrudeStack(layers), manifold: true };
   }
@@ -1576,19 +1645,38 @@ var Kumiko = (function () {
     ]), manifold: true };
   }
 
-  /* Cap, modelled joinery-side-up; exported flipped so it prints as-is.
-     Unlike the Python part this has no top-edge chamfer — a tapered wall is
-     not a prism, and the chamfer is purely cosmetic. */
+  /* Cap, modelled joinery-side-up; exported flipped so it prints as-is.  Same
+     four perimeter bevels as the base -- extrudeStack carries a paired top
+     profile now, so a tapered wall is expressible. */
   function buildCap(P, pattern) {
     var f = P.foot / 2, t = P.capT, n = P.arc, r = P.capVentD / 2;
-    var outer = rectLoop(-f, -f, f, f, true);
     var vent = circleLoop(0, 0, r, n, false);
     var joinery = joineryVoids(P);
+    var ch = P.edgeChamfer;
+    function outerAt(z) {
+      var d = 0;
+      if (ch > 0) {
+        if (z < ch) d = ch - z;
+        else if (z > t - ch) d = ch - (t - z);
+      }
+      return rectLoop(-f + d, -f + d, f - d, f - d, true);
+    }
 
-    var layers = [
-      { loops: [outer, vent].concat(joinery), z0: 0, z1: P.grooveD },
-      { loops: [outer, vent], z0: P.grooveD, z1: t }
-    ];
+    /* Breakpoints rather than a fixed pair of layers, so the chamfer and the
+       groove floor can land in any order as the sliders move. */
+    var cuts = [0, ch, P.grooveD, t - ch, t]
+      .filter(function (z) { return z > -TOL && z < t + TOL; })
+      .sort(function (a, b) { return a - b; });
+    var layers = [];
+    for (var k = 0; k + 1 < cuts.length; k++) {
+      var a0 = cuts[k], a1 = cuts[k + 1];
+      if (a1 - a0 < TOL) continue;
+      var rest = [vent];
+      if ((a0 + a1) / 2 <= P.grooveD) rest = rest.concat(joinery);
+      layers.push({ loops: [outerAt(a0)].concat(rest),
+                    loopsTop: ch > 0 ? [outerAt(a1)].concat(rest) : undefined,
+                    z0: a0, z1: a1 });
+    }
     var tris = extrudeStack(layers);
 
     /* Grille slats, as separate prisms.  Unioning them into the plate is
@@ -1886,6 +1974,7 @@ var Kumiko = (function () {
     { name: 'Frame', items: [
       ['post', 'Post section', 12, 28, 0.5, 'mm'],
       ['postChamfer', 'Post chamfer', 0, 5, 0.5, 'mm'],
+      ['edgeChamfer', 'Edge chamfer', 0, 4, 0.25, 'mm'],
       ['grooveD', 'Groove depth', 3, 10, 0.5, 'mm'],
       ['plinth', 'Base reveal', 2, 14, 0.5, 'mm'],
       ['baseT', 'Base thickness', 10, 26, 0.5, 'mm'],
@@ -1909,7 +1998,10 @@ var Kumiko = (function () {
       ['socketCbore', 'Counterbore', 26, 74, 0.5, 'mm'],
       ['socketNeck', 'Adapter ring bore', 10, 52, 0.5, 'mm'],
       ['cableW', 'Cord tunnel width', 5, 16, 0.5, 'mm'],
-      ['cableH', 'Cord tunnel height', 3, 12, 0.5, 'mm']
+      ['cableH', 'Cord tunnel height', 3, 12, 0.5, 'mm'],
+      /* Exposed because it caps the edge chamfer: at the stock 2 mm floor the
+         chamfer slider is already at its limit, and this is the way out. */
+      ['cableFloor', 'Cord tunnel floor', 0.6, 5, 0.2, 'mm']
     ]},
     { name: 'Printer', items: [
       ['bedX', 'Bed X', 150, 400, 1, 'mm'],

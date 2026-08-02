@@ -69,6 +69,10 @@ class Params:
     plinth: float = 5.0          # reveal of base/cap beyond the post faces
     base_t: float = 16.0
     cap_t: float = 10.0
+    edge_chamfer: float = 2.0    # 45 deg bevel on all four horizontal
+                                 # perimeter edges of the base and the cap.
+                                 # Distinct from `post_chamfer`, which takes
+                                 # the post's vertical arris.
 
     # --- legs ------------------------------------------------------------
     # Separate parts rather than moulded onto the base: hung off the underside
@@ -1205,6 +1209,35 @@ def _leg_sockets(P: Params):
             for sx in (-1, 1) for sy in (-1, 1)]
 
 
+def _edge_chamfers(P: Params, x0, y0, x1, y1, z):
+    """
+    Cutters for the four horizontal perimeter edges of an axis-aligned
+    rectangle at height `z`.  Each is a square prism turned 45 deg about its
+    own edge direction -- the same trick `build_post` uses on the post's
+    vertical arris, rotated into the horizontal.
+
+    The prisms overshoot the corners, and the union of two perpendicular
+    wedges is exactly the mitred corner, so there is no corner special case.
+    """
+    c = P.edge_chamfer
+    if c <= 0:
+        return []
+    s = c * math.sqrt(2.0)
+    over = 2 * c + 2 * EPS
+    lx, ly = (x1 - x0) + 2 * over, (y1 - y0) + 2 * over
+    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    out = []
+    for yy in (y0, y1):
+        T = trimesh.transformations.translation_matrix((cx, yy, z))
+        R = trimesh.transformations.rotation_matrix(math.radians(45), (1, 0, 0))
+        out.append(trimesh.creation.box(extents=(lx, s, s), transform=T @ R))
+    for xx in (x0, x1):
+        T = trimesh.transformations.translation_matrix((xx, cy, z))
+        R = trimesh.transformations.rotation_matrix(math.radians(45), (0, 1, 0))
+        out.append(trimesh.creation.box(extents=(s, ly, s), transform=T @ R))
+    return out
+
+
 def build_base(P: Params) -> trimesh.Trimesh:
     """Base plate with E27 bore, adapter counterbore, vents, cord channel and
     the four leg sockets."""
@@ -1241,6 +1274,11 @@ def build_base(P: Params) -> trimesh.Trimesh:
     cutters.append(box(-P.cable_w / 2, -f - EPS, P.cable_floor,
                        P.cable_w / 2, -P.socket_bore / 2 + P.cable_w,
                        P.cable_floor + P.cable_h))
+
+    # 45 deg bevel top and bottom.  The underside one is a 45 deg overhang
+    # printed as exported, which needs no support.
+    cutters += _edge_chamfers(P, -f, -f, f, f, 0.0)
+    cutters += _edge_chamfers(P, -f, -f, f, f, t)
     return cleanup(difference(base, cutters))
 
 
@@ -1262,14 +1300,11 @@ def build_cap(P: Params, pattern: str) -> trimesh.Trimesh:
     grille = [slat_box(p, q, P.slat_w + 0.4, 0.0, t) for p, q in segs]
     cap = union([cap] + grille)
 
-    # chamfer the top perimeter (becomes a printable 45 deg flare when the cap
-    # is printed top-face-down)
-    ch = 2.0
-    ring = []
-    ring.append(difference(box(-f - EPS, -f - EPS, t - ch, f + EPS, f + EPS, t + EPS),
-                           [box(-f + ch, -f + ch, t - ch - EPS,
-                                f - ch, f - ch, t + 2 * EPS)]))
-    return cleanup(difference(cap, ring))
+    # 45 deg bevel top and bottom, matching the base.  The cap is flipped by
+    # _rotx(180) before export, so the modelled top face lands on the plate and
+    # its bevel prints as a 45 deg flare -- no support either way up.
+    return cleanup(difference(cap, _edge_chamfers(P, -f, -f, f, f, 0.0)
+                                 + _edge_chamfers(P, -f, -f, f, f, t)))
 
 
 def build_socket_ring(P: Params) -> trimesh.Trimesh:
@@ -1405,6 +1440,15 @@ def check_fits(P: Params):
         issues.append("adapter counterbore runs into the ventilation slots")
     if P.foot / 2 <= P.post_center + P.socket_sz / 2:
         issues.append("post socket breaks out of the side of the base/cap")
+    if P.edge_chamfer >= P.foot / 2 - (P.post_center
+                                       + max(P.socket_sz, P.leg_socket_sz) / 2):
+        issues.append("edge chamfer cuts into the socket walls of the base/cap")
+    if 2 * P.edge_chamfer >= P.cap_t:
+        issues.append("top and bottom chamfers meet through the cap")
+    if 2 * P.edge_chamfer >= P.base_t:
+        issues.append("top and bottom chamfers meet through the base")
+    if P.edge_chamfer > P.cable_floor:
+        issues.append("edge chamfer breaks into the cord tunnel mouth")
     if P.panel_border <= P.groove_d:
         issues.append("panel frame narrower than its groove engagement")
     if P.rebate_lip >= P.panel_border:
@@ -1519,6 +1563,8 @@ def main(argv=None):
     ap.add_argument("--grid", type=float, help="pattern pitch (mm)")
     ap.add_argument("--socket-neck", type=float,
                     help="adapter ring bore for your E27 holder (mm)")
+    ap.add_argument("--edge-chamfer", type=float,
+                    help="bevel on the base and cap perimeter edges (mm)")
     ap.add_argument("--split-posts", action="store_true",
                     help="also export the two-piece post")
     ap.add_argument("--all", action="store_true",
@@ -1533,7 +1579,8 @@ def main(argv=None):
     P = Params()
     for attr, val in (("size", args.size), ("height", args.height),
                       ("slat_w", args.slat), ("grid", args.grid),
-                      ("socket_neck", args.socket_neck)):
+                      ("socket_neck", args.socket_neck),
+                      ("edge_chamfer", args.edge_chamfer)):
         if val is not None:
             setattr(P, attr, val)
 

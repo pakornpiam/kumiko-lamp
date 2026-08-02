@@ -36,6 +36,12 @@ check(Math.abs(P.totalHeight - 236) < 1e-9, 'assembled height 236', P.totalHeigh
 check(K.checkFits(P).length === 0, 'stock parameters pass checkFits');
 check(K.checkFits(K.derive({ slatW: 1.5 })).length > 0, 'non-nozzle-multiple slat rejected');
 check(K.checkFits(K.derive({ grooveD: 9 })).length > 0, 'groove deeper than half the post rejected');
+check(K.checkFits(K.derive({ edgeChamfer: 3 })).length > 0,
+      'chamfer past the cord tunnel floor rejected');
+check(K.checkFits(K.derive({ edgeChamfer: 3, cableFloor: 3 })).length === 0,
+      'chamfer clears once the tunnel floor is raised');
+check(K.checkFits(K.derive({ edgeChamfer: 5, cableFloor: 5 })).length > 0,
+      'chamfer into the socket walls rejected');
 
 console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
@@ -91,9 +97,11 @@ console.log('\nparts vs Python trimesh');
 /* Strictly manifold parts must match the Python volume closely.  The panel and
    cap carry lattices built as overlapping slat prisms, so the divergence
    theorem double-counts every crossing: their volume can only come out HIGH,
-   and is bounded rather than matched.  The cap is additionally ~1.5 cm3 up on
-   Python because the browser build omits the cosmetic top-edge chamfer. */
-const PY = { post: 56.5, base: 509.0, top_cap: 318.3, socket_adapter_ring: 5.5,
+   and is bounded rather than matched.  Both builds now carry the same four
+   45 deg perimeter chamfers, so the cap's remaining excess is the grille
+   alone -- if this drifts DOWN through the lower bound, the browser's chamfer
+   is removing more than Python's. */
+const PY = { post: 56.5, base: 506.0, top_cap: 318.3, socket_adapter_ring: 5.5,
              leg: 5.6 };
 const LATTICE = { top_cap: 1 };
 const built = {
@@ -147,7 +155,11 @@ for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'dok_phut_tan' },
                  { pattern: 'thai_rosette' },
                  { pattern: 'thai_rosette', size: 150, height: 170 },
-                 { legH: 30 }, { legTenonH: 4, legClear: 0.5 }]) {
+                 { legH: 30 }, { legTenonH: 4, legClear: 0.5 },
+                 { edgeChamfer: 0 }, { edgeChamfer: 3.5, cableFloor: 4 },
+                 /* thinnest allowed cap with a near-maximal chamfer: only 1 mm
+                    of straight wall left between the two tapered bands */
+                 { edgeChamfer: 3, capT: 7, baseT: 15, cableFloor: 3 }]) {
   const r = K.buildAll(v);
   check(r.problems.length === 0 && r.parts && r.parts.every(p => p.vol > 0),
         'builds: ' + JSON.stringify(v));
