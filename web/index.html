@@ -2195,10 +2195,12 @@ var Kumiko = (function () {
     gl = canvas.getContext('webgl',
       { antialias: true, alpha: false, preserveDrawingBuffer: true });
     if (!gl) return false;
-    var vs = 'attribute vec3 aPos;attribute vec3 aNor;attribute vec3 aCol;' +
-      'uniform mat4 uMVP;varying vec3 vN;varying vec3 vP;varying vec3 vC;' +
+    /* aCol carries alpha in .a so a clear side can blend; everything else
+       uploads 1.0 and the opaque pass is unchanged. */
+    var vs = 'attribute vec3 aPos;attribute vec3 aNor;attribute vec4 aCol;' +
+      'uniform mat4 uMVP;varying vec3 vN;varying vec3 vP;varying vec4 vC;' +
       'void main(){vN=aNor;vP=aPos;vC=aCol;gl_Position=uMVP*vec4(aPos,1.0);}';
-    var fs = 'precision mediump float;varying vec3 vN;varying vec3 vP;varying vec3 vC;' +
+    var fs = 'precision mediump float;varying vec3 vN;varying vec3 vP;varying vec4 vC;' +
       'uniform vec3 uBulb;uniform vec3 uKey;' +
       'void main(){vec3 N=normalize(vN);' +
       'float key=max(dot(N,normalize(uKey)),0.0);' +
@@ -2206,8 +2208,8 @@ var Kumiko = (function () {
       'vec3 L=uBulb-vP;float d=length(L);' +
       'float pt=max(dot(N,normalize(L)),0.0)*(1.0/(1.0+d*d*0.0007))*1.5;' +
       'vec3 warm=vec3(1.0,0.80,0.52);' +
-      'vec3 c=vC*(0.24+key*0.72+fill)+warm*vC*pt*0.85;' +
-      'gl_FragColor=vec4(pow(clamp(c,0.0,1.0),vec3(0.85)),1.0);}';
+      'vec3 c=vC.rgb*(0.24+key*0.72+fill)+warm*vC.rgb*pt*0.85;' +
+      'gl_FragColor=vec4(pow(clamp(c,0.0,1.0),vec3(0.85)),vC.a);}';
     function sh(t, src) {
       var s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s);
       if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
@@ -2246,19 +2248,25 @@ var Kumiko = (function () {
   var COLORS = {
     panel: [0.86, 0.75, 0.55], post: [0.66, 0.44, 0.21], plate: [0.49, 0.32, 0.15]
   };
+  var CLEAR_MAT = { rgb: [0.80, 0.87, 0.92], a: 0.34 };
 
   function uploadScene() {
     if (!gl || !model || !model.parts) return;
     var pos = [], nor = [], col = [];
     var H = model.P.totalHeight;
-    model.assembly.forEach(function (part) {
-      var c = COLORS[part.kind] || COLORS.panel;
+    buf.clear = [];          // one draw range per clear plate, for the blend pass
+
+    function emitPart(part) {
+      var isClear = !!part.clear;
+      var c = isClear ? CLEAR_MAT.rgb : (COLORS[part.kind] || COLORS.panel);
+      var alpha = isClear ? CLEAR_MAT.a : 1;
       var off = 0;
       if (viewMode === 'exp') {
         if (part.name === 'cap') off = H * 0.34;
         else if (part.kind === 'panel') off = H * 0.12;
       }
-      var t = part.tris;
+      var t = part.tris, start = pos.length / 3;
+      var cx = 0, cy = 0, cz = 0, nv = 0;
       for (var i = 0; i < t.length; i += 9) {
         var ux = t[i+3]-t[i], uy = t[i+4]-t[i+1], uz = t[i+5]-t[i+2];
         var vx = t[i+6]-t[i], vy = t[i+7]-t[i+1], vz = t[i+8]-t[i+2];
@@ -2266,12 +2274,22 @@ var Kumiko = (function () {
         var L = Math.hypot(nx, ny, nz) || 1;
         nx /= L; ny /= L; nz /= L;
         for (var v = 0; v < 3; v++) {
-          pos.push(t[i+v*3], t[i+v*3+1], t[i+v*3+2] + off);
+          var px = t[i+v*3], py = t[i+v*3+1], pz = t[i+v*3+2] + off;
+          pos.push(px, py, pz);
           nor.push(nx, ny, nz);
-          col.push(c[0], c[1], c[2]);
+          col.push(c[0], c[1], c[2], alpha);
+          cx += px; cy += py; cz += pz; nv++;
         }
       }
-    });
+      if (isClear && nv)
+        buf.clear.push({ start: start, count: nv, c: [cx/nv, cy/nv, cz/nv] });
+    }
+
+    /* Two passes, so every opaque vertex precedes every translucent one: the
+       opaque pass writes depth and the blended pass then tests against it. */
+    model.assembly.forEach(function (p) { if (!p.clear) emitPart(p); });
+    buf.nOpaque = pos.length / 3;
+    model.assembly.forEach(function (p) { if (p.clear) emitPart(p); });
     buf.n = pos.length / 3;
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
@@ -2333,13 +2351,39 @@ var Kumiko = (function () {
     gl.uniform3f(gl.getUniformLocation(prog, 'uBulb'), 0, 0, model.P.baseT + 45);
     gl.uniform3f(gl.getUniformLocation(prog, 'uKey'), 0.45, -0.8, 0.75);
 
-    [['aPos', buf.pos], ['aNor', buf.nor], ['aCol', buf.col]].forEach(function (a) {
-      var loc = gl.getAttribLocation(prog, a[0]);
-      gl.bindBuffer(gl.ARRAY_BUFFER, a[1]);
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
-    });
-    gl.drawArrays(gl.TRIANGLES, 0, buf.n);
+    [['aPos', buf.pos, 3], ['aNor', buf.nor, 3], ['aCol', buf.col, 4]]
+      .forEach(function (a) {
+        var loc = gl.getAttribLocation(prog, a[0]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, a[1]);
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, a[2], gl.FLOAT, false, 0, 0);
+      });
+
+    gl.drawArrays(gl.TRIANGLES, 0, buf.nOpaque);
+
+    if (buf.clear && buf.clear.length) {
+      /* Back-face culling for this pass only.  Every part comes out of the
+         core wound outward, so culling makes a closed slab blend exactly once;
+         without it a ray crosses two surfaces and 0.34 alpha reads as 0.56.
+         Then draw the plates farthest-first, because depth writes are off and
+         blending does not commute -- at most four ranges, so the sort is free. */
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.enable(gl.CULL_FACE);
+      gl.cullFace(gl.BACK);
+      gl.depthMask(false);
+      buf.clear.slice().sort(function (p, q) {
+        return Math.hypot(q.c[0]-ex, q.c[1]-ey, q.c[2]-ez) -
+               Math.hypot(p.c[0]-ex, p.c[1]-ey, p.c[2]-ez);
+      }).forEach(function (r) {
+        gl.drawArrays(gl.TRIANGLES, r.start, r.count);
+      });
+      /* Restore: draw() runs on every pointermove, and a leaked BLEND or
+         CULL_FACE would corrupt the next frame's opaque pass. */
+      gl.depthMask(true);
+      gl.disable(gl.CULL_FACE);
+      gl.disable(gl.BLEND);
+    }
   }
 
   // ---------------------------------------------------------------- flat swatch
