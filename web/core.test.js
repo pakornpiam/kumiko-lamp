@@ -67,7 +67,7 @@ check(K.checkFits(K.derive({ plateT: 0.6 })).length === 0,
 console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
                     kagome: 248, masu_tsunagi: 292, goma_gara: 162,
-                    bishamon_kikkou: 204, kranok_kan_khot: 550,
+                    bishamon_kikkou: 204, seigaiha: 972, kranok_kan_khot: 550,
                     dok_phut_tan: 980 };
 for (const name of Object.keys(K.PATTERNS)) {
   const segs = K.clipRect(K.PATTERNS[name](P.openW, P.openH, P.grid),
@@ -78,8 +78,8 @@ for (const name of Object.keys(K.PATTERNS)) {
 
 console.log('\npattern families and cap safety');
 check(K.PATTERN_FAMILY.kranok_kan_khot === 'laithai', 'kranok is in the Lai Thai family');
-check(Object.keys(K.PATTERNS).filter(n => K.PATTERN_FAMILY[n] === 'kumiko').length === 8,
-      'eight kumiko patterns');
+check(Object.keys(K.PATTERNS).filter(n => K.PATTERN_FAMILY[n] === 'kumiko').length === 9,
+      'nine kumiko patterns');
 check(Object.keys(K.PATTERNS).filter(n => K.PATTERN_FAMILY[n] === 'laithai').length === 2,
       'two Lai Thai patterns');
 check(K.capPattern('asanoha') === 'asanoha', 'cap keeps a kumiko pattern');
@@ -96,7 +96,7 @@ console.log('');
 console.log('region patterns');
 check(K.isRegion('thai_rosette'), 'thai_rosette is a region pattern');
 check(!K.isRegion('asanoha'), 'asanoha is not a region pattern');
-check(K.patternNames().length === 11, `11 selectable patterns`,
+check(K.patternNames().length === 12, `12 selectable patterns`,
       String(K.patternNames().length));
 {
   const cont = K.PATTERN_REGIONS.thai_rosette(P.openW, P.openH);
@@ -207,6 +207,7 @@ for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'kranok_kan_khot' },
                  { pattern: 'kranok_kan_khot', grid: 16 },
                  { pattern: 'dok_phut_tan' },
+                 { pattern: 'seigaiha' }, { pattern: 'seigaiha', grid: 16 },
                  { pattern: 'thai_rosette' },
                  { pattern: 'thai_rosette', size: 150, height: 170 },
                  { legH: 30 }, { legTenonH: 4, legClear: 0.5 },

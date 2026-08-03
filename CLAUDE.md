@@ -119,13 +119,30 @@ Write `f(w, h, s) -> [((x0,y0),(x1,y1)), ...]` centred on the origin and registe
 - Slats that land on another slat must **overlap** it, never merely touch. Two slats abutting
   along a single tangent edge union into geometry that does not survive the float32 STL
   round-trip, and the part reloads with unpaired edges. Use `_extend` / `extend` — and for
-  curves `_stroke` / `strokePts`, which apply it along a whole polyline.
+  curves `_stroke` / `strokePts`, which apply it along a whole polyline. `_arc` / `arcPts`
+  and `_cubic` / `cubic` sample a curve at `n+1` points, so `_stroke` lays down `n` chords.
+- **Keep at least ~7° of turn between consecutive chords.** Two slats along a gently curving
+  polyline are near-coplanar, and below about 7° the union leaves a pinched edge that costs
+  the part its watertightness at *some* pitches. Measured on `seigaiha`'s 110° arcs: 14
+  chords (7.9°) passes everywhere, 16 (6.9°) fails the cap at `--grid 12`, 20 (5.5°) fails
+  it at 16 and 22, 24 (4.6°) also fails the panel. **A finer curve is not a safer one.**
+  Faceting stops mattering long before that limit — at 14 chords the sagitta is already
+  under 0.1 mm, a quarter of a nozzle — so nothing is lost by staying coarse. `_stroke`
+  cannot see this; it is a property of the sampling.
 
 Patterns also carry metadata in both files: `PATTERN_FAMILY` (`kumiko` | `laithai` — drives
 the tab strip in the rail, which is generated, so a new family needs no UI code) and
 `PATTERN_CAP_SAFE`, built from the `CAP_UNSAFE` list. The cap clips its field to a disc and
 `check_part` requires one body; a lattice always survives that, a curve need not. Name a
 pattern in `CAP_UNSAFE` and `cap_pattern()` / `capPattern()` swaps in `CAP_FALLBACK`.
+
+**A curve pattern can still be a tile.** `seigaiha` is the first: a periodic field of arcs
+rather than a lattice, so it overshoots and clips like any tile, and it is cap-safe. What
+holds it together is worth knowing, because concentric arcs never touch each other — two
+circles of radius `r1`, `r2` with centres `a` apart cross only where
+`|r1 - r2| < a < r1 + r2`, so **every radius must be large enough to reach its neighbour**
+or that arc is a separate body. Seigaiha's three radii all clear it, which turns each row
+into one chain running off both sides into the frame.
 
 **Not every pattern is a tile.** `kranok_kan_khot` and `dok_phut_tan` are single panel-sized
 compositions laid out as fractions of the opening. Two things follow:

@@ -680,6 +680,22 @@ var Kumiko = (function () {
     return [[p[0] - ux, p[1] - uy], [q[0] + ux, q[1] + uy]];
   }
   function mid2(p, q) { return [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]; }
+  function strokePts(ss, pts, ov) {
+    for (var i = 0; i < pts.length - 1; i++) {
+      var e = extend(pts[i], pts[i + 1], ov);
+      ss.add(e[0], e[1]);
+    }
+  }
+  /* Circular arc centred on (cx, cy), sampled at n+1 points — the same n+1
+     convention cubic() uses, so strokePts lays down exactly n chords. */
+  function arcPts(cx, cy, r, a0, a1, n) {
+    var o = [];
+    for (var i = 0; i <= n; i++) {
+      var t = a0 + (a1 - a0) * i / n;
+      o.push([cx + r * Math.cos(t), cy + r * Math.sin(t)]);
+    }
+    return o;
+  }
 
   /* Kagome: the medial lattice of the triangular grid — joining the three edge
      midpoints of every triangle gives the woven basket net directly. */
@@ -766,18 +782,41 @@ var Kumiko = (function () {
     return ss.segs;
   }
 
+  /* Seigaiha: rows of overlapping fans, three concentric arcs each.  Concentric
+     arcs never touch, so the neighbouring fan is what ties the field together —
+     all nine radius pairs cross inside the ±55° sweep, the shallowest of them at
+     60°, so every row is one chain running out into the frame.  The chord counts
+     are bounded by the boolean rather than by smoothness: under about 7° of turn
+     per chord two consecutive slats are near coplanar and the union leaves a
+     pinched edge.  Sagitta at 14/13/12 is already under 0.1 mm. */
+  var SEIGAIHA_ARCS = [[1.00, 14], [0.85, 13], [0.70, 12]];
+  var SEIGAIHA_SWEEP = 55;
+  function patSeigaiha(w, h, s) {
+    var ss = new SegSet(), R = 1.5 * s, a = R, v = 0.6 * R, ov = s * 0.05;
+    var a0 = (90 - SEIGAIHA_SWEEP) * Math.PI / 180;
+    var a1 = (90 + SEIGAIHA_SWEEP) * Math.PI / 180;
+    var i0 = Math.floor(-w / 2 / a) - 2, i1 = Math.ceil(w / 2 / a) + 2;
+    var j0 = Math.floor(-h / 2 / v) - 2, j1 = Math.ceil(h / 2 / v) + 2;
+    for (var j = j0; j <= j1; j++) {
+      // JS -1 % 2 is -1 where Python's is 1; without this the rows below the
+      // origin would offset the wrong way and still pass a slat-count check.
+      var cy = j * v, off = (((j % 2) + 2) % 2) * a / 2;
+      for (var i = i0; i <= i1; i++) {
+        var cx = i * a + off;
+        for (var k = 0; k < SEIGAIHA_ARCS.length; k++)
+          strokePts(ss, arcPts(cx, cy, SEIGAIHA_ARCS[k][0] * R, a0, a1,
+                               SEIGAIHA_ARCS[k][1]), ov);
+      }
+    }
+    return ss.segs;
+  }
+
   // ------------------------------------------------------------------
   // Lai Thai (ลายไทย) — curvilinear, so stroked as polylines rather than
   // laid out on a lattice.  Every vertex Y a curve introduces is another
   // band in extrudeStack, so the tessellation counts here are frugal on
   // purpose; see the cost note in CLAUDE.md.
   // ------------------------------------------------------------------
-  function strokePts(ss, pts, ov) {
-    for (var i = 0; i < pts.length - 1; i++) {
-      var e = extend(pts[i], pts[i + 1], ov);
-      ss.add(e[0], e[1]);
-    }
-  }
   function cubic(p0, p1, p2, p3, n) {
     var o = [];
     for (var i = 0; i <= n; i++) {
@@ -1052,6 +1091,7 @@ var Kumiko = (function () {
     masu_tsunagi: patMasu,
     goma_gara: patGoma,
     bishamon_kikkou: patBishamon,
+    seigaiha: patSeigaiha,
     kranok_kan_khot: patKranok,
     dok_phut_tan: patDokPhutTan
   };
@@ -1060,6 +1100,7 @@ var Kumiko = (function () {
     kikkou: 'Kikkou', kawari_asanoha: 'Kawari-asanoha',
     kagome: 'Kagome', masu_tsunagi: 'Masu-tsunagi',
     goma_gara: 'Goma-gara', bishamon_kikkou: 'Bishamon-kikkou',
+    seigaiha: 'Seigaiha',
     kranok_kan_khot: 'Kranok Kan Khot', dok_phut_tan: 'Dok Phut Tan',
     thai_rosette: 'Thai Rosette'
   };

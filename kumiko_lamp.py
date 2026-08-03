@@ -515,6 +515,19 @@ def _extend(p, q, d):
     return (p[0] - ux, p[1] - uy), (q[0] + ux, q[1] + uy)
 
 
+def _stroke(ss, pts, ov):
+    """Add a polyline as a chain of overlapping slats."""
+    for i in range(len(pts) - 1):
+        ss.add(*_extend(pts[i], pts[i + 1], ov))
+
+
+def _arc(cx, cy, r, a0, a1, n):
+    """Circular arc centred on (cx, cy), sampled at n+1 points."""
+    return [(cx + r * math.cos(a0 + (a1 - a0) * i / n),
+             cy + r * math.sin(a0 + (a1 - a0) * i / n))
+            for i in range(n + 1)]
+
+
 def pat_kagome(w, h, s):
     """
     Kagome (basket weave): the medial lattice of the triangular grid.
@@ -633,6 +646,61 @@ def pat_bishamon(w, h, r):
     return ss.segs
 
 
+# One seigaiha fan: (radius as a fraction of R, chords across the sweep).
+#
+# The chord counts are bounded by the boolean, not chosen for smoothness.  Two
+# slats along a gently curving polyline are near coplanar, and below roughly 7
+# degrees of turn per chord their union leaves a pinched edge that costs the
+# part its watertightness at some pitches.  At 14/13/12 the sagitta is already
+# under 0.1 mm -- a quarter of a nozzle -- so there is nothing to see for going
+# finer anyway.
+_SEIGAIHA_ARCS = ((1.00, 14), (0.85, 13), (0.70, 12))
+_SEIGAIHA_SWEEP = 55.0
+
+
+def pat_seigaiha(w, h, s):
+    """
+    Seigaiha (青海波, "blue sea wave"): rows of overlapping fans, each three
+    concentric arcs struck about one centre.
+
+    Fan radius is 1.5 * s; centres sit a = R apart along a row, rows are
+    v = 0.6 R apart, and alternate rows are offset by a / 2.
+
+    Concentric arcs never touch each other, so what holds the field together is
+    the neighbouring fan.  Two circles of radius r1 and r2 whose centres are a
+    apart cross at x = (a^2 + r1^2 - r2^2) / 2a, which for a = R puts all nine
+    radius pairs inside the drawn span -- the outermost of them (1.00 R against
+    the neighbour's 0.70 R) 49 degrees off vertical, and the shallowest crossing
+    angle anywhere in the field is 60 degrees, so none of them is a graze.  Each
+    row is therefore one continuous chain running off both sides of the opening
+    and burying itself in the frame.
+
+    +/-55 degrees is what puts that last crossing inside the arc, and it must
+    not be opened much further: past 55.15 degrees (0.6 + 0.7 cos sweep < 1) the
+    bottom of one row starts cutting through the top of the row below at a
+    glancing angle.
+    """
+    ss = SegSet()
+    R = 1.5 * s
+    a = R
+    v = 0.6 * R
+    ov = s * 0.05
+    a0 = math.radians(90.0 - _SEIGAIHA_SWEEP)
+    a1 = math.radians(90.0 + _SEIGAIHA_SWEEP)
+    i0 = int(math.floor(-w / 2 / a)) - 2
+    i1 = int(math.ceil(w / 2 / a)) + 2
+    j0 = int(math.floor(-h / 2 / v)) - 2
+    j1 = int(math.ceil(h / 2 / v)) + 2
+    for j in range(j0, j1 + 1):
+        cy = j * v
+        off = (j % 2) * a / 2.0
+        for i in range(i0, i1 + 1):
+            cx = i * a + off
+            for f, n in _SEIGAIHA_ARCS:
+                _stroke(ss, _arc(cx, cy, f * R, a0, a1, n), ov)
+    return ss.segs
+
+
 # --------------------------------------------------------------------------
 # Lai Thai (ลายไทย) patterns
 #
@@ -641,12 +709,6 @@ def pat_bishamon(w, h, r):
 # browser core than it does here -- see the note in CLAUDE.md -- so the
 # tessellation counts below are deliberately frugal.
 # --------------------------------------------------------------------------
-
-def _stroke(ss, pts, ov):
-    """Add a polyline as a chain of overlapping slats."""
-    for i in range(len(pts) - 1):
-        ss.add(*_extend(pts[i], pts[i + 1], ov))
-
 
 def _cubic(p0, p1, p2, p3, n):
     """Cubic Bezier, sampled at n+1 points."""
@@ -1012,6 +1074,7 @@ PATTERNS = {
     "masu_tsunagi": pat_masu,
     "goma_gara": pat_goma,
     "bishamon_kikkou": pat_bishamon,
+    "seigaiha": pat_seigaiha,
     "kranok_kan_khot": pat_kranok_kan_khot,
     "dok_phut_tan": pat_dok_phut_tan,
 }
