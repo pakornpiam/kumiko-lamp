@@ -170,6 +170,19 @@ a { color: var(--ai); }
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
   text-transform: uppercase; color: var(--sumi-3);
 }
+.mast-side { display: flex; align-items: center; gap: 18px; margin-left: auto; }
+.lang-switch { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono);
+  font-size: 11px; color: var(--sumi-3); cursor: pointer; user-select: none; }
+.lang-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.lang-switch .track { width: 42px; height: 23px; padding: 2px; border-radius: 13px;
+  background: var(--edge); border: 1px solid var(--edge); transition: background .18s; }
+.lang-switch .thumb { display: block; width: 17px; height: 17px; border-radius: 50%;
+  background: var(--washi); box-shadow: var(--shadow); transition: transform .18s; }
+.lang-switch input:checked + .track { background: var(--ai); border-color: var(--ai); }
+.lang-switch input:checked + .track .thumb { transform: translateX(19px); }
+.lang-switch input:focus-visible + .track { outline: 2px solid var(--ai); outline-offset: 3px; }
+.lang-switch .active { color: var(--sumi); font-weight: 600; }
+@media (max-width: 620px) { .mast-side { width: 100%; justify-content: space-between; } }
 .swatch .meaning {
   border-top: 1px solid var(--edge); padding-top: 10px;
   color: var(--sumi-2); font-size: 13.5px; line-height: 1.45;
@@ -273,7 +286,15 @@ pre.cmd {
          part prints flat with no supports, and nothing needs glue. Change anything
          below and the joinery re-solves itself.</p>
     </div>
-    <div class="dims"><b id="d-overall">&mdash;</b><span id="d-sub">&mdash;</span></div>
+    <div class="mast-side">
+      <label class="lang-switch" id="lang-label">
+        <span id="lang-en" class="active">EN</span>
+        <input id="lang-toggle" type="checkbox" role="switch" aria-label="Switch language to Thai">
+        <span class="track" aria-hidden="true"><span class="thumb"></span></span>
+        <span id="lang-th">ไทย</span>
+      </label>
+      <div class="dims"><b id="d-overall">&mdash;</b><span id="d-sub">&mdash;</span></div>
+    </div>
   </div>
 
   <div class="bench">
@@ -2097,6 +2118,112 @@ var Kumiko = (function () {
   'use strict';
   var K = Kumiko;
 
+  // ----------------------------------------------------------- localisation
+  var lang = 'en';
+  try { if (localStorage.getItem('kumiko-language') === 'th') lang = 'th'; } catch (_) {}
+  var TH = {
+    'Lantern':'ตัวโคม', 'Pattern':'ลวดลาย', 'Panel':'แผงโคม', 'Frame':'โครง',
+    'Legs':'ขา', 'Joints':'รอยต่อ', 'Lamp holder':'ขั้วหลอดไฟ', 'Printer':'เครื่องพิมพ์',
+    'Width':'ความกว้าง', 'Height':'ความสูง', 'Pattern pitch':'ระยะลาย', 'Slat width':'ความกว้างซี่',
+    'Thickness':'ความหนา', 'Frame border':'ขอบกรอบ', 'Diffuser plate':'แผ่นกระจายแสง',
+    'Diffuser rebate':'ร่องแผ่นกระจายแสง', 'Rebate lip inset':'ระยะขอบร่อง',
+    'Post section':'ขนาดเสา', 'Post chamfer':'ลบมุมเสา', 'Edge chamfer':'ลบมุมขอบ',
+    'Groove depth':'ความลึกร่อง', 'Base reveal':'ขอบฐานยื่น', 'Base thickness':'ความหนาฐาน',
+    'Cap thickness':'ความหนาฝา', 'Cap vent':'ช่องระบายอากาศฝา', 'Leg section':'ขนาดขา',
+    'Leg height':'ความสูงขา', 'Tenon section':'ขนาดเดือย', 'Tenon depth':'ความลึกเดือย',
+    'Tenon clearance':'ระยะเผื่อเดือย', 'Groove clearance':'ระยะเผื่อร่อง',
+    'Panel width clearance':'ระยะเผื่อความกว้างแผง', 'Post socket clearance':'ระยะเผื่อเบ้าเสา',
+    'Bore':'รูขั้ว', 'Counterbore':'รูบ่าขั้ว', 'Adapter ring bore':'รูวงแหวนแปลง',
+    'Cord tunnel width':'ความกว้างช่องสายไฟ', 'Cord tunnel height':'ความสูงช่องสายไฟ',
+    'Cord tunnel floor':'พื้นช่องสายไฟ', 'Bed X':'พื้นที่พิมพ์ X', 'Bed Y':'พื้นที่พิมพ์ Y',
+    'Bed Z':'พื้นที่พิมพ์ Z', 'Nozzle':'หัวฉีด', 'Kumiko':'คุมิโกะ', 'Lai Thai':'ลายไทย',
+    'Assembled':'ประกอบแล้ว', 'Exploded':'แยกชิ้นส่วน', 'Meaning':'ความหมาย',
+    'fits':'พิมพ์ได้', 'too big':'ใหญ่เกินไป', 'This lamp will not go together':'ไม่สามารถประกอบโคมนี้ได้',
+    'Fix the problems above first.':'แก้ไขปัญหาด้านบนก่อน',
+    'Some parts are larger than the bed.':'ชิ้นส่วนบางชิ้นใหญ่กว่าพื้นที่พิมพ์',
+    'panel':'แผง', 'slats':'ซี่', 'contours':'เส้นขอบ', 'imported artwork':'ภาพนำเข้า', 'pitch':'ระยะลาย'
+  };
+  function t(s) { return lang === 'th' && TH[s] ? TH[s] : s; }
+
+  var PATTERN_TH = {
+    asanoha:'อาซาโนะฮะ (Asanoha)', mitsukude:'มิตสึคุเดะ (Mitsukude)',
+    kikkou:'คิกโค (Kikkou)', kawari_asanoha:'คาวาริอาซาโนะฮะ (Kawari-asanoha)',
+    kagome:'คาโกเมะ (Kagome)', masu:'มาสุ (Masu)', masu_tsunagi:'มาสึสึนางิ (Masu-tsunagi)',
+    senbon:'เซ็นบง (Senbon)', goma_gara:'โกมะการะ (Goma-gara)',
+    bishamon_kikkou:'บิชามงคิกโค (Bishamon-kikkou)', seigaiha:'เซไกฮะ (Seigaiha)',
+    kranok_kan_khot:'กระหนกก้านขด (Kranok Kan Khot)',
+    dok_phut_tan:'ดอกพุดตาน (Dok Phut Tan)', thai_rosette:'ดอกประจำยามไทย (Thai Rosette)'
+  };
+  var MEANING_TH = {
+    asanoha:'ใบกัญชง — คำอวยพรให้เติบโตแข็งแรง อดทน และมีสุขภาพดี',
+    mitsukude:'เส้นสามสายมาบรรจบ — ความสมดุล ความเชื่อมโยง และพลังจากความสามัคคี',
+    kikkou:'หกเหลี่ยมกระดองเต่า — อายุยืน ความมั่นคง และโชคดี',
+    kawari_asanoha:'ลายใบกัญชงแบบประยุกต์ สื่อถึงการเติบโตและความแข็งแกร่ง',
+    kagome:'ตาตะกร้าสาน — ตามคติเดิมใช้คุ้มครองและปัดเป่าสิ่งไม่ดี',
+    masu:'กล่องตวงทรงสี่เหลี่ยม — ความอุดมสมบูรณ์ ความรุ่งเรือง และความซื่อตรง',
+    masu_tsunagi:'กล่องตวงที่เชื่อมต่อกัน — ความรุ่งเรืองต่อเนื่องและสายสัมพันธ์ยั่งยืน',
+    senbon:'เส้นขนานนับพัน — ความอุดมสมบูรณ์ ความพากเพียร และหลายเส้นทางที่ก้าวไปด้วยกัน',
+    goma_gara:'เมล็ดงา — ลายเมล็ดเล็กที่สื่อถึงความอุดมสมบูรณ์และชีวิตที่งอกงาม',
+    bishamon_kikkou:'กระดองเต่าแห่งบิชามง — สัญลักษณ์คล้ายเกราะ สื่อถึงการคุ้มครอง ศักดิ์ศรี และโชคลาภ',
+    seigaiha:'คลื่นทะเลสีคราม — ชีวิตสงบสุขและโชคดีต่อเนื่องไม่สิ้นสุด',
+    kranok_kan_khot:'เปลวกระหนกเถาโค้ง — การเติบโตอย่างสง่างาม พลังชีวิต และชีวิตที่คลี่คลาย',
+    dok_phut_tan:'ดอกพุดตาน — ความงามซ้อนชั้น การเบ่งบาน และความอุดมสมบูรณ์ของธรรมชาติ',
+    thai_rosette:'ดอกสี่ทิศ — ความกลมกลืน สมดุล และความงามที่แผ่ออกจากศูนย์กลางร่วมกัน'
+  };
+
+  var STATIC_TH = {
+    '.kicker':'โคมคุมิโกะ · ปรับแต่งตามพารามิเตอร์',
+    '.mast h1':'ออกแบบโคมของคุณ แล้วดาวน์โหลดไฟล์ STL',
+    '.mast p':'โคมคุมิโกะสี่ด้านพร้อมรอยต่อเดือยและร่องแบบสวมเลื่อน ทุกชิ้นพิมพ์ราบได้โดยไม่ต้องใช้ซัพพอร์ตและไม่ต้องใช้กาว เมื่อปรับค่าใด ระบบจะคำนวณรอยต่อใหม่ให้อัตโนมัติ',
+    '#v-asm':'ประกอบแล้ว', '#v-exp':'แยกชิ้นส่วน', '.hint':'ลากเพื่อหมุน · เลื่อนเพื่อซูม',
+    '.meaning b':'ความหมาย', '.block:nth-of-type(1) h2':'รายการพิมพ์',
+    '.block:nth-of-type(1) th:nth-child(1)':'ชิ้นส่วน', '.block:nth-of-type(1) th:nth-child(2)':'จำนวน',
+    '.block:nth-of-type(1) th:nth-child(3)':'ขนาด (mm)', '.block:nth-of-type(1) th:nth-child(4)':'ปริมาตร',
+    '.block:nth-of-type(1) th:nth-child(5)':'วางบนแท่น', '#dl-all':'ดาวน์โหลดชิ้นส่วนทั้งหมด (.zip)',
+    '.block:nth-of-type(2) h2':'การตั้งค่า การประกอบ และสิ่งสำคัญ',
+    '.block:nth-of-type(2) .cols > div:nth-child(1) h3':'การตั้งค่าสไลเซอร์',
+    '.block:nth-of-type(2) .cols > div:nth-child(2) h3':'การประกอบ',
+    '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'แผ่นกระจายแสง',
+    '.block:nth-of-type(2) .cols > div:nth-child(4) h3':'ความร้อน',
+    '.block:nth-of-type(3) h2':'ไฟล์แมนิโฟลด์สมบูรณ์'
+  };
+  var HTML_TH = {
+    '.block:nth-of-type(2) .cols > div:nth-child(1) dl':'<div><dt>หัวฉีด / ความสูงชั้น</dt><dd id="s-noz">0.4 / 0.2 mm</dd></div><div><dt>จำนวนผนัง</dt><dd id="s-walls">4</dd></div><div><dt>อินฟิล</dt><dd>15% gyroid</dd></div><div><dt>ซัพพอร์ต</dt><dd>ไม่ใช้</dd></div><div><dt>ปีกยึดชิ้นงาน</dt><dd>5 mm สำหรับเสาและแผง</dd></div>',
+    '.block:nth-of-type(2) .cols > div:nth-child(2) ol':'<li>สวมเสาทั้งสี่ลงในเบ้ามุมของฐาน</li><li>เลื่อนแผงแต่ละด้านลงระหว่างเสาสองต้น โดยหันหน้าลายออก</li><li>สวมฝาบนเข้ากับปลายเสาและขอบบนของแผง</li>',
+    '.block:nth-of-type(2) .cols > div:nth-child(2) p':'ทุกจุดเป็นการสวมแน่น จึงยกฝาออกเพื่อเปลี่ยนหลอดไฟได้ หากแผงฝืด ให้เพิ่มระยะเผื่อร่องแล้วพิมพ์เฉพาะเสาใหม่',
+    '.block:nth-of-type(2) .cols > div:nth-child(3) p':'ด้านหลังของแต่ละแผงมีร่องเปิดที่ขอบบน สำหรับสอดกระดาษโชจิหรือกระดาษเวลลัมก่อนปิดฝา',
+    '.block:nth-of-type(2) .cols > div:nth-child(3) dl':'<div><dt>แผ่นกระจายแสง</dt><dd id="s-diff">—</dd></div><div><dt>ความลึกร่อง</dt><dd id="s-reb">—</dd></div>',
+    '.block:nth-of-type(2) .warn p:nth-of-type(1)':'<strong>ใช้หลอด LED เท่านั้น กำลังไม่เกิน 9 W</strong> หลอดไส้หรือฮาโลเจนจะทำให้โคมนิ่มและเสียรูป — PLA เริ่มอ่อนตัวที่ประมาณ 60&nbsp;°C',
+    '.block:nth-of-type(2) .warn p:nth-of-type(2)':'พิมพ์<strong>ฐานและฝาด้วย PETG</strong> เพราะอยู่ใกล้หลอดไฟที่สุด ส่วนแผงและเสาใช้ PLA ได้ การเดินสายไฟบ้านเป็นความรับผิดชอบของผู้ประกอบ',
+    '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(1)':'<strong>ฐาน เสา และวงแหวนแปลง</strong>เป็นเปลือกกันน้ำชิ้นเดียว และปริมาตรตรงกับตัวสร้าง Python',
+    '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(2)':'<strong>โครงลายแผงและตะแกรงฝา</strong>สร้างเป็นของแข็งปิดหนึ่งชิ้นต่อหนึ่งซี่และซ้อนกันตรงจุดตัด การรวมจุดตัดเป็นเปลือกเดียวต้องใช้เอนจิน CSG ซึ่งเบราว์เซอร์ไม่มี การแยกองค์ประกอบจะเพิ่มจำนวนสามเหลี่ยมถึงสิบแปดเท่าและใช้เวลาหลายวินาทีต่อการปรับค่า ไม่มีขอบเปิด แต่ขอบร่วมบางจุดอยู่บนสี่หน้าแทนที่จะเป็นสองหน้า เครื่องมือตรวจแมนิโฟลด์แบบเข้มงวดจึงอาจเรียกว่า non-manifold และสไลเซอร์อาจเสนอให้ซ่อม ของแข็งปิดที่ซ้อนกันจะถูกรวมอย่างถูกต้องและพิมพ์ได้ตามภาพ',
+    '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(3)':'หากต้องการไฟล์แมนิโฟลด์อย่างเคร่งครัด ตัวสร้าง Python ในรีโพนี้จะสร้างโคมแบบเดียวกันด้วย CSG จริง:',
+    '.block:nth-of-type(3) .cols > div:nth-child(2) p':'หมายเหตุ: ปริมาตรของแผงและฝาที่แสดงด้านบนจะนับซี่ที่ซ้อนกันสองครั้ง จึงสูงกว่าจริงเล็กน้อย ส่วนอีกสามชิ้นมีค่าตรง',
+    '.block:nth-of-type(3) .foot':'ยังไม่มีการทดสอบพิมพ์จริง การหดตัวและความแม่นยำเชิงมิติของเครื่องพิมพ์ยังเป็นตัวแปร โดยเฉพาะบริเวณรอยต่อ'
+  };
+  var staticEnglish = {};
+  var htmlEnglish = {};
+  Object.keys(STATIC_TH).forEach(function (sel) {
+    var e = document.querySelector(sel); if (e) staticEnglish[sel] = e.textContent;
+  });
+  Object.keys(HTML_TH).forEach(function (sel) {
+    var e = document.querySelector(sel); if (e) htmlEnglish[sel] = e.innerHTML;
+  });
+  function applyStaticLanguage() {
+    document.documentElement.lang = lang;
+    Object.keys(STATIC_TH).forEach(function (sel) {
+      var e = document.querySelector(sel); if (e) e.textContent = lang === 'th' ? STATIC_TH[sel] : staticEnglish[sel];
+    });
+    Object.keys(HTML_TH).forEach(function (sel) {
+      var e = document.querySelector(sel); if (e) e.innerHTML = lang === 'th' ? HTML_TH[sel] : htmlEnglish[sel];
+    });
+    var toggle = document.getElementById('lang-toggle');
+    toggle.checked = lang === 'th';
+    toggle.setAttribute('aria-label', lang === 'th' ? 'เปลี่ยนภาษาเป็นอังกฤษ' : 'Switch language to Thai');
+    document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+    document.getElementById('lang-th').classList.toggle('active', lang === 'th');
+  }
+
   // ---------------------------------------------------------------- state
   var state = {};
   for (var k in K.DEFAULTS) state[k] = K.DEFAULTS[k];
@@ -2170,10 +2297,11 @@ var Kumiko = (function () {
 
   function buildRail() {
     var rail = document.getElementById('rail');
+    rail.textContent = '';
     GROUPS.forEach(function (g) {
       var d = el('details', 'grp');
       if (g.open) d.open = true;
-      d.appendChild(el('summary', null, g.name));
+      d.appendChild(el('summary', null, t(g.name)));
       var body = el('div', 'body');
 
       if (g.style) {
@@ -2197,7 +2325,7 @@ var Kumiko = (function () {
           wrap.textContent = '';
           K.patternNames().forEach(function (id) {
             if (K.PATTERN_FAMILY[id] !== active) return;
-            var b = el('button', null, K.PATTERN_LABEL[id]);
+            var b = el('button', null, lang === 'th' ? PATTERN_TH[id] : K.PATTERN_LABEL[id]);
             b.setAttribute('aria-pressed', String(id === state.pattern));
             b.dataset.pattern = id;
             b.addEventListener('click', function () {
@@ -2212,11 +2340,11 @@ var Kumiko = (function () {
         }
 
         fams.forEach(function (f) {
-          var t = el('button', null, K.FAMILY_LABEL[f] || f);
-          t.dataset.family = f;
-          t.setAttribute('role', 'tab');
-          t.addEventListener('click', function () { active = f; paint(); });
-          tabs.appendChild(t);
+          var tab = el('button', null, t(K.FAMILY_LABEL[f] || f));
+          tab.dataset.family = f;
+          tab.setAttribute('role', 'tab');
+          tab.addEventListener('click', function () { active = f; paint(); });
+          tabs.appendChild(tab);
         });
         paint();
         body.appendChild(tabs);
@@ -2227,7 +2355,7 @@ var Kumiko = (function () {
         var key = it[0], lab = it[1];
         var c = el('div', 'ctl');
         var l = el('label');
-        l.appendChild(el('span', null, lab));
+        l.appendChild(el('span', null, t(lab)));
         var v = el('span', 'val', state[key] + ' ' + it[5]);
         l.appendChild(v);
         var inp = document.createElement('input');
@@ -2235,7 +2363,7 @@ var Kumiko = (function () {
         inp.min = it[2]; inp.max = it[3]; inp.step = it[4];
         inp.value = state[key];
         inp.id = 'r-' + key;
-        inp.setAttribute('aria-label', lab + ' in millimetres');
+        inp.setAttribute('aria-label', lang === 'th' ? t(lab) + ' หน่วยมิลลิเมตร' : lab + ' in millimetres');
         inp.addEventListener('input', function () {
           state[key] = +inp.value;
           v.textContent = (+inp.value) + ' ' + it[5];
@@ -2484,7 +2612,7 @@ var Kumiko = (function () {
         x.closePath();
       }
       x.fill('evenodd');
-      meta = cont.length + ' contours · imported artwork';
+      meta = lang === 'th' ? cont.length + ' เส้นขอบ · ภาพนำเข้า' : cont.length + ' contours · imported artwork';
     } else {
       var segs = K.latticeSegments(P, state.pattern, P.openW, P.openH, 0);
       x.strokeStyle = cs.getPropertyValue('--kigara').trim();
@@ -2495,12 +2623,14 @@ var Kumiko = (function () {
         x.lineTo(segs[i][1][0], segs[i][1][1]);
       }
       x.stroke();
-      meta = segs.length + ' slats · ' + P.grid.toFixed(1) + ' mm pitch';
+      meta = lang === 'th' ? segs.length + ' ซี่ · ระยะลาย ' + P.grid.toFixed(1) + ' mm'
+                           : segs.length + ' slats · ' + P.grid.toFixed(1) + ' mm pitch';
     }
     x.restore();
-    document.getElementById('sw-name').textContent = K.PATTERN_LABEL[state.pattern];
+    document.getElementById('sw-name').textContent = lang === 'th' ? PATTERN_TH[state.pattern] : K.PATTERN_LABEL[state.pattern];
     document.getElementById('sw-meta').textContent = meta;
-    document.getElementById('sw-meaning').textContent = K.PATTERN_MEANING[state.pattern] || '';
+    document.getElementById('sw-meaning').textContent = lang === 'th'
+      ? (MEANING_TH[state.pattern] || '') : (K.PATTERN_MEANING[state.pattern] || '');
   }
 
   // ---------------------------------------------------------------- output
@@ -2522,14 +2652,25 @@ var Kumiko = (function () {
     model.parts.forEach(function (p) {
       var tr = el('tr');
       var td0 = el('td');
-      td0.appendChild(el('div', 'part', p.label));
-      td0.appendChild(el('div', 'note', p.id + '.stl · ' + p.note));
+      var partLabels = { diffuser_plate:'แผ่นกระจายแสง', post:'เสามุม', base:'ฐาน',
+        top_cap:'ฝาบน', leg:'ขา', socket_adapter_ring:'วงแหวนแปลง E27' };
+      var partNotes = { diffuser_plate:'วางราบ พิมพ์ด้วย PETG ใส', post:'วางตั้งและใช้ปีกยึด',
+        base:'ใช้ทิศทางตามไฟล์ส่งออก', top_cap:'พลิกพร้อมสำหรับการพิมพ์แล้ว',
+        leg:'หงายเดือยขึ้นตามไฟล์ส่งออก', socket_adapter_ring:'ปรับให้ตรงกับขั้วหลอดของคุณ' };
+      var label = p.id.indexOf('panel_') === 0
+        ? (lang === 'th' ? (K.PATTERN_FAMILY[state.pattern] === 'laithai' ? 'แผงลายไทย' : 'แผงคุมิโกะ') : p.label)
+        : (lang === 'th' ? partLabels[p.id] : p.label);
+      var note = p.id.indexOf('panel_') === 0
+        ? (lang === 'th' ? 'คว่ำหน้าลายลง' : p.note)
+        : (lang === 'th' ? partNotes[p.id] : p.note);
+      td0.appendChild(el('div', 'part', label));
+      td0.appendChild(el('div', 'note', p.id + '.stl · ' + note));
       tr.appendChild(td0);
       tr.appendChild(el('td', 'num', String(p.qty)));
       tr.appendChild(el('td', 'num', p.bbox.size.map(function (v) { return fmt(v); }).join(' × ')));
       tr.appendChild(el('td', 'num', fmt(p.vol / 1000) + ' cm³'));
       var td4 = el('td');
-      var chip = el('span', 'chip ' + (p.fits ? 'fit' : 'nofit'), p.fits ? 'fits' : 'too big');
+      var chip = el('span', 'chip ' + (p.fits ? 'fit' : 'nofit'), t(p.fits ? 'fits' : 'too big'));
       td4.appendChild(chip);
       tr.appendChild(td4);
       var td5 = el('td');
@@ -2543,14 +2684,49 @@ var Kumiko = (function () {
     });
   }
 
+  function translateProblem(m) {
+    if (lang !== 'th') return m;
+    var fixed = {
+      'Panel width does not match the post groove span.':'ความกว้างแผงไม่ตรงกับช่วงร่องของเสา',
+      'Groove width does not give the intended slot clearance.':'ความกว้างร่องไม่ให้ระยะเผื่อตามที่กำหนด',
+      'Diffuser rebate is deeper than the panel is thick.':'ร่องแผ่นกระจายแสงลึกกว่าความหนาแผง',
+      'Cord tunnel breaks into the panel groove above it.':'ช่องสายไฟทะลุเข้าไปในร่องแผงด้านบน',
+      'Less than three layers of floor under the cord tunnel.':'พื้นใต้ช่องสายไฟบางกว่าสามชั้นพิมพ์',
+      'Panel frame is narrower than its groove engagement.':'กรอบแผงแคบกว่าระยะที่สวมเข้าในร่อง',
+      'Diffuser rebate eats the whole frame lip.':'ร่องแผ่นกระจายแสงกินขอบกรอบทั้งหมด',
+      'Adapter counterbore runs into the ventilation slots.':'รูบ่าวงแหวนแปลงชนช่องระบายอากาศ',
+      'Post socket breaks out of the side of the base and cap.':'เบ้าเสาทะลุด้านข้างของฐานและฝา',
+      'Adapter ring bore is larger than the ring itself.':'รูวงแหวนแปลงใหญ่กว่าตัววงแหวน',
+      'Lamp holder bore is not smaller than its counterbore.':'รูขั้วหลอดต้องเล็กกว่ารูบ่า',
+      'Cord tunnel is wider than the lamp holder bore.':'ช่องสายไฟกว้างกว่ารูขั้วหลอด',
+      'Leg socket breaks into the panel groove above it.':'เบ้าขาทะลุเข้าไปในร่องแผงด้านบน',
+      'Leg tenon is not narrower than the leg, so it has no shoulder.':'เดือยขาไม่แคบกว่าตัวขา จึงไม่มีบ่ารับ',
+      'Leg overhangs the edge of the base.':'ขายื่นพ้นขอบฐาน',
+      'Leg socket runs into the ventilation slots.':'เบ้าขาชนช่องระบายอากาศ',
+      'Leg is under three layers tall.':'ขาสูงน้อยกว่าสามชั้นพิมพ์'
+    };
+    if (fixed[m]) return fixed[m];
+    return m
+      .replace(/^Diffuser plate (.+) mm is under three layers thick\.$/, 'แผ่นกระจายแสงหนา $1 mm ซึ่งน้อยกว่าสามชั้นพิมพ์')
+      .replace(/^Groove depth (.+) mm would cut the (.+) mm post in half\.$/, 'ร่องลึก $1 mm จะตัดเสาขนาด $2 mm ขาดครึ่ง')
+      .replace(/^Panel groove (.+) mm cuts the corner off the (.+) mm post\. Widen the post or shallow the groove\.$/, 'ร่องแผง $1 mm ตัดมุมเสาขนาด $2 mm ให้เพิ่มขนาดเสาหรือลดความลึกร่อง')
+      .replace(/^Slat width (.+) mm is under two extrusions\.$/, 'ซี่กว้าง $1 mm ซึ่งน้อยกว่าสองแนวฉีด')
+      .replace(/^Slat width (.+) mm is not a multiple of the (.+) mm nozzle\.$/, 'ซี่กว้าง $1 mm ไม่เป็นจำนวนเท่าของหัวฉีด $2 mm')
+      .replace(/^Edge chamfer (.+) mm cuts into the socket walls of the base and cap\.$/, 'ลบมุม $1 mm กินผนังเบ้าของฐานและฝา')
+      .replace(/^Edge chamfer (.+) mm is more than half the (.+) mm cap thickness\.$/, 'ลบมุม $1 mm มากกว่าครึ่งหนึ่งของฝาหนา $2 mm')
+      .replace(/^Edge chamfer (.+) mm is more than half the (.+) mm base thickness\.$/, 'ลบมุม $1 mm มากกว่าครึ่งหนึ่งของฐานหนา $2 mm')
+      .replace(/^Edge chamfer (.+) mm breaks into the cord tunnel mouth, which is only (.+) mm off the underside\.$/, 'ลบมุม $1 mm ทะลุปากช่องสายไฟซึ่งอยู่ห่างด้านล่างเพียง $2 mm')
+      .replace(/^Pattern pitch (.+) mm is too coarse for the panel opening\.$/, 'ระยะลาย $1 mm หยาบเกินไปสำหรับช่องแผง');
+  }
+
   function renderProblems() {
     var box = document.getElementById('problems');
     box.textContent = '';
     if (!model.problems.length) return;
     var d = el('div', 'problems');
-    d.appendChild(el('h3', null, 'This lamp will not go together'));
+    d.appendChild(el('h3', null, t('This lamp will not go together')));
     var ul = el('ul');
-    model.problems.forEach(function (m) { ul.appendChild(el('li', null, m)); });
+    model.problems.forEach(function (m) { ul.appendChild(el('li', null, translateProblem(m))); });
     d.appendChild(ul);
     box.appendChild(d);
   }
@@ -2560,18 +2736,20 @@ var Kumiko = (function () {
     document.getElementById('d-overall').textContent =
       fmt(P.foot, 0) + ' × ' + fmt(P.foot, 0) + ' × ' + fmt(P.totalHeight, 0) + ' mm';
     document.getElementById('d-sub').textContent =
-      'panel ' + fmt(P.panelW) + ' × ' + fmt(P.height, 0) + ' × ' + fmt(P.panelT);
+      (lang === 'th' ? 'แผง ' : 'panel ') + fmt(P.panelW) + ' × ' + fmt(P.height, 0) + ' × ' + fmt(P.panelT);
     document.getElementById('s-noz').textContent =
       fmt(P.nozzle, 1) + ' / ' + (P.nozzle >= 0.6 ? '0.3' : '0.2') + ' mm';
     var walls = Math.round(P.slatW / P.nozzle);
     document.getElementById('s-walls').textContent = String(walls);
     document.getElementById('s-walls-why').textContent =
-      'Slats are ' + fmt(P.slatW) + ' mm wide, exactly ' + walls + ' × ' +
-      fmt(P.nozzle, 1) + ' mm, so at ' + walls +
-      ' wall loops they come out solid with no infill inside them.';
+      lang === 'th'
+      ? 'ซี่กว้าง ' + fmt(P.slatW) + ' mm เท่ากับ ' + walls + ' × ' + fmt(P.nozzle, 1) +
+        ' mm พอดี เมื่อใช้ผนัง ' + walls + ' รอบ ซี่จึงตันโดยไม่ต้องมีอินฟิลภายใน'
+      : 'Slats are ' + fmt(P.slatW) + ' mm wide, exactly ' + walls + ' × ' +
+        fmt(P.nozzle, 1) + ' mm, so at ' + walls + ' wall loops they come out solid with no infill inside them.';
     /* A printed plate does the sheet's job, so it supersedes it when fitted. */
     document.getElementById('s-diff').textContent = P.glazed
-      ? 'printed plate ×4 — no sheet needed'
+      ? (lang === 'th' ? 'แผ่นพิมพ์ ×4 — ไม่ต้องใช้กระดาษ' : 'printed plate ×4 — no sheet needed')
       : fmt(P.diffuserW) + ' × ' + fmt(P.diffuserH) + ' mm × 4';
     document.getElementById('s-reb').textContent = fmt(P.rebateD, 1) + ' mm';
 
@@ -2587,8 +2765,8 @@ var Kumiko = (function () {
 
     var bad = model.parts && model.parts.some(function (p) { return !p.fits; });
     document.getElementById('said').textContent = model.problems.length
-      ? 'Fix the problems above first.'
-      : (bad ? 'Some parts are larger than the bed.' : '');
+      ? t('Fix the problems above first.')
+      : (bad ? t('Some parts are larger than the bed.') : '');
     document.getElementById('dl-all').disabled = !!model.problems.length;
   }
 
@@ -2639,6 +2817,17 @@ var Kumiko = (function () {
     if (mq.addEventListener) mq.addEventListener('change', function () { drawFlat(); draw(); });
   }
 
+  document.getElementById('lang-toggle').addEventListener('change', function () {
+    lang = this.checked ? 'th' : 'en';
+    try { localStorage.setItem('kumiko-language', lang); } catch (_) {}
+    applyStaticLanguage();
+    buildRail();
+    if (model) {
+      renderProblems(); renderMeta(); drawFlat();
+      if (model.parts) renderParts();
+    }
+  });
+  applyStaticLanguage();
   buildRail();
   initGL();
   rebuild();

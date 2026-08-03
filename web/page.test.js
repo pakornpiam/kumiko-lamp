@@ -55,6 +55,31 @@ const check = (ok, msg, extra) => {
   });
   check(drew > 8, 'WebGL rendered geometry', `${drew} distinct sampled colours`);
 
+  // language switch: keyboard-accessible, state-safe, and persistent
+  const sizeBeforeLanguage = await page.inputValue('#r-size');
+  await page.focus('#lang-toggle');
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(200);
+  check(await page.getAttribute('html', 'lang') === 'th', 'Thai switch updates document language');
+  check((await page.textContent('.mast h1')).includes('ออกแบบโคม'),
+        'Thai switch translates static interface');
+  check((await page.textContent('#sw-name')).includes('(Asanoha)'),
+        'Thai pattern label retains original name', await page.textContent('#sw-name'));
+  check(await page.inputValue('#r-size') === sizeBeforeLanguage,
+        'language switch preserves configurator state');
+  check(await page.evaluate(() => localStorage.getItem('kumiko-language')) === 'th',
+        'Thai choice saved');
+  await page.reload();
+  await page.waitForFunction(() => window.__kumikoReady === true, null, { timeout: 20000 });
+  await page.waitForTimeout(500);
+  check(await page.getAttribute('html', 'lang') === 'th', 'Thai choice restored after reload');
+  await page.click('#lang-label');
+  await page.waitForTimeout(200);
+  check(await page.getAttribute('html', 'lang') === 'en' &&
+        (await page.textContent('.mast h1')).includes('Design your lamp'),
+        'switch returns the full interface to English');
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
+
   // pattern switch
   await page.click('button[data-pattern="kikkou"]');
   await page.waitForTimeout(400);
@@ -209,6 +234,12 @@ const check = (ok, msg, extra) => {
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check(overflow <= 1, 'no horizontal overflow at 420px', `${overflow}px`);
   await page.screenshot({ path: `${OUT}/app-narrow.png`, fullPage: false });
+  await page.click('#lang-label');
+  await page.waitForTimeout(250);
+  const thaiOverflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  check(thaiOverflow <= 1, 'Thai UI has no horizontal overflow at 420px', `${thaiOverflow}px`);
+  await page.screenshot({ path: `${OUT}/app-narrow-th.png`, fullPage: false });
 
   check(errors.length === 0, 'still no console errors at the end',
         errors.slice(0, 3).join(' | '));
