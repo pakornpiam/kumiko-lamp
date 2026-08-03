@@ -547,6 +547,53 @@ def pat_kagome(w, h, s):
     return ss.segs
 
 
+def _grid_lines(ss, w, h, sx, sy):
+    """
+    A full-field rectangular grid of pitch sx by sy.
+
+    Every line runs the whole overshot field rather than cell by cell, so each
+    crossing is a real overlap and the whole grid comes back as one body with
+    nothing to tie together afterwards.
+    """
+    i0 = int(math.floor(-w / 2 / sx)) - 2
+    i1 = int(math.ceil(w / 2 / sx)) + 2
+    j0 = int(math.floor(-h / 2 / sy)) - 2
+    j1 = int(math.ceil(h / 2 / sy)) + 2
+    for i in range(i0, i1 + 1):
+        ss.add((i * sx, j0 * sy), (i * sx, j1 * sy))
+    for j in range(j0, j1 + 1):
+        ss.add((i0 * sx, j * sy), (i1 * sx, j * sy))
+
+
+def pat_masu_goushi(w, h, s):
+    """
+    Masu-goushi (枡格子, "box lattice"): a plain square grid, nothing in the
+    cells.  The simplest pattern here, and the most open.
+
+    Distinct from `pat_masu` below, which is masu-*tsunagi* -- the same grid
+    with a concentric square linked into every cell.
+    """
+    ss = SegSet()
+    _grid_lines(ss, w, h, s, s)
+    return ss.segs
+
+
+def pat_senbon(w, h, s):
+    """
+    Senbon-goushi (千本格子, "thousand-stick lattice"): closely spaced vertical
+    bars crossed by a horizontal rail every third bar.
+
+    The bars run at s/3 so the stock pitch earns the name -- at 28 mm that is a
+    9.3 mm bar spacing.  The rails are not only decoration: bars alone would be
+    parallel chords with no crossings at all, which survives the panel (each
+    reaches the top and bottom frame) but leaves the cap grille depending
+    entirely on the rim clip.
+    """
+    ss = SegSet()
+    _grid_lines(ss, w, h, s / 3.0, s)
+    return ss.segs
+
+
 def pat_masu(w, h, s):
     """
     Masu-tsunagi (linked boxes): a square grid with a concentric inner square
@@ -564,11 +611,7 @@ def pat_masu(w, h, s):
     j0 = int(math.floor(-h / 2 / s)) - 2
     j1 = int(math.ceil(h / 2 / s)) + 2
 
-    # grid lines run the full field, so every crossing is a real overlap
-    for i in range(i0, i1 + 1):
-        ss.add((i * s, j0 * s), (i * s, j1 * s))
-    for j in range(j0, j1 + 1):
-        ss.add((i0 * s, j * s), (i1 * s, j * s))
+    _grid_lines(ss, w, h, s, s)
 
     for i in range(i0, i1):
         for j in range(j0, j1):
@@ -1071,7 +1114,9 @@ PATTERNS = {
     "kikkou": pat_kikkou,
     "kawari_asanoha": pat_kawari,
     "kagome": pat_kagome,
+    "masu": pat_masu_goushi,
     "masu_tsunagi": pat_masu,
+    "senbon": pat_senbon,
     "goma_gara": pat_goma,
     "bishamon_kikkou": pat_bishamon,
     "seigaiha": pat_seigaiha,

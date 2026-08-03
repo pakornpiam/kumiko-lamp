@@ -39,12 +39,13 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `diffuser_plate.stl` | 0 or **4** | 155.7 × 210 × 1.2 | Flat, as exported. Only if you want a printed diffuser — see *Diffuser* below. |
 
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
-`panel_kagome.stl`, `panel_masu_tsunagi.stl`, `panel_goma_gara.stl`,
+`panel_kagome.stl`, `panel_masu.stl`, `panel_masu_tsunagi.stl`, `panel_senbon.stl`,
+`panel_goma_gara.stl`,
 `panel_bishamon_kikkou.stl`, `panel_seigaiha.stl`, `panel_kranok_kan_khot.stl` or
 `panel_dok_phut_tan.stl` or `panel_thai_rosette.stl` for a different motif — all
-twelve are dimensionally identical
-and interchangeable. Roughly in order of open area: kranok,
-kikkou and bishamon-kikkou are the airiest, asanoha and goma-gara the densest.
+fourteen are dimensionally identical
+and interchangeable. Roughly in order of open area: masu, kikkou and kranok are
+the airiest, asanoha and goma-gara the densest.
 
 **Seigaiha** (青海波, "blue sea wave") is the odd one among the kumiko: a field of curves
 rather than a straight lattice. Rows of overlapping fans, three concentric arcs apiece,
@@ -53,7 +54,13 @@ textiles and maps since the Heian period. A fan is 1.5 × the pattern pitch, so 
 coarser than its `--grid` number suggests, and the arcs are deliberately faceted at 14
 chords: finer is not better here (see CLAUDE.md).
 
-Nine are Japanese kumiko. The other three are Thai compositions. **Kranok Kan Khot**
+**Masu** (枡格子) and **Senbon** (千本格子) are the plain ones: a bare square grid, and
+close-set vertical bars crossed by a rail every third bar. Senbon's bars run at a third of
+the pattern pitch, so the stock 28 mm gives a 9.3 mm spacing — fine enough to earn the
+"thousand sticks" of its name. At 12 and 22 slats they are the two cheapest panels to
+print, and Masu is the most open of the fourteen.
+
+Eleven are Japanese kumiko. The other three are Thai compositions. **Kranok Kan Khot**
 (กระหนกก้านขด) is a different kind of thing: not a repeating lattice but **one composition filling the
 whole panel** — a diamond medallion of Thai flame work, with a column of nested pointed
 lenses on the axis, a spike to the apex, and volutes at the waist throwing flames out along
@@ -273,7 +280,7 @@ exact.
 The configurator is checked the same way, headlessly: its geometry core runs in Node and
 is compared against the Python generator's measured volumes (`base` and `leg` match to
 0.00%, `post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat,
-across all eleven segment patterns. The page
+across all thirteen segment patterns. The page
 itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
 a deliberately unassemblable configuration to confirm it blocks rather than exports, and a
 real download whose bytes are loaded back as a mesh. The core is extracted from the

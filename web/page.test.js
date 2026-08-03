@@ -60,6 +60,8 @@ const check = (ok, msg, extra) => {
   await page.waitForTimeout(400);
   const swName = await page.textContent('#sw-name');
   check(swName.trim() === 'Kikkou', 'pattern switch updates swatch', swName.trim());
+  const meaning = await page.textContent('#sw-meaning');
+  check(meaning.includes('Tortoiseshell'), 'pattern switch updates meaning', meaning.trim());
 
   // family tabs: Lai Thai is a separate tab, and its patterns are hidden until picked
   check(await page.$('button[data-pattern="kranok_kan_khot"]') === null,

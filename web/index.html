@@ -170,6 +170,15 @@ a { color: var(--ai); }
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
   text-transform: uppercase; color: var(--sumi-3);
 }
+.swatch .meaning {
+  border-top: 1px solid var(--edge); padding-top: 10px;
+  color: var(--sumi-2); font-size: 13.5px; line-height: 1.45;
+}
+.swatch .meaning b {
+  display: block; margin-bottom: 3px; color: var(--sumi);
+  font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+  letter-spacing: .1em; text-transform: uppercase;
+}
 
 /* ---- problems ------------------------------------------------------ */
 .problems {
@@ -284,6 +293,7 @@ pre.cmd {
           <div class="cap" id="sw-name">Asanoha</div>
           <canvas id="flat" width="420" height="560"></canvas>
           <div class="cap" id="sw-meta">&mdash;</div>
+          <div class="meaning"><b>Meaning</b><span id="sw-meaning"></span></div>
         </div>
       </div>
       <div id="problems"></div>
@@ -712,6 +722,35 @@ var Kumiko = (function () {
     return ss.segs;
   }
 
+  /* A full-field rectangular grid of pitch sx by sy.  Every line runs the whole
+     overshot field rather than cell by cell, so each crossing is a real overlap
+     and the grid is one body with nothing to tie together afterwards. */
+  function gridLines(ss, w, h, sx, sy) {
+    var i0 = Math.floor(-w / 2 / sx) - 2, i1 = Math.ceil(w / 2 / sx) + 2;
+    var j0 = Math.floor(-h / 2 / sy) - 2, j1 = Math.ceil(h / 2 / sy) + 2;
+    for (var i = i0; i <= i1; i++) ss.add([i * sx, j0 * sy], [i * sx, j1 * sy]);
+    for (var j = j0; j <= j1; j++) ss.add([i0 * sx, j * sy], [i1 * sx, j * sy]);
+  }
+
+  /* Masu-goushi: a plain square grid, nothing in the cells — the simplest
+     pattern here and the most open.  Distinct from patMasu below, which is
+     masu-tsunagi: the same grid with a square linked into every cell. */
+  function patMasuGoushi(w, h, s) {
+    var ss = new SegSet();
+    gridLines(ss, w, h, s, s);
+    return ss.segs;
+  }
+
+  /* Senbon-goushi: closely spaced vertical bars with a rail every third bar.
+     Bars run at s/3, so the stock pitch earns the name at 9.3 mm.  The rails
+     are not only decoration — bars alone have no crossings at all, which leaves
+     the cap grille hanging entirely off the rim clip. */
+  function patSenbon(w, h, s) {
+    var ss = new SegSet();
+    gridLines(ss, w, h, s / 3, s);
+    return ss.segs;
+  }
+
   /* Masu-tsunagi: square grid with a concentric inner square per cell, bridged
      at the four side midpoints.  The bridges keep it in one piece once the cap
      clips the field to a disc. */
@@ -719,10 +758,9 @@ var Kumiko = (function () {
     var ss = new SegSet(), ov = s * 0.05, inset = s * 0.28;
     var i0 = Math.floor(-w / 2 / s) - 2, i1 = Math.ceil(w / 2 / s) + 2;
     var j0 = Math.floor(-h / 2 / s) - 2, j1 = Math.ceil(h / 2 / s) + 2;
-    for (var i = i0; i <= i1; i++) ss.add([i * s, j0 * s], [i * s, j1 * s]);
-    for (var j = j0; j <= j1; j++) ss.add([i0 * s, j * s], [i1 * s, j * s]);
-    for (i = i0; i < i1; i++) {
-      for (j = j0; j < j1; j++) {
+    gridLines(ss, w, h, s, s);
+    for (var i = i0; i < i1; i++) {
+      for (var j = j0; j < j1; j++) {
         var x0 = i * s, y0 = j * s;
         var a = x0 + inset, b = y0 + inset;
         var c = x0 + s - inset, d = y0 + s - inset;
@@ -1088,7 +1126,9 @@ var Kumiko = (function () {
     kikkou: patKikkou,
     kawari_asanoha: patKawari,
     kagome: patKagome,
+    masu: patMasuGoushi,
     masu_tsunagi: patMasu,
+    senbon: patSenbon,
     goma_gara: patGoma,
     bishamon_kikkou: patBishamon,
     seigaiha: patSeigaiha,
@@ -1098,11 +1138,28 @@ var Kumiko = (function () {
   var PATTERN_LABEL = {
     asanoha: 'Asanoha', mitsukude: 'Mitsukude',
     kikkou: 'Kikkou', kawari_asanoha: 'Kawari-asanoha',
-    kagome: 'Kagome', masu_tsunagi: 'Masu-tsunagi',
+    kagome: 'Kagome', masu: 'Masu', masu_tsunagi: 'Masu-tsunagi',
+    senbon: 'Senbon',
     goma_gara: 'Goma-gara', bishamon_kikkou: 'Bishamon-kikkou',
     seigaiha: 'Seigaiha',
     kranok_kan_khot: 'Kranok Kan Khot', dok_phut_tan: 'Dok Phut Tan',
     thai_rosette: 'Thai Rosette'
+  };
+  var PATTERN_MEANING = {
+    asanoha: 'Hemp leaves — a wish for vigorous growth, resilience, and good health.',
+    mitsukude: 'A meeting of three lines — balance, connection, and strength through unity.',
+    kikkou: 'Tortoiseshell hexagons — longevity, stability, and good fortune.',
+    kawari_asanoha: 'A variation of the hemp-leaf motif, carrying its wishes for growth and resilience.',
+    kagome: 'The eye of a woven basket — traditionally associated with protection and warding off harm.',
+    masu: 'The square measuring box — abundance, prosperity, and an honest measure.',
+    masu_tsunagi: 'Linked measuring boxes — continuing prosperity and bonds that endure.',
+    senbon: 'A thousand parallel lines — abundance, persistence, and many paths moving together.',
+    goma_gara: 'Sesame seeds — a small-seed motif evoking fertility, plenty, and flourishing life.',
+    bishamon_kikkou: 'Bishamon tortoiseshell — an armour-like emblem of protection, dignity, and good fortune.',
+    seigaiha: 'Blue-ocean waves — a peaceful life and good fortune continuing without end.',
+    kranok_kan_khot: 'A curling Thai flame-vine — graceful growth, vitality, and life unfolding.',
+    dok_phut_tan: 'The cotton-rose flower — layered beauty, blossoming, and natural abundance.',
+    thai_rosette: 'A four-way floral rosette — harmony, balance, and beauty radiating from a shared centre.'
   };
   var LAITHAI = ['kranok_kan_khot', 'dok_phut_tan', 'thai_rosette'];
   function patternNames() {
@@ -2019,6 +2076,7 @@ var Kumiko = (function () {
     PATTERN_REGIONS: PATTERN_REGIONS, isRegion: isRegion,
     patternNames: patternNames,
     PATTERN_FAMILY: PATTERN_FAMILY, FAMILY_LABEL: FAMILY_LABEL,
+    PATTERN_MEANING: PATTERN_MEANING,
     PATTERN_CAP_SAFE: PATTERN_CAP_SAFE, capPattern: capPattern,
     derive: derive, checkFits: checkFits, buildAll: buildAll,
     buildPanel: buildPanel, buildPost: buildPost, buildBase: buildBase,
@@ -2442,6 +2500,7 @@ var Kumiko = (function () {
     x.restore();
     document.getElementById('sw-name').textContent = K.PATTERN_LABEL[state.pattern];
     document.getElementById('sw-meta').textContent = meta;
+    document.getElementById('sw-meaning').textContent = K.PATTERN_MEANING[state.pattern] || '';
   }
 
   // ---------------------------------------------------------------- output
