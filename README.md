@@ -38,7 +38,7 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `leg.stl` | **4** | 20 × 20 × 20 | Standing on its foot, as exported. Tenon points up. |
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 / E14 holder* below. |
 | `diffuser_plate.stl` | 0 or **4** | 155.7 × 210 × 1.2 | Flat, as exported. Only if you want a printed diffuser — see *Diffuser* below. |
-| `finial.stl` | 0 or **4** | 20 × 20 × 10 | Standing on its head, as exported. Skirt points up. Only with the cap screws — see below. |
+| `finial.stl` | 0 or **4** | 20 × 20 × 10 | Screw-head finial cap, standing on its head. Skirt points up. Only with the cap screws. |
 
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
 `panel_kagome.stl`, `panel_masu.stl`, `panel_masu_tsunagi.stl`, `panel_senbon.stl`,
@@ -141,6 +141,23 @@ rather than a round pin, so a leg cannot rotate out of line with the base edges.
 
 They also lift the base 12 mm off the table, which gives the cord somewhere to go.
 
+### Reusable snap locks
+
+The feet are a clearance fit by default. Add a light reusable snap detent with:
+
+```bash
+python3 kumiko_lamp.py --snap-lock       # recommended 0.2 mm engagement
+python3 kumiko_lamp.py --snap-lock 0.1   # lighter fit
+python3 kumiko_lamp.py --snap-lock 0     # off (the default)
+```
+
+The same setting applies to the four feet and the four screw-head finial caps, so a
+screwed lamp has all eight matching corner pieces retained. Two small tabs flex into
+matching hidden recesses; the feet have a hollow tenon and the finials flex around their
+screw cavity. Start at 0.2 mm and tune the **Snap engagement** slider for your printer and
+material. PETG is preferred for repeated removal; PLA snaps are more brittle. No snap fit
+has been test-printed yet.
+
 ## Screwing the cap down
 
 The cap is a friction fit and needs nothing else. If you would rather it could not be
@@ -163,8 +180,9 @@ a soldering iron to set the inserts.
 Set the inserts into the post tops before assembly, build as usual, then drop a screw
 through each corner of the cap and nip it up — **snug, not tight**. The screw pulls the cap
 down until the post bottoms out against it, so there is nothing to gain from more torque
-and an insert to strip if you keep going. The finials are a light press fit; leave them
-unglued or you will never get the bulb out.
+and an insert to strip if you keep going. The finials are a light press fit by default or
+a removable detent with `--snap-lock`; leave them unglued or you will never get the bulb
+out.
 
 **Ø4.0 is the largest hole an 18 mm post will really take.** The panel grooves reach in to
 within 3 mm of the post axis, so a 4 mm hole leaves a 1 mm wall — and that wall is where

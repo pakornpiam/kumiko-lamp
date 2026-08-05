@@ -357,8 +357,9 @@ pre.cmd {
           <li>Slide each panel down between two posts, lattice facing out.</li>
           <li>Fit the cap over the post tops and panel top edges.</li>
         </ol>
-        <p>Friction fit throughout, so the cap lifts off to change the bulb &mdash; unless
-           you fit the optional cap screws, which means prising four finials off first.
+        <p>Friction fit throughout, with an optional reusable snap for the four feet and
+           four screw-head finial caps. The cap lifts off to change the bulb &mdash; unless
+           you fit the optional cap screws, which means removing four finials first.
            If panels bind, raise the slot clearance and reprint only the posts.</p>
       </div>
       <div>
@@ -425,6 +426,7 @@ var Kumiko = (function () {
   var EPS = 1e-3;      // through-cut nudge, matches the Python EPS
   var TOL = 1e-7;      // geometric tolerance
   var SIDE = 1e-4;     // offset used to probe which side of a wall is solid
+  var SNAP_BAND_H = 0.4, SNAP_TIP = 0.6, SNAP_ROOT = 0.6;
 
   // ------------------------------------------------------------------
   // Parameters — defaults identical to Params in kumiko_lamp.py
@@ -438,6 +440,7 @@ var Kumiko = (function () {
     grooveD: 6, slotClear: 0.4, panelClear: 0.3, socketClear: 0.4,
     plinth: 5, baseT: 16, capT: 10, edgeChamfer: 2,
     leg: 20, legH: 12, legTenon: 10, legTenonH: 8, legClear: 0.35,
+    snapEngagement: 0,
     postInsertD: 0, postInsertH: 6.5, finialH: 8, finialTenonH: 2,
     holderType: 'e27',
     socketBore: 40, socketCbore: 50, socketCboreD: 4, socketNeck: 26.5,
@@ -464,6 +467,12 @@ var Kumiko = (function () {
     p.foot = p.size + 2 * p.plinth;
     p.socketSz = p.post + p.socketClear;
     p.legSocketSz = p.legTenon + p.legClear;
+    p.snapped = p.snapEngagement > 0;
+    p.snapTabW = Math.min(4, p.legTenon - 4 * p.nozzle);
+    p.snapTabOut = p.legTenon / 2 + p.legClear / 2 + p.snapEngagement;
+    p.snapRecessOut = p.snapTabOut + p.legClear / 2;
+    p.snapSocketSz = 2 * p.snapRecessOut;
+    p.snapCavitySz = p.legTenon - 8 * p.nozzle;
     /* The whole top fixing hangs off one number, the way plateT does for the
        plate.  postInsertD is the insert's pilot hole, and a heat-set insert
        runs about a millimetre over its thread, so 4.0 is M3. */
@@ -527,8 +536,9 @@ var Kumiko = (function () {
       bad('Adapter counterbore runs into the ventilation slots.');
     if (P.foot / 2 <= P.postCenter + P.socketSz / 2)
       bad('Post socket breaks out of the side of the base and cap.');
+    var legSocketSpan = P.snapped ? P.snapSocketSz : P.legSocketSz;
     if (P.edgeChamfer >= P.foot / 2 - (P.postCenter +
-                                       Math.max(P.socketSz, P.legSocketSz) / 2))
+                                       Math.max(P.socketSz, legSocketSpan) / 2))
       bad('Edge chamfer ' + P.edgeChamfer +
           ' mm cuts into the socket walls of the base and cap.');
     if (2 * P.edgeChamfer >= P.capT)
@@ -566,10 +576,24 @@ var Kumiko = (function () {
       bad('Leg tenon is not narrower than the leg, so it has no shoulder.');
     if (P.postCenter + P.leg / 2 > P.foot / 2)
       bad('Leg overhangs the edge of the base.');
-    if (P.postCenter - P.legSocketSz / 2 <= P.baseVentR1)
+    if (P.postCenter - legSocketSpan / 2 <= P.baseVentR1)
       bad('Leg socket runs into the ventilation slots.');
     if (P.legH < 3 * 0.2)
       bad('Leg is under three layers tall.');
+    if (P.snapEngagement < 0)
+      bad('Snap engagement cannot be negative.');
+    if (P.snapEngagement > 0.4 + 1e-9)
+      bad('Snap engagement is over the 0.4 mm reusable limit.');
+    if (P.snapped && Math.min(P.legTenonH, P.finialTenonH) < SNAP_TIP + SNAP_BAND_H)
+      bad('Snap tenon is too short for its tab and lead-in.');
+    if (P.snapped && P.snapTabW < 2 * P.nozzle)
+      bad('Snap tab is under two extrusions wide.');
+    if (P.snapped && P.snapCavitySz < 2 * P.nozzle)
+      bad('Leg snap cavity leaves no printable flexure opening.');
+    if (P.snapped && 2 * P.snapTabOut >= P.leg)
+      bad('Snap tabs reach past the leg shoulder.');
+    if (P.snapped && P.snapSocketSz >= P.socketSz)
+      bad('Finial snap recess reaches outside the post socket.');
     if (P.postInsertD > 0 && P.postInsertD < 3)
       bad('Insert hole ' + P.postInsertD + ' mm is smaller than any heat-set insert.');
     /* The only guard this cut can have: the hole is blind, so the post reloads
@@ -1778,11 +1802,26 @@ var Kumiko = (function () {
 
   /* Blind sockets in the underside, one under each corner post, that take the
      leg tenons. */
-  function legSocketVoids(P) {
+  function snapTabLoops(P, positive) {
+    var b = P.legTenon / 2, w = P.snapTabW / 2, o = P.snapTabOut;
+    return [rectLoop(b - TOL, -w, o, w, positive),
+            rectLoop(-o, -w, -b + TOL, w, positive)];
+  }
+
+  function snapRecessVoids(P, cx, cy) {
+    var s = P.legSocketSz / 2, o = P.snapRecessOut;
+    var w = P.snapTabW / 2 + P.legClear / 2;
+    return [rectLoop(cx + s - TOL, cy - w, cx + o, cy + w, false),
+            rectLoop(cx - o, cy - w, cx - s + TOL, cy + w, false)];
+  }
+
+  function legSocketVoids(P, withSnap) {
     var v = [], pc = P.postCenter, s = P.legSocketSz / 2;
     for (var sx = -1; sx <= 1; sx += 2)
-      for (var sy = -1; sy <= 1; sy += 2)
+      for (var sy = -1; sy <= 1; sy += 2) {
         v.push(rectLoop(sx * pc - s, sy * pc - s, sx * pc + s, sy * pc + s, false));
+        if (withSnap) v = v.concat(snapRecessVoids(P, sx * pc, sy * pc));
+      }
     return v;
   }
 
@@ -1798,14 +1837,15 @@ var Kumiko = (function () {
   }
 
   /* Square pockets in the cap's top face that take the finial skirts.  Same
-     size as the leg sockets, so one clearance serves both — and concentric
-     with and strictly inside the post sockets, so no new guard is needed for
-     the vent, the rim or the edge chamfer. */
-  function finialSocketVoids(P) {
+     size as the leg sockets, so one clearance serves both.  The optional
+     local snap relief is guarded against the post sockets, rim and vents. */
+  function finialSocketVoids(P, withSnap) {
     var v = [], pc = P.postCenter, s = P.legSocketSz / 2;
     for (var sx = -1; sx <= 1; sx += 2)
-      for (var sy = -1; sy <= 1; sy += 2)
+      for (var sy = -1; sy <= 1; sy += 2) {
         v.push(rectLoop(sx * pc - s, sy * pc - s, sx * pc + s, sy * pc + s, false));
+        if (withSnap) v = v.concat(snapRecessVoids(P, sx * pc, sy * pc));
+      }
     return v;
   }
 
@@ -1818,12 +1858,28 @@ var Kumiko = (function () {
     var zc = P.finialH + P.finialTenonH - P.finialCavityH;
     var cav = circleLoop(0, 0, P.finialCavityD / 2, P.arc, false);
     var body = rectLoop(-a, -a, a, a, true);
-    return { tris: extrudeStack([
-      { loops: [body], z0: 0, z1: zc },
-      { loops: [body, cav], z0: zc, z1: P.finialH },
-      { loops: [rectLoop(-b, -b, b, b, true), cav], z0: P.finialH,
-        z1: P.finialH + P.finialTenonH }
-    ]), manifold: true };
+    if (!P.snapped)
+      return { tris: extrudeStack([
+        { loops: [body], z0: 0, z1: zc },
+        { loops: [body, cav], z0: zc, z1: P.finialH },
+        { loops: [rectLoop(-b, -b, b, b, true), cav], z0: P.finialH,
+          z1: P.finialH + P.finialTenonH }
+      ]), manifold: true };
+    var top = P.finialH + P.finialTenonH;
+    var zs0 = top - SNAP_TIP - SNAP_BAND_H, zs1 = zs0 + SNAP_BAND_H;
+    var cuts = [0, zc, P.finialH, zs0, zs1, top]
+      .sort(function (x, y) { return x - y; });
+    var layers = [];
+    for (var i = 0; i + 1 < cuts.length; i++) {
+      var z0 = cuts[i], z1 = cuts[i + 1];
+      if (z1 - z0 < TOL) continue;
+      var zm = (z0 + z1) / 2;
+      var loops = [zm < P.finialH ? body : rectLoop(-b, -b, b, b, true)];
+      if (zm >= zc) loops.push(cav);
+      if (zm >= zs0 && zm <= zs1) loops = loops.concat(snapTabLoops(P, true));
+      layers.push({ loops: loops, z0: z0, z1: z1 });
+    }
+    return { tris: extrudeStack(layers), manifold: true };
   }
 
   /* The stack is built from sorted breakpoints rather than a fixed list of
@@ -1836,7 +1892,6 @@ var Kumiko = (function () {
     var cbore = circleLoop(0, 0, P.socketCbore / 2, n, false);
     var vents = ventVoids(P);
     var joinery = joineryVoids(P);
-    var legs = legSocketVoids(P);
     var ch = P.edgeChamfer;
     /* 45 deg bevel on all four horizontal perimeter edges: the outer square is
        inset by whatever chamfer depth remains at that z.  Every other loop is
@@ -1856,7 +1911,10 @@ var Kumiko = (function () {
 
     var zTunnel0 = P.cableFloor, zTunnel1 = P.cableFloor + P.cableH;
     var zJoin = t - P.grooveD, zCbore = t - P.socketCboreD;
+    var zSnap0 = P.legTenonH - SNAP_TIP - SNAP_BAND_H;
+    var zSnap1 = zSnap0 + SNAP_BAND_H;
     var cuts = [0, ch, zTunnel0, zTunnel1, P.legTenonH, zJoin, zCbore, t - ch, t]
+      .concat(P.snapped ? [zSnap0, zSnap1] : [])
       .filter(function (z) { return z > -TOL && z < t + TOL; })
       .sort(function (a, b) { return a - b; });
 
@@ -1868,7 +1926,8 @@ var Kumiko = (function () {
       var rest = [zm >= zCbore ? cbore : bore].concat(vents);
       if (zm >= zTunnel0 && zm <= zTunnel1) rest.push(tunnel);
       if (zm >= zJoin) rest = rest.concat(joinery);
-      if (zm <= P.legTenonH) rest = rest.concat(legs);
+      if (zm <= P.legTenonH)
+        rest = rest.concat(legSocketVoids(P, P.snapped && zm >= zSnap0 && zm <= zSnap1));
       layers.push({ loops: [outerAt(z0)].concat(rest),
                     loopsTop: ch > 0 ? [outerAt(z1)].concat(rest) : undefined,
                     z0: z0, z1: z1 });
@@ -1880,10 +1939,30 @@ var Kumiko = (function () {
      one would let a square leg rotate out of line with the base edges. */
   function buildLeg(P) {
     var a = P.leg / 2, b = P.legTenon / 2;
-    return { tris: extrudeStack([
-      { loops: [rectLoop(-a, -a, a, a, true)], z0: 0, z1: P.legH },
-      { loops: [rectLoop(-b, -b, b, b, true)], z0: P.legH, z1: P.legH + P.legTenonH }
-    ]), manifold: true };
+    if (!P.snapped)
+      return { tris: extrudeStack([
+        { loops: [rectLoop(-a, -a, a, a, true)], z0: 0, z1: P.legH },
+        { loops: [rectLoop(-b, -b, b, b, true)], z0: P.legH,
+          z1: P.legH + P.legTenonH }
+      ]), manifold: true };
+    var top = P.legH + P.legTenonH;
+    var zs0 = top - SNAP_TIP - SNAP_BAND_H, zs1 = zs0 + SNAP_BAND_H;
+    var cavity = rectLoop(-P.snapCavitySz / 2, -P.snapCavitySz / 2,
+                          P.snapCavitySz / 2, P.snapCavitySz / 2, false);
+    var cuts = [0, P.legH, P.legH + SNAP_ROOT, zs0, zs1, top]
+      .sort(function (x, y) { return x - y; });
+    var layers = [];
+    for (var i = 0; i + 1 < cuts.length; i++) {
+      var z0 = cuts[i], z1 = cuts[i + 1];
+      if (z1 - z0 < TOL) continue;
+      var zm = (z0 + z1) / 2;
+      var loops = [zm < P.legH ? rectLoop(-a, -a, a, a, true)
+                               : rectLoop(-b, -b, b, b, true)];
+      if (zm >= P.legH + SNAP_ROOT) loops.push(cavity);
+      if (zm >= zs0 && zm <= zs1) loops = loops.concat(snapTabLoops(P, true));
+      layers.push({ loops: loops, z0: z0, z1: z1 });
+    }
+    return { tris: extrudeStack(layers), manifold: true };
   }
 
   /* Cap, modelled joinery-side-up; exported flipped so it prints as-is.  Same
@@ -1904,14 +1983,17 @@ var Kumiko = (function () {
     }
 
     var screws = P.screwed ? capScrewVoids(P) : null;
-    var pockets = P.screwed ? finialSocketVoids(P) : null;
     var zFin = t - P.finialTenonH;
+    var snapDepth0 = P.finialTenonH - SNAP_TIP - SNAP_BAND_H;
+    var snapDepth1 = snapDepth0 + SNAP_BAND_H;
+    var zFinSnap0 = t - snapDepth1, zFinSnap1 = t - snapDepth0;
 
     /* Breakpoints rather than a fixed pair of layers, so the chamfer and the
        groove floor can land in any order as the sliders move.  zFin only joins
        them when the cap is screwed, so an unscrewed cap decomposes into exactly
        the slabs it always did. */
     var cuts = [0, ch, P.grooveD, t - ch, t].concat(P.screwed ? [zFin] : [])
+      .concat(P.screwed && P.snapped ? [zFinSnap0, zFinSnap1] : [])
       .filter(function (z) { return z > -TOL && z < t + TOL; })
       .sort(function (a, b) { return a - b; });
     var layers = [];
@@ -1922,8 +2004,11 @@ var Kumiko = (function () {
       /* Neither new void crosses the outer boundary, so the tapered chamfer
          bands keep the property extrudeStack needs. */
       if (screws) rest = rest.concat(screws);
-      if (pockets && (a0 + a1) / 2 >= zFin) rest = rest.concat(pockets);
-      if ((a0 + a1) / 2 <= P.grooveD) rest = rest.concat(joinery);
+      var zm = (a0 + a1) / 2;
+      if (P.screwed && zm >= zFin)
+        rest = rest.concat(finialSocketVoids(P, P.snapped &&
+                                             zm >= zFinSnap0 && zm <= zFinSnap1));
+      if (zm <= P.grooveD) rest = rest.concat(joinery);
       layers.push({ loops: [outerAt(a0)].concat(rest),
                     loopsTop: ch > 0 ? [outerAt(a1)].concat(rest) : undefined,
                     z0: a0, z1: a1 });
@@ -2197,8 +2282,8 @@ var Kumiko = (function () {
        unscrewed lamp rather than listed as nothing to print.  Under the leg
        specifically, so rows 1 and 2 stay panel and post. */
     if (P.screwed)
-      parts.push({ id: 'finial', label: 'Cap finial', qty: 4, mesh: finial,
-        note: 'skirt up, as exported' });
+      parts.push({ id: 'finial', label: 'Screw-head finial cap', qty: 4, mesh: finial,
+        note: P.snapped ? 'snap skirt up, as exported' : 'skirt up, as exported' });
     parts.push(
       { id: 'socket_adapter_ring', label: P.holderType.toUpperCase() + ' adapter ring',
         qty: 1, mesh: ring,
@@ -2255,6 +2340,7 @@ var Kumiko = (function () {
     'Legs':'ขา', 'Joints':'รอยต่อ', 'Lamp holder':'ขั้วหลอดไฟ', 'Printer':'เครื่องพิมพ์',
     'Holder type':'ชนิดขั้วหลอดไฟ',
     'Cap screws':'สกรูยึดฝา', 'Insert hole':'รูอินเสิร์ต', 'Finial height':'ความสูงยอดฝา',
+    'Snap engagement':'ระยะล็อกสแนป',
     'Width':'ความกว้าง', 'Height':'ความสูง', 'Pattern pitch':'ระยะลาย', 'Slat width':'ความกว้างซี่',
     'Thickness':'ความหนา', 'Frame border':'ขอบกรอบ', 'Diffuser plate':'แผ่นกระจายแสง',
     'Diffuser rebate':'ร่องแผ่นกระจายแสง', 'Rebate lip inset':'ระยะขอบร่อง',
@@ -2321,7 +2407,7 @@ var Kumiko = (function () {
   var HTML_TH = {
     '.block:nth-of-type(2) .cols > div:nth-child(1) dl':'<div><dt>หัวฉีด / ความสูงชั้น</dt><dd id="s-noz">0.4 / 0.2 mm</dd></div><div><dt>จำนวนผนัง</dt><dd id="s-walls">4</dd></div><div><dt>อินฟิล</dt><dd>15% gyroid</dd></div><div><dt>ซัพพอร์ต</dt><dd>ไม่ใช้</dd></div><div><dt>ปีกยึดชิ้นงาน</dt><dd>5 mm สำหรับเสาและแผง</dd></div>',
     '.block:nth-of-type(2) .cols > div:nth-child(2) ol':'<li>สวมเสาทั้งสี่ลงในเบ้ามุมของฐาน</li><li>เลื่อนแผงแต่ละด้านลงระหว่างเสาสองต้น โดยหันหน้าลายออก</li><li>สวมฝาบนเข้ากับปลายเสาและขอบบนของแผง</li>',
-    '.block:nth-of-type(2) .cols > div:nth-child(2) p':'ทุกจุดเป็นการสวมแน่น จึงยกฝาออกเพื่อเปลี่ยนหลอดไฟได้ หากแผงฝืด ให้เพิ่มระยะเผื่อร่องแล้วพิมพ์เฉพาะเสาใหม่',
+    '.block:nth-of-type(2) .cols > div:nth-child(2) p':'ทุกจุดเป็นการสวมแน่น และเลือกใช้สแนปแบบถอดซ้ำได้กับขาทั้งสี่และฝาครอบหัวสกรูทั้งสี่ ยกฝาออกเพื่อเปลี่ยนหลอดไฟได้ เว้นแต่ติดตั้งสกรูฝา ซึ่งต้องถอดฝาครอบทั้งสี่ก่อน หากแผงฝืด ให้เพิ่มระยะเผื่อร่องแล้วพิมพ์เฉพาะเสาใหม่',
     '.block:nth-of-type(2) .cols > div:nth-child(3) p':'ด้านหลังของแต่ละแผงมีร่องเปิดที่ขอบบน สำหรับสอดกระดาษโชจิหรือกระดาษเวลลัมก่อนปิดฝา',
     '.block:nth-of-type(2) .cols > div:nth-child(3) dl':'<div><dt>แผ่นกระจายแสง</dt><dd id="s-diff">—</dd></div><div><dt>ความลึกร่อง</dt><dd id="s-reb">—</dd></div>',
     '.block:nth-of-type(2) .warn p:nth-of-type(1)':'<strong>ใช้หลอด LED เท่านั้น กำลังไม่เกิน 9 W</strong> หลอดไส้หรือฮาโลเจนจะทำให้โคมนิ่มและเสียรูป — PLA เริ่มอ่อนตัวที่ประมาณ 60&nbsp;°C',
@@ -2406,7 +2492,8 @@ var Kumiko = (function () {
     { name: 'Joints', items: [
       ['slotClear', 'Groove clearance', 0.1, 1.0, 0.05, 'mm'],
       ['panelClear', 'Panel width clearance', 0.1, 1.0, 0.05, 'mm'],
-      ['socketClear', 'Post socket clearance', 0.1, 1.0, 0.05, 'mm']
+      ['socketClear', 'Post socket clearance', 0.1, 1.0, 0.05, 'mm'],
+      ['snapEngagement', 'Snap engagement', 0, 0.4, 0.05, 'mm']
     ]},
     { name: 'Lamp holder', holder: true, items: [
       ['socketBore', 'Bore', 20, 60, 0.5, 'mm'],
@@ -2816,11 +2903,12 @@ var Kumiko = (function () {
       var tr = el('tr');
       var td0 = el('td');
       var partLabels = { diffuser_plate:'แผ่นกระจายแสง', post:'เสามุม', base:'ฐาน',
-        top_cap:'ฝาบน', leg:'ขา', finial:'ยอดฝา',
+        top_cap:'ฝาบน', leg:'ขา', finial:'ฝาครอบหัวสกรูทรงยอด',
         socket_adapter_ring:'วงแหวนแปลง ' + model.P.holderType.toUpperCase() };
       var partNotes = { diffuser_plate:'วางราบ พิมพ์ด้วย PETG ใส', post:'วางตั้งและใช้ปีกยึด',
         base:'ใช้ทิศทางตามไฟล์ส่งออก', top_cap:'พลิกพร้อมสำหรับการพิมพ์แล้ว',
-        leg:'หงายเดือยขึ้นตามไฟล์ส่งออก', finial:'หงายเดือยขึ้นตามไฟล์ส่งออก',
+        leg:'หงายเดือยขึ้นตามไฟล์ส่งออก',
+        finial:(model.P.snapped ? 'หงายบ่าสแนปขึ้นตามไฟล์ส่งออก' : 'หงายเดือยขึ้นตามไฟล์ส่งออก'),
         socket_adapter_ring:'ปรับให้ตรงกับขั้วหลอดของคุณ' };
       var label = p.id.indexOf('panel_') === 0
         ? (lang === 'th' ? (K.PATTERN_FAMILY[state.pattern] === 'laithai' ? 'แผงลายไทย' : 'แผงคุมิโกะ') : p.label)
@@ -2871,7 +2959,14 @@ var Kumiko = (function () {
       'Leg is under three layers tall.':'ขาสูงน้อยกว่าสามชั้นพิมพ์',
       'Finial skirt is under three layers deep.':'บ่ายอดฝาลึกน้อยกว่าสามชั้นพิมพ์',
       'Screw cavity leaves under two walls of finial skirt.':'โพรงสกรูเหลือผนังบ่ายอดฝาน้อยกว่าสองเส้น',
-      'Screw cavity breaks out of the top of the finial.':'โพรงสกรูทะลุออกด้านบนของยอดฝา'
+      'Screw cavity breaks out of the top of the finial.':'โพรงสกรูทะลุออกด้านบนของยอดฝา',
+      'Snap engagement cannot be negative.':'ระยะล็อกสแนปต้องไม่ติดลบ',
+      'Snap engagement is over the 0.4 mm reusable limit.':'ระยะล็อกสแนปเกินขีดจำกัดถอดใช้ซ้ำ 0.4 mm',
+      'Snap tenon is too short for its tab and lead-in.':'เดือยสั้นเกินไปสำหรับบ่าสแนปและช่วงนำ',
+      'Snap tab is under two extrusions wide.':'บ่าสแนปกว้างน้อยกว่าสองแนวฉีด',
+      'Leg snap cavity leaves no printable flexure opening.':'โพรงสแนปขาไม่เหลือช่องยืดหยุ่นที่พิมพ์ได้',
+      'Snap tabs reach past the leg shoulder.':'บ่าสแนปยื่นพ้นไหล่ขา',
+      'Finial snap recess reaches outside the post socket.':'ร่องสแนปยอดฝายื่นพ้นเบ้าเสา'
     };
     /* The interpolated ones cannot be looked up, so match on their stem. */
     if (/^Only .* of cap is left over the post sockets/.test(m))
@@ -2939,6 +3034,8 @@ var Kumiko = (function () {
     var neckPreset = K.HOLDER_PRESETS[state.holderType];
     if (Math.abs(state.socketNeck - neckPreset) > 1e-9)
       flags.push('--socket-neck ' + state.socketNeck);
+    if (Math.abs(state.snapEngagement - d.snapEngagement) > 1e-9)
+      flags.push('--snap-lock ' + state.snapEngagement);
     if (state.pattern !== d.pattern) flags.push('--pattern ' + state.pattern);
     document.getElementById('cli').textContent =
       'python3 kumiko_lamp.py' + (flags.length ? ' ' + flags.join(' ') : '');

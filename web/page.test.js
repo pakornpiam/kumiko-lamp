@@ -246,6 +246,13 @@ const check = (ok, msg, extra) => {
         tall.trim());
   check(/--post-insert 4/.test(await page.textContent('#cli')),
         'CLI echo carries the insert', await page.textContent('#cli'));
+  await page.fill('#r-snapEngagement', '0.2');
+  await page.dispatchEvent('#r-snapEngagement', 'input');
+  await page.waitForTimeout(600);
+  check((await page.textContent('#parts tr:nth-child(6) .part')).trim() ===
+        'Screw-head finial cap', 'finial is presented as the screw-head cap');
+  check(/--snap-lock 0.2/.test(await page.textContent('#cli')),
+        'CLI echo carries snap engagement', await page.textContent('#cli'));
   // the top notch is past what an 18 mm post takes, and must say so
   await page.fill('#r-postInsertD', '5.6');
   await page.dispatchEvent('#r-postInsertD', 'input');
@@ -257,6 +264,10 @@ const check = (ok, msg, extra) => {
   await page.waitForTimeout(600);
   check(await page.$$eval('#parts tr', r => r.length) === 6,
         'back to six rows once the insert is off');
+  check(!(await page.isDisabled('#dl-all')), 'lower-foot snaps remain exportable without finials');
+  await page.fill('#r-snapEngagement', '0');
+  await page.dispatchEvent('#r-snapEngagement', 'input');
+  await page.waitForTimeout(500);
 
   // screenshots, both themes -- collapse the rail back to its default state
   await page.evaluate(() => {

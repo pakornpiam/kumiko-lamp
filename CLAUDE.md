@@ -20,6 +20,7 @@ python3 kumiko_lamp.py --size 150 --height 170 --grid 20 --slat 2.0 --socket-nec
 python3 kumiko_lamp.py --diffuser-plate 1.2 --edge-chamfer 1.5
 python3 kumiko_lamp.py --post-insert 4.0        # M3 inserts, screws, finials
 python3 kumiko_lamp.py --holder e14             # 27 mm E14 sleeve preset
+python3 kumiko_lamp.py --snap-lock              # 0.2 mm foot + finial detents
 python3 render_preview.py                 # optional PNG previews, needs matplotlib
 
 # Configurator tests (from web/)
@@ -106,6 +107,13 @@ face, and `_rotx(180)` puts that face on the plate, so their floors become four 
 dead-flat ceilings 2 mm up. Anchored on all four sides — easier than the cord tunnel's
 existing 9 mm bridge, which is anchored on two. Say *bridges* in the docs, not "no
 overhang".
+
+**Snap engagement is radial interference, not tab height.** The tab first clears the
+tenon by `leg_clear / 2`, then reaches `snap_engagement` past the normal socket wall; its
+locked recess restores `leg_clear / 2` around it. Two opposing tabs are 0.4 mm high and
+end 0.6 mm before the tip. The lower tenon is hollow only when snapping, while the finial
+already flexes around its screw cavity. Keep every snap branch conditional so
+`snap_engagement = 0` stays byte-identical with the old parts.
 
 A new **part id** is two more places than you expect: `partLabels` and `partNotes` in
 `renderParts` are keyed by it, and a miss renders `undefined.stl · undefined` in Thai. A

@@ -100,6 +100,20 @@ check(K.checkFits(K.derive({ capT: 7, grooveD: 6, post: 20 })).length === 0,
       'a millimetre of cap floor accepted');
 check(K.checkFits(K.derive({ postInsertD: 4, capT: 8.5 })).length > 0,
       'a finial socket that eats the cap floor rejected');
+const SNAP = K.derive({ snapEngagement: 0.2 });
+check(SNAP.snapped && Math.abs(SNAP.snapTabOut - 5.375) < 1e-9 &&
+      Math.abs(SNAP.snapRecessOut - 5.55) < 1e-9,
+      '0.2 snap derives its tab interference and locked clearance');
+check(K.checkFits(K.derive({ snapEngagement: 0.05 })).length === 0,
+      'minimum snap engagement passes');
+check(K.checkFits(K.derive({ snapEngagement: 0.4 })).length === 0,
+      'maximum reusable snap engagement passes');
+check(K.checkFits(K.derive({ snapEngagement: 0.45 })).length > 0,
+      'snap engagement over 0.4 rejected');
+check(K.checkFits(K.derive({ snapEngagement: -0.05 })).length > 0,
+      'negative snap engagement rejected');
+check(K.checkFits(K.derive({ snapEngagement: 0.2, legTenon: 4 })).length > 0,
+      'snap tenon without a printable flexure opening rejected');
 
 console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
@@ -248,6 +262,24 @@ check(screwed.assembly.filter(p => /^finial/.test(p.name)).length === 4,
 const e14 = K.buildAll({ holderType: 'e14' });
 check(e14.parts[5].label === 'E14 adapter ring' && e14.P.socketNeck === 27,
       'E14 build labels and sizes the adapter ring');
+const snapped = K.buildAll({ postInsertD: 4, snapEngagement: 0.2 });
+check(snapped.problems.length === 0 &&
+      snapped.assembly.filter(p => /^leg/.test(p.name)).length === 4 &&
+      snapped.assembly.filter(p => /^finial/.test(p.name)).length === 4,
+      'snap build places all four feet and four screw-head finial caps');
+for (const name of ['base', 'top_cap', 'leg', 'finial']) {
+  const part = snapped.parts.find(p => p.id === name);
+  const c = closure(part.mesh.tris);
+  check(c.closed, `snapped ${name} surface closed`, `normal residual ${c.res.toExponential(1)}`);
+}
+const SNAP_PY = { base: 505.9, top_cap: 317.4, leg: 5.3, finial: 3.3 };
+for (const [name, want] of Object.entries(SNAP_PY)) {
+  const part = snapped.parts.find(p => p.id === name);
+  const got = part.vol / 1000, err = (got - want) / want * 100;
+  const ok = name === 'top_cap' ? (err > -0.5 && err < 5) : Math.abs(err) < 1.5;
+  check(ok, `snapped ${name} volume ${got.toFixed(1)} cm3`,
+        `python ${want} (${err > 0 ? '+' : ''}${err.toFixed(2)}%)`);
+}
 
 console.log('\nvariations');
 for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
@@ -261,6 +293,8 @@ for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'masu' }, { pattern: 'senbon' },
                  { pattern: 'senbon', grid: 45 },
                  { holderType: 'e14' },
+                 { snapEngagement: 0.05 }, { snapEngagement: 0.4 },
+                 { holderType: 'e14', postInsertD: 4, snapEngagement: 0.2 },
                  { postInsertD: 4 }, { postInsertD: 4, capT: 9 },
                  { postInsertD: 5, post: 20 }, { postInsertD: 4, plateT: 1.2 },
                  { pattern: 'thai_rosette' },

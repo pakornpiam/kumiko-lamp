@@ -27,6 +27,9 @@ import numpy as np
 import trimesh
 
 EPS = 1e-3          # nudge used to make through-cuts unambiguous
+SNAP_BAND_H = 0.4   # two 0.2 mm layers
+SNAP_TIP = 0.6      # solid lead-in left beyond the detent
+SNAP_ROOT = 0.6     # solid root left below the leg's flexure cavity
 
 # Bulb-base names do not define the holder's mounting neck.  These are the
 # working sleeve presets the configurator offers; --socket-neck remains the
@@ -92,6 +95,7 @@ class Params:
     leg_tenon: float = 10.0      # square tenon plugging into the base
     leg_tenon_h: float = 8.0     # tenon length == socket depth
     leg_clear: float = 0.35      # socket size minus tenon size
+    snap_engagement: float = 0.0 # positive detent past the socket wall; 0 disables
 
     # --- top fixing and finials ------------------------------------------
     # A heat-set insert in the top of each post lets the cap be screwed down
@@ -170,6 +174,37 @@ class Params:
     def leg_socket_sz(self) -> float:
         """Square socket in the base underside that receives a leg tenon."""
         return self.leg_tenon + self.leg_clear
+
+    @property
+    def snapped(self) -> bool:
+        """Do the four feet and, when present, four finials use snap detents?"""
+        return self.snap_engagement > 0
+
+    @property
+    def snap_tab_w(self) -> float:
+        """Width along the face of each of the two opposing snap tabs."""
+        return min(4.0, self.leg_tenon - 4 * self.nozzle)
+
+    @property
+    def snap_tab_out(self) -> float:
+        """Tab reach from the tenon axis; insertion deflection is engagement."""
+        return (self.leg_tenon / 2.0 + self.leg_clear / 2.0
+                + self.snap_engagement)
+
+    @property
+    def snap_recess_out(self) -> float:
+        """Matching socket relief with half of leg_clear left around the tab."""
+        return self.snap_tab_out + self.leg_clear / 2.0
+
+    @property
+    def snap_socket_sz(self) -> float:
+        """Conservative full span used by the socket boundary guards."""
+        return 2 * self.snap_recess_out
+
+    @property
+    def snap_cavity_sz(self) -> float:
+        """Square leg-tenon relief leaving four nozzle-width flexure walls."""
+        return self.leg_tenon - 8 * self.nozzle
 
     @property
     def screwed(self) -> bool:
@@ -1421,22 +1456,54 @@ def _cap_screw_holes(P: Params):
             for sx in (-1, 1) for sy in (-1, 1)]
 
 
+def _snap_tabs(P: Params, shoulder: float, tenon_h: float):
+    """Two centred tabs on opposing tenon faces, aligned with socket reliefs."""
+    if not P.snapped:
+        return []
+    b = P.leg_tenon / 2.0
+    w = P.snap_tab_w / 2.0
+    z1 = shoulder + tenon_h - SNAP_TIP
+    z0 = z1 - SNAP_BAND_H
+    o = P.snap_tab_out
+    return [box(b - EPS, -w, z0, o, w, z1),
+            box(-o, -w, z0, -b + EPS, w, z1)]
+
+
+def _snap_recesses(P: Params, cx: float, cy: float, z0: float, z1: float):
+    """Localised socket reliefs that receive the two expanded snap tabs."""
+    if not P.snapped:
+        return []
+    s = P.leg_socket_sz / 2.0
+    o = P.snap_recess_out
+    w = P.snap_tab_w / 2.0 + P.leg_clear / 2.0
+    return [box(cx + s - EPS, cy - w, z0, cx + o, cy + w, z1),
+            box(cx - o, cy - w, z0, cx - s + EPS, cy + w, z1)]
+
+
 def _finial_sockets(P: Params):
     """
     Square pockets in the cap's top face that take the finial skirts.  Same
     size as the leg sockets in the base underside, so one clearance serves both.
 
-    They are concentric with, and strictly inside, the post sockets -- 10.35
-    inside 18.4 at stock -- so every guard that already keeps a post socket
-    clear of the vent, the rim and the edge chamfer covers these too.
+    The main pockets are concentric with and strictly inside the post sockets.
+    Snap reliefs stay local to two faces, and check_fits explicitly keeps their
+    wider span inside the post sockets and away from the rim and base vents.
     """
     if not P.screwed:
         return []
     s = P.leg_socket_sz / 2.0
     pc = P.post_center
-    return [box(sx * pc - s, sy * pc - s, P.cap_t - P.finial_tenon_h,
-                sx * pc + s, sy * pc + s, P.cap_t + EPS)
-            for sx in (-1, 1) for sy in (-1, 1)]
+    out = []
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            cx, cy = sx * pc, sy * pc
+            out.append(box(cx - s, cy - s, P.cap_t - P.finial_tenon_h,
+                           cx + s, cy + s, P.cap_t + EPS))
+            depth0 = P.finial_tenon_h - SNAP_TIP - SNAP_BAND_H
+            depth1 = depth0 + SNAP_BAND_H
+            out += _snap_recesses(P, cx, cy, P.cap_t - depth1,
+                                  P.cap_t - depth0)
+    return out
 
 
 def build_cap_finial(P: Params) -> trimesh.Trimesh:
@@ -1457,7 +1524,9 @@ def build_cap_finial(P: Params) -> trimesh.Trimesh:
     skirt = box(-b, -b, P.finial_h - EPS, b, b, top)
     cavity = cyl(P.finial_cavity_d, top - P.finial_cavity_h, top + EPS,
                  sections=P.arc)
-    return cleanup(difference(union([body, skirt]), [cavity]))
+    solid = union([body, skirt] + _snap_tabs(P, P.finial_h,
+                                             P.finial_tenon_h))
+    return cleanup(difference(solid, [cavity]))
 
 
 def build_leg(P: Params) -> trimesh.Trimesh:
@@ -1472,16 +1541,29 @@ def build_leg(P: Params) -> trimesh.Trimesh:
     b = P.leg_tenon / 2.0
     body = box(-a, -a, 0, a, a, P.leg_h)
     tenon = box(-b, -b, P.leg_h - EPS, b, b, P.leg_h + P.leg_tenon_h)
-    return cleanup(union([body, tenon]))
+    solid = union([body, tenon] + _snap_tabs(P, P.leg_h, P.leg_tenon_h))
+    if P.snapped:
+        c = P.snap_cavity_sz / 2.0
+        cavity = box(-c, -c, P.leg_h + SNAP_ROOT, c, c,
+                     P.leg_h + P.leg_tenon_h + EPS)
+        solid = difference(solid, [cavity])
+    return cleanup(solid)
 
 
 def _leg_sockets(P: Params):
     """Blind sockets in the base underside, one under each corner post."""
     s = P.leg_socket_sz / 2.0
     pc = P.post_center
-    return [box(sx * pc - s, sy * pc - s, -EPS, sx * pc + s, sy * pc + s,
-                P.leg_tenon_h)
-            for sx in (-1, 1) for sy in (-1, 1)]
+    out = []
+    z0 = P.leg_tenon_h - SNAP_TIP - SNAP_BAND_H
+    z1 = z0 + SNAP_BAND_H
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            cx, cy = sx * pc, sy * pc
+            out.append(box(cx - s, cy - s, -EPS, cx + s, cy + s,
+                           P.leg_tenon_h))
+            out += _snap_recesses(P, cx, cy, z0, z1)
+    return out
 
 
 def _edge_chamfers(P: Params, x0, y0, x1, y1, z):
@@ -1759,8 +1841,9 @@ def check_fits(P: Params):
         issues.append("adapter counterbore runs into the ventilation slots")
     if P.foot / 2 <= P.post_center + P.socket_sz / 2:
         issues.append("post socket breaks out of the side of the base/cap")
+    leg_socket_span = P.snap_socket_sz if P.snapped else P.leg_socket_sz
     if P.edge_chamfer >= P.foot / 2 - (P.post_center
-                                       + max(P.socket_sz, P.leg_socket_sz) / 2):
+                                       + max(P.socket_sz, leg_socket_span) / 2):
         issues.append("edge chamfer cuts into the socket walls of the base/cap")
     if 2 * P.edge_chamfer >= P.cap_t:
         issues.append("top and bottom chamfers meet through the cap")
@@ -1785,10 +1868,25 @@ def check_fits(P: Params):
         issues.append("leg tenon is not narrower than the leg, so it has no shoulder")
     if P.post_center + P.leg / 2 > P.foot / 2:
         issues.append("leg overhangs the edge of the base")
-    if P.post_center - P.leg_socket_sz / 2 <= P.base_vent_r1:
+    if P.post_center - leg_socket_span / 2 <= P.base_vent_r1:
         issues.append("leg socket runs into the ventilation slots")
     if P.leg_h < 3 * 0.2:
         issues.append("leg is under three layers tall")
+    if P.snap_engagement < 0:
+        issues.append("snap engagement cannot be negative")
+    if P.snap_engagement > 0.4 + 1e-9:
+        issues.append("snap engagement is over the 0.4 mm reusable limit")
+    if P.snapped and min(P.leg_tenon_h, P.finial_tenon_h) < (SNAP_TIP
+                                                              + SNAP_BAND_H):
+        issues.append("snap tenon is too short for its tab and lead-in")
+    if P.snapped and P.snap_tab_w < 2 * P.nozzle:
+        issues.append("snap tab is under two extrusions wide")
+    if P.snapped and P.snap_cavity_sz < 2 * P.nozzle:
+        issues.append("leg snap cavity leaves no printable flexure opening")
+    if P.snapped and 2 * P.snap_tab_out >= P.leg:
+        issues.append("snap tabs reach past the leg shoulder")
+    if P.snapped and P.snap_socket_sz >= P.socket_sz:
+        issues.append("finial snap recess reaches outside the post socket")
     if 0 < P.post_insert_d < 3.0:
         issues.append("insert hole is smaller than any heat-set insert")
     # The only guard that can exist for this: the hole is blind, so the post
@@ -1921,6 +2019,9 @@ def main(argv=None):
     ap.add_argument("--post-insert", type=float,
                     help="heat-set insert pilot hole in each post top (mm); "
                          "0 for none, 4.0 is the working value for M3")
+    ap.add_argument("--snap-lock", nargs="?", const=0.2, type=float,
+                    metavar="MM", help="reusable foot and finial snap engagement; "
+                                        "bare flag uses 0.2 mm, 0 disables")
     ap.add_argument("--split-posts", action="store_true",
                     help="also export the two-piece post")
     ap.add_argument("--all", action="store_true",
@@ -1941,7 +2042,8 @@ def main(argv=None):
                       ("socket_neck", args.socket_neck),
                       ("edge_chamfer", args.edge_chamfer),
                       ("plate_t", args.diffuser_plate),
-                      ("post_insert_d", args.post_insert)):
+                      ("post_insert_d", args.post_insert),
+                      ("snap_engagement", args.snap_lock)):
         if val is not None:
             setattr(P, attr, val)
 
