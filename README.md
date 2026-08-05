@@ -1,6 +1,6 @@
 # Kumiko Lamp — parametric, print-ready STL set
 
-A square four-panel kumiko lantern for an E27 LED bulb. Every part prints flat with
+A square four-panel kumiko lantern for an E27 or E14 LED bulb. Every part prints flat with
 **no supports**, and the whole thing assembles with sliding mortise-and-groove joints —
 no glue and, as it ships, no fasteners of any kind. Four M3 screws are an option, not a
 requirement; see *Screwing the cap down*.
@@ -13,7 +13,7 @@ A1 / P1S / X1C.
 ## Two ways to build it
 
 **[`web/index.html`](web/index.html) — the configurator.** Open it in a browser: drag
-sliders for size, pattern, joint clearances and E27 sizing, turn the lamp in 3D, and
+sliders for size, pattern, joint clearances and lamp-holder sizing, turn the lamp in 3D, and
 download the STLs (individually or as a zip). No install, no network, one self-contained
 file. It re-solves the joinery live and refuses to export a lamp that will not go together.
 
@@ -36,7 +36,7 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `base.stl` | **1** | 190 × 190 × 16 | Flat, as exported. Underside is dead flat. |
 | `top_cap.stl` | **1** | 190 × 190 × 10 | Flat, as exported — **already flipped** into print orientation. |
 | `leg.stl` | **4** | 20 × 20 × 20 | Standing on its foot, as exported. Tenon points up. |
-| `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 holder* below. |
+| `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 / E14 holder* below. |
 | `diffuser_plate.stl` | 0 or **4** | 155.7 × 210 × 1.2 | Flat, as exported. Only if you want a printed diffuser — see *Diffuser* below. |
 | `finial.stl` | 0 or **4** | 20 × 20 × 10 | Standing on its head, as exported. Skirt points up. Only with the cap screws — see below. |
 
@@ -206,18 +206,26 @@ width, the patterns and every other part are identical glazed or not.
 
 You can still use paper as well; the 0.6 mm rebate is untouched.
 
-## E27 holder
+## E27 / E14 holder
 
 The base has a Ø40 mm through-bore, a Ø50 × 4 mm counterbore around it, and a cord tunnel
 out through one side wall. The tunnel is enclosed, not open at the bottom, so the lamp
 sits flat and cannot rock on its own cord.
 
 `socket_adapter_ring.stl` seats in the counterbore and is what your holder clamps
-against. **Its Ø26.5 mm bore is a guess at your hardware** — E27 holders vary a lot.
-Measure the threaded neck on yours and reprint just the ring:
+against. The E27 preset keeps the original Ø26.5 mm bore; the E14 preset uses a Ø27 mm
+bore for the common threaded-sleeve style:
 
 ```bash
-python3 kumiko_lamp.py --socket-neck 23.5
+python3 kumiko_lamp.py --holder e14
+```
+
+E14 and E27 name the bulb interface, not the holder's mounting neck, and actual hardware
+varies. For example, [one commercial E14 sleeve is specified at Ø27.5 mm](https://produkte.kopp.eu/en/id/212501049/). Measure yours
+and override the preset when needed:
+
+```bash
+python3 kumiko_lamp.py --holder e14 --socket-neck 27.5
 ```
 
 It is a 5 g, few-minute print, which is exactly why the fit lives in a separate part
@@ -235,7 +243,7 @@ I would **print the base and top cap in PETG** — they are the parts nearest th
 PETG holds up to roughly 80 °C. PLA is fine for the panels and posts. All-PETG is fine too.
 
 Mains wiring is your responsibility. If you are not confident terminating a lamp holder,
-use a ready-made corded E27 socket rather than making one up.
+use a ready-made corded E27 or E14 socket rather than making one up.
 
 ## Customising
 

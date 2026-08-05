@@ -43,6 +43,29 @@ const check = (ok, msg, extra) => {
   const chips = await page.$$eval('#parts .chip', c => c.map(x => x.textContent));
   check(chips.every(c => c === 'fits'), 'all parts fit the default bed', chips.join(','));
 
+  // E14 is a named starting point for the adapter sleeve; its neck remains tunable.
+  await page.click('button[data-holder="e14"]');
+  await page.waitForTimeout(500);
+  check(await page.inputValue('#r-socketNeck') === '27',
+        'E14 preset selects the 27 mm sleeve bore');
+  check((await page.textContent('#parts tr:last-child .part')).trim() === 'E14 adapter ring',
+        'E14 adapter row is named for the selected holder');
+  check(/--holder e14/.test(await page.textContent('#cli')) &&
+        !/--socket-neck/.test(await page.textContent('#cli')),
+        'CLI echo uses the clean E14 preset', await page.textContent('#cli'));
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
+  await page.fill('#r-socketNeck', '27.5');
+  await page.dispatchEvent('#r-socketNeck', 'input');
+  await page.waitForTimeout(400);
+  check(/--holder e14/.test(await page.textContent('#cli')) &&
+        /--socket-neck 27.5/.test(await page.textContent('#cli')),
+        'manual E14 neck override is retained', await page.textContent('#cli'));
+  await page.click('button[data-holder="e27"]');
+  await page.waitForTimeout(500);
+  check(await page.inputValue('#r-socketNeck') === '26.5',
+        'E27 selector restores the stock neck');
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
+
   // WebGL actually drew something (canvas is not a flat fill)
   const drew = await page.evaluate(() => {
     const c = document.getElementById('gl');

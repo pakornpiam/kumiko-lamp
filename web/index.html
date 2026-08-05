@@ -418,6 +418,10 @@ pre.cmd {
 var Kumiko = (function () {
   'use strict';
 
+  /* Holder names are presets for the mounting sleeve, not the Edison screw
+     itself.  The numeric neck remains editable for real-world hardware. */
+  var HOLDER_PRESETS = { e27: 26.5, e14: 27.0 };
+
   var EPS = 1e-3;      // through-cut nudge, matches the Python EPS
   var TOL = 1e-7;      // geometric tolerance
   var SIDE = 1e-4;     // offset used to probe which side of a wall is solid
@@ -435,6 +439,7 @@ var Kumiko = (function () {
     plinth: 5, baseT: 16, capT: 10, edgeChamfer: 2,
     leg: 20, legH: 12, legTenon: 10, legTenonH: 8, legClear: 0.35,
     postInsertD: 0, postInsertH: 6.5, finialH: 8, finialTenonH: 2,
+    holderType: 'e27',
     socketBore: 40, socketCbore: 50, socketCboreD: 4, socketNeck: 26.5,
     cableW: 9, cableH: 5, cableFloor: 2,
     baseVents: 16, baseVentR0: 29, baseVentR1: 37,
@@ -447,6 +452,10 @@ var Kumiko = (function () {
     var p = {};
     for (var k in DEFAULTS) p[k] = (raw && raw[k] !== undefined) ? +raw[k] : DEFAULTS[k];
     if (raw && raw.pattern) p.pattern = raw.pattern;
+    p.holderType = raw && raw.holderType ? raw.holderType : DEFAULTS.holderType;
+    if (raw && raw.holderType && raw.socketNeck === undefined &&
+        HOLDER_PRESETS[p.holderType] !== undefined)
+      p.socketNeck = HOLDER_PRESETS[p.holderType];
     /* The groove holds the panel and, when glazed, the plate behind it. */
     p.slotW = p.panelT + p.plateT + p.slotClear;
     p.postCenter = p.size / 2 - p.post / 2;
@@ -482,6 +491,8 @@ var Kumiko = (function () {
   function checkFits(P) {
     var out = [];
     function bad(m) { out.push(m); }
+    if (HOLDER_PRESETS[P.holderType] === undefined)
+      bad('Unknown lamp holder type ' + P.holderType + '.');
     if (Math.abs((P.panelW + P.panelClear) - P.grooveSpan) > 1e-9)
       bad('Panel width does not match the post groove span.');
     if (Math.abs((P.slotW - P.panelT - P.plateT) - P.slotClear) > 1e-9)
@@ -2189,7 +2200,8 @@ var Kumiko = (function () {
       parts.push({ id: 'finial', label: 'Cap finial', qty: 4, mesh: finial,
         note: 'skirt up, as exported' });
     parts.push(
-      { id: 'socket_adapter_ring', label: 'E27 adapter ring', qty: 1, mesh: ring,
+      { id: 'socket_adapter_ring', label: P.holderType.toUpperCase() + ' adapter ring',
+        qty: 1, mesh: ring,
         note: 'match to your holder' });
     for (var i = 0; i < parts.length; i++) {
       parts[i].vol = Math.abs(volume(parts[i].mesh.tris));
@@ -2209,7 +2221,8 @@ var Kumiko = (function () {
   }
 
   return {
-    DEFAULTS: DEFAULTS, PATTERNS: PATTERNS, PATTERN_LABEL: PATTERN_LABEL,
+    DEFAULTS: DEFAULTS, HOLDER_PRESETS: HOLDER_PRESETS,
+    PATTERNS: PATTERNS, PATTERN_LABEL: PATTERN_LABEL,
     PATTERN_REGIONS: PATTERN_REGIONS, isRegion: isRegion,
     patternNames: patternNames,
     PATTERN_FAMILY: PATTERN_FAMILY, FAMILY_LABEL: FAMILY_LABEL,
@@ -2240,6 +2253,7 @@ var Kumiko = (function () {
   var TH = {
     'Lantern':'ตัวโคม', 'Pattern':'ลวดลาย', 'Panel':'แผงโคม', 'Frame':'โครง',
     'Legs':'ขา', 'Joints':'รอยต่อ', 'Lamp holder':'ขั้วหลอดไฟ', 'Printer':'เครื่องพิมพ์',
+    'Holder type':'ชนิดขั้วหลอดไฟ',
     'Cap screws':'สกรูยึดฝา', 'Insert hole':'รูอินเสิร์ต', 'Finial height':'ความสูงยอดฝา',
     'Width':'ความกว้าง', 'Height':'ความสูง', 'Pattern pitch':'ระยะลาย', 'Slat width':'ความกว้างซี่',
     'Thickness':'ความหนา', 'Frame border':'ขอบกรอบ', 'Diffuser plate':'แผ่นกระจายแสง',
@@ -2394,7 +2408,7 @@ var Kumiko = (function () {
       ['panelClear', 'Panel width clearance', 0.1, 1.0, 0.05, 'mm'],
       ['socketClear', 'Post socket clearance', 0.1, 1.0, 0.05, 'mm']
     ]},
-    { name: 'Lamp holder', items: [
+    { name: 'Lamp holder', holder: true, items: [
       ['socketBore', 'Bore', 20, 60, 0.5, 'mm'],
       ['socketCbore', 'Counterbore', 26, 74, 0.5, 'mm'],
       ['socketNeck', 'Adapter ring bore', 10, 52, 0.5, 'mm'],
@@ -2473,6 +2487,29 @@ var Kumiko = (function () {
         paint();
         body.appendChild(tabs);
         body.appendChild(wrap);
+      }
+
+      if (g.holder) {
+        var hc = el('div', 'ctl');
+        var hl = el('label');
+        hl.appendChild(el('span', null, t('Holder type')));
+        hc.appendChild(hl);
+        var hp = el('div', 'styles');
+        ['e27', 'e14'].forEach(function (id) {
+          var hb = el('button', null, id.toUpperCase());
+          hb.type = 'button';
+          hb.dataset.holder = id;
+          hb.setAttribute('aria-pressed', String(state.holderType === id));
+          hb.addEventListener('click', function () {
+            state.holderType = id;
+            state.socketNeck = K.HOLDER_PRESETS[id];
+            buildRail();
+            rebuild();
+          });
+          hp.appendChild(hb);
+        });
+        hc.appendChild(hp);
+        body.appendChild(hc);
       }
 
       g.items.forEach(function (it) {
@@ -2780,7 +2817,7 @@ var Kumiko = (function () {
       var td0 = el('td');
       var partLabels = { diffuser_plate:'แผ่นกระจายแสง', post:'เสามุม', base:'ฐาน',
         top_cap:'ฝาบน', leg:'ขา', finial:'ยอดฝา',
-        socket_adapter_ring:'วงแหวนแปลง E27' };
+        socket_adapter_ring:'วงแหวนแปลง ' + model.P.holderType.toUpperCase() };
       var partNotes = { diffuser_plate:'วางราบ พิมพ์ด้วย PETG ใส', post:'วางตั้งและใช้ปีกยึด',
         base:'ใช้ทิศทางตามไฟล์ส่งออก', top_cap:'พลิกพร้อมสำหรับการพิมพ์แล้ว',
         leg:'หงายเดือยขึ้นตามไฟล์ส่งออก', finial:'หงายเดือยขึ้นตามไฟล์ส่งออก',
@@ -2892,11 +2929,16 @@ var Kumiko = (function () {
     document.getElementById('s-reb').textContent = fmt(P.rebateD, 1) + ' mm';
 
     var d = K.DEFAULTS, flags = [];
+    if (state.holderType !== d.holderType)
+      flags.push('--holder ' + state.holderType);
     [['size','--size'],['height','--height'],['grid','--grid'],['slatW','--slat'],
-     ['socketNeck','--socket-neck'],['edgeChamfer','--edge-chamfer'],
+     ['edgeChamfer','--edge-chamfer'],
      ['plateT','--diffuser-plate'],['postInsertD','--post-insert']].forEach(function (f) {
       if (Math.abs(state[f[0]] - d[f[0]]) > 1e-9) flags.push(f[1] + ' ' + state[f[0]]);
     });
+    var neckPreset = K.HOLDER_PRESETS[state.holderType];
+    if (Math.abs(state.socketNeck - neckPreset) > 1e-9)
+      flags.push('--socket-neck ' + state.socketNeck);
     if (state.pattern !== d.pattern) flags.push('--pattern ' + state.pattern);
     document.getElementById('cli').textContent =
       'python3 kumiko_lamp.py' + (flags.length ? ' ' + flags.join(' ') : '');

@@ -33,6 +33,13 @@ const P = K.derive({});
 check(Math.abs(P.panelW - 155.7) < 1e-9, 'panel width 155.7', P.panelW.toFixed(2));
 check(Math.abs(P.foot - 190) < 1e-9, 'base/cap footprint 190', P.foot.toFixed(1));
 check(Math.abs(P.totalHeight - 236) < 1e-9, 'assembled height 236', P.totalHeight.toFixed(1));
+check(P.holderType === 'e27' && K.HOLDER_PRESETS.e27 === 26.5,
+      'stock holder is the 26.5 mm E27 preset');
+const E14 = K.derive({ holderType: 'e14' });
+check(E14.holderType === 'e14' && E14.socketNeck === 27,
+      'E14 preset selects a 27 mm sleeve bore');
+check(K.derive({ holderType: 'e14', socketNeck: 27.5 }).socketNeck === 27.5,
+      'manual holder neck overrides the E14 preset');
 check(K.checkFits(P).length === 0, 'stock parameters pass checkFits');
 check(K.checkFits(K.derive({ slatW: 1.5 })).length > 0, 'non-nozzle-multiple slat rejected');
 check(K.checkFits(K.derive({ grooveD: 9 })).length > 0, 'groove deeper than half the post rejected');
@@ -238,6 +245,9 @@ check(screwed.parts.length === 7 && screwed.parts[5].id === 'finial' &&
       'screwing adds a finial row under the leg row, post still second');
 check(screwed.assembly.filter(p => /^finial/.test(p.name)).length === 4,
       'four finials placed');
+const e14 = K.buildAll({ holderType: 'e14' });
+check(e14.parts[5].label === 'E14 adapter ring' && e14.P.socketNeck === 27,
+      'E14 build labels and sizes the adapter ring');
 
 console.log('\nvariations');
 for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
@@ -250,6 +260,7 @@ for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'seigaiha' }, { pattern: 'seigaiha', grid: 16 },
                  { pattern: 'masu' }, { pattern: 'senbon' },
                  { pattern: 'senbon', grid: 45 },
+                 { holderType: 'e14' },
                  { postInsertD: 4 }, { postInsertD: 4, capT: 9 },
                  { postInsertD: 5, post: 20 }, { postInsertD: 4, plateT: 1.2 },
                  { pattern: 'thai_rosette' },

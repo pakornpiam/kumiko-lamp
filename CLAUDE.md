@@ -19,6 +19,7 @@ python3 kumiko_lamp.py --pattern kikkou   # one pattern's part set
 python3 kumiko_lamp.py --size 150 --height 170 --grid 20 --slat 2.0 --socket-neck 23.5
 python3 kumiko_lamp.py --diffuser-plate 1.2 --edge-chamfer 1.5
 python3 kumiko_lamp.py --post-insert 4.0        # M3 inserts, screws, finials
+python3 kumiko_lamp.py --holder e14             # 27 mm E14 sleeve preset
 python3 render_preview.py                 # optional PNG previews, needs matplotlib
 
 # Configurator tests (from web/)
@@ -131,8 +132,12 @@ and the `GROUPS` slider table in the app ([index.html:1378](web/index.html#L1378
 
 `derive()` coerces every key with unary `+`, and the app copies `DEFAULTS` into `state`
 key by key. **A non-numeric parameter needs an explicit escape hatch** next to the one
-`pattern` already has, and an array default would alias `DEFAULTS` into `state` and be
+`pattern` and `holderType` already have, and an array default would alias `DEFAULTS` into `state` and be
 mutated in place.
+
+`holderType` is metadata plus a starting point, not a claim that Edison screw size fixes
+the mounting neck. `HOLDER_PRESETS` changes only `socket_neck` / `socketNeck`; the base
+bore and counterbore stay common, and the manual neck override always wins.
 
 `GROUPS` items are positional 6-tuples rendered as `input[type=range]` — the **only**
 control type in the file. Anything else is a one-off flag on the group (`style:` for the

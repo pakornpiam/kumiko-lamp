@@ -28,6 +28,11 @@ import trimesh
 
 EPS = 1e-3          # nudge used to make through-cuts unambiguous
 
+# Bulb-base names do not define the holder's mounting neck.  These are the
+# working sleeve presets the configurator offers; --socket-neck remains the
+# authority for hardware that measures differently.
+HOLDER_PRESETS = {"e27": 26.5, "e14": 27.0}
+
 
 # --------------------------------------------------------------------------
 # Parameters
@@ -99,7 +104,8 @@ class Params:
     finial_h: float = 8.0        # finial body standing above the cap
     finial_tenon_h: float = 2.0  # skirt depth == socket depth in the cap top
 
-    # --- E27 lamp holder -------------------------------------------------
+    # --- lamp holder -----------------------------------------------------
+    holder_type: str = "e27"         # named starting point; neck remains tunable
     socket_bore: float = 40.0        # clear bore through the base
     socket_cbore: float = 50.0       # counterbore that seats the adapter ring
     socket_cbore_d: float = 4.0
@@ -1508,7 +1514,7 @@ def _edge_chamfers(P: Params, x0, y0, x1, y1, z):
 
 
 def build_base(P: Params) -> trimesh.Trimesh:
-    """Base plate with E27 bore, adapter counterbore, vents, cord channel and
+    """Base plate with holder bore, adapter counterbore, vents, cord channel and
     the four leg sockets."""
     f = P.foot / 2.0
     t = P.base_t
@@ -1579,7 +1585,7 @@ def build_cap(P: Params, pattern: str) -> trimesh.Trimesh:
 
 def build_socket_ring(P: Params) -> trimesh.Trimesh:
     """
-    Adapter that seats in the base counterbore and clamps the E27 holder.
+    Adapter that seats in the base counterbore and clamps the lamp holder.
     This is the only part to reprint if your holder differs: change --socket-neck.
     """
     od = P.socket_cbore - 0.4       # slip fit in the base counterbore
@@ -1721,6 +1727,8 @@ def check_part(name, mesh, P: Params, printable=True, bodies=1):
 def check_fits(P: Params):
     """Dimensional sanity checks that would otherwise only show up after a print."""
     issues = []
+    if P.holder_type not in HOLDER_PRESETS:
+        issues.append(f"unknown lamp holder type {P.holder_type}")
     if abs((P.panel_w + P.panel_clear) - P.groove_span) > 1e-9:
         issues.append("panel width does not match the post groove span")
     if abs((P.slot_w - P.panel_t - P.plate_t) - P.slot_clear) > 1e-9:
@@ -1901,8 +1909,10 @@ def main(argv=None):
     ap.add_argument("--height", type=float, help="panel and post length (mm)")
     ap.add_argument("--slat", type=float, help="lattice slat width (mm)")
     ap.add_argument("--grid", type=float, help="pattern pitch (mm)")
+    ap.add_argument("--holder", choices=tuple(HOLDER_PRESETS),
+                    help="lamp holder sleeve preset; E27 is the default")
     ap.add_argument("--socket-neck", type=float,
-                    help="adapter ring bore for your E27 holder (mm)")
+                    help="override the adapter ring bore for your holder (mm)")
     ap.add_argument("--edge-chamfer", type=float,
                     help="bevel on the base and cap perimeter edges (mm)")
     ap.add_argument("--diffuser-plate", type=float,
@@ -1923,6 +1933,9 @@ def main(argv=None):
     np.seterr(invalid="ignore", divide="ignore")
 
     P = Params()
+    if args.holder is not None:
+        P.holder_type = args.holder
+        P.socket_neck = HOLDER_PRESETS[args.holder]
     for attr, val in (("size", args.size), ("height", args.height),
                       ("slat_w", args.slat), ("grid", args.grid),
                       ("socket_neck", args.socket_neck),
