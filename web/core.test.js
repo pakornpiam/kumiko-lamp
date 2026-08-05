@@ -232,10 +232,43 @@ check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
                              modernBaseH: 20, baseT: 5, panelT: 7 }))
         .some(m => /shoulder reaches the cable outlet/.test(m)),
       'Modern shoulder is kept clear of the cable outlet');
+/* The cavity now follows the outer 45 deg profile, so a deck riding above the
+   shoulder tapers with it instead of carrying a wide cylinder through a
+   narrowing wall.  That configuration builds; what is still reachable is the
+   far end of the taper closing up entirely. */
 check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             baseT: 5 })).length === 0,
+      'Modern deck above the shoulder is carried by the tapered hollow');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 20, height: 218,
                              baseT: 5 }))
-        .some(m => /shoulder leaves under two walls/.test(m)),
-      'Modern shoulder with a thin wall above the hollow body rejected');
+        .some(m => /hollow closes up under the mounting deck/.test(m)),
+      'Modern hollow that closes up under the deck rejected');
+check(!K.checkFits(K.derive({ lanternStyle: 'modern', size: 22, height: 218,
+                              baseT: 5 }))
+        .some(m => /hollow closes up under the mounting deck/.test(m)),
+      'Modern hollow with two extrusions left accepted');
+
+/* The base carries its own diameter; only the threaded neck stays shade-derived. */
+const MLINK = K.derive({ lanternStyle: 'modern', size: 100, height: 218 });
+check(MLINK.modernBaseD === 0 && MLINK.modernBaseDiameter === 100 &&
+      MLINK.modernFootprint === 100,
+      'Modern base diameter follows the shade until it is set');
+const MWIDE = K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                         modernBaseD: 140 });
+check(MWIDE.modernBaseDiameter === 140 && MWIDE.modernBaseR === 70 &&
+      MWIDE.modernFootprint === 140 && MWIDE.foot === 140,
+      'an independent base diameter drives the body and the footprint');
+check(Math.abs(MWIDE.modernShoulderH - (70 - MWIDE.modernThreadCoreR)) < 1e-9,
+      'a wider body reaches the shade-derived neck down a taller shoulder');
+check(K.checkFits(MWIDE).length === 0, 'the wider base passes checkFits');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             modernBaseD: 60 }))
+        .some(m => /narrower than its threaded neck/.test(m)),
+      'a base narrower than its own neck rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             modernBaseD: 300 }))
+        .some(m => /base diameter exceeds the printer bed/.test(m)),
+      'an oversize base diameter is reported separately from the shade');
 check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
                              panelT: 0.4 })).length > 0,
       'Modern lattice under two extrusions rejected');

@@ -448,7 +448,7 @@ var Kumiko = (function () {
     cableW: 9, cableH: 5, cableFloor: 2,
     baseVents: 16, baseVentR0: 29, baseVentR1: 37,
     capVentD: 70, capGrilleF: 0.75,
-    modernBaseH: 90, modernThreadClear: 0.30,
+    modernBaseH: 90, modernThreadClear: 0.30, modernBaseD: 0,
     arc: 64,
     pattern: 'asanoha'
   };
@@ -507,7 +507,12 @@ var Kumiko = (function () {
     p.modernThreadEngagement = 10;
     p.modernChordError = 0.1;
     p.modernOuterR = p.size / 2;
-    p.modernCavityR = p.modernOuterR - p.modernWall;
+    /* 0 means "follow the shade", the sentinel Python spells as None: the two
+       diameters start linked and only separate once the base is edited. */
+    p.modernBaseDiameter = p.modernBaseD > 0 ? p.modernBaseD : p.size;
+    p.modernBaseR = p.modernBaseDiameter / 2;
+    p.modernFootprint = Math.max(p.size, p.modernBaseDiameter);
+    p.modernCavityR = p.modernBaseR - p.modernWall;
     /* Carry the rectangular cord cutter a full outlet width beyond the
        circular cavity tangent so the complete opening reaches the hollow. */
     p.modernCableInnerY = -p.modernCavityR + p.cableW;
@@ -518,7 +523,9 @@ var Kumiko = (function () {
     p.modernDeckZ = p.modernBaseH - p.baseT;
     p.modernThreadCoreR = p.modernOuterR - p.panelT - p.modernThreadDepth;
     p.modernThreadCrestR = p.modernThreadCoreR + p.modernThreadDepth;
-    p.modernShoulderH = p.modernOuterR - p.modernThreadCoreR;
+    /* The neck is always shade-derived, so a wider body simply means a taller
+       45 deg shoulder to reach it. */
+    p.modernShoulderH = p.modernBaseR - p.modernThreadCoreR;
     p.modernShoulderZ = p.modernBodyH - p.modernShoulderH;
     p.modernFemaleThreadR = p.modernThreadCoreR + p.modernThreadClear;
     p.modernThreadWall = p.modernOuterR -
@@ -528,7 +535,7 @@ var Kumiko = (function () {
       ? Math.PI * modernVentRm / p.baseVents * 0.60 : Infinity;
     p.modernVentCornerR = Math.hypot(p.baseVentR1, p.modernVentHalfLen);
     if (p.lanternStyle === 'modern') {
-      p.foot = p.size;
+      p.foot = p.modernFootprint;
       p.totalHeight = p.modernBaseH + p.height - p.modernThreadEngagement;
       p.openW = p.modernOpenW;
       p.openH = p.modernOpenH;
@@ -538,6 +545,16 @@ var Kumiko = (function () {
   }
 
   /* Port of check_fits().  Returns a list of blocking problems. */
+  /* Outer base radius at assembled height z.  The body contracts toward the
+     shade-derived thread root on a printable 45 deg shoulder; keeping the
+     profile in one helper makes the cavity taper, the skin and the guard all
+     use identical maths. */
+  function modernBaseOuterAt(P, z) {
+    if (z <= P.modernShoulderZ) return P.modernBaseR;
+    if (z >= P.modernBodyH) return P.modernThreadCoreR;
+    return P.modernBaseR - (z - P.modernShoulderZ);
+  }
+
   function checkFits(P) {
     var out = [];
     function bad(m) { out.push(m); }
@@ -552,8 +569,12 @@ var Kumiko = (function () {
     if (P.lanternStyle === 'modern') {
       if (PATTERN_FAMILY[P.pattern] !== 'kumiko')
         bad('Modern lanterns support Kumiko patterns only.');
-      if (P.size <= 2 * (P.modernWall + P.nozzle))
-        bad('Modern diameter is too small for its 5 mm body wall.');
+      if (P.modernBaseDiameter <= 2 * (P.modernWall + P.nozzle))
+        bad('Modern base diameter is too small for its 5 mm body wall.');
+      /* The neck is shade-derived, so a body narrower than its own thread
+         would leave the crest standing proud of the shoulder. */
+      if (P.modernBaseR < P.modernThreadCrestR - 1e-9)
+        bad('Modern base body is narrower than its threaded neck.');
       if (P.height <= 2 * P.modernRingH + 2 * P.slatW)
         bad('Modern shade is too short for two rings and a lattice.');
       if (P.modernBaseH <= P.modernThreadEngagement + P.baseT)
@@ -564,17 +585,14 @@ var Kumiko = (function () {
         bad('Modern shoulder reaches the cable outlet.');
       if (P.baseT < P.socketCboreD + 3 * 0.2 - 1e-9)
         bad('Modern mounting deck is too thin below the adapter seat.');
-      var deckOuterR;
-      if (P.modernDeckZ <= P.modernShoulderZ)
-        deckOuterR = P.modernOuterR;
-      else if (P.modernDeckZ < P.modernBodyH)
-        deckOuterR = P.modernOuterR -
-                     (P.modernDeckZ - P.modernShoulderZ);
-      else
-        deckOuterR = P.modernThreadCoreR;
-      if (deckOuterR - (P.modernOuterR - P.modernWall) <
+      /* The hollow now follows the same 45 deg profile wherever it reaches the
+         shoulder, so the wall there is modernWall by construction and the old
+         "disappearing remainder" cannot happen.  What is still reachable is the
+         far end of that taper closing up: the cavity is narrowest under the
+         deck, and once it runs out there is no hollow left to wire through. */
+      if (modernBaseOuterAt(P, P.modernDeckZ) - P.modernWall <
           2 * P.nozzle - 1e-9)
-        bad('Modern shoulder leaves under two walls above the hollow body.');
+        bad('Modern hollow closes up under the mounting deck.');
       if (P.slatW < 2 * P.nozzle)
         bad('Slat width ' + P.slatW + ' mm is under two extrusions.');
       if (P.nozzle > 0 &&
@@ -608,12 +626,14 @@ var Kumiko = (function () {
         bad('Adapter seat depth must be positive.');
       if (P.cableW <= 0 || P.cableH <= 0)
         bad('Modern cable outlet dimensions must be positive.');
-      if (P.cableW >= P.size - 2 * P.modernWall)
+      if (P.cableW >= P.modernBaseDiameter - 2 * P.modernWall)
         bad('Modern cable outlet is wider than the hollow body.');
       if (P.cableH >= P.modernDeckZ)
         bad('Modern cable outlet reaches the mounting deck.');
       if (P.size > Math.min(P.bedX, P.bedY) + 1e-9)
-        bad('Modern diameter exceeds the printer bed.');
+        bad('Modern shade diameter exceeds the printer bed.');
+      if (P.modernBaseDiameter > Math.min(P.bedX, P.bedY) + 1e-9)
+        bad('Modern base diameter exceeds the printer bed.');
       if (P.height > P.bedZ + 1e-9)
         bad('Modern shade height exceeds the printer build height.');
       if (P.modernBaseH > P.bedZ + 1e-9)
@@ -2341,8 +2361,10 @@ var Kumiko = (function () {
   }
 
   function buildModernBase(P) {
-    var R = P.modernOuterR, wall = P.modernWall, n = P.arc;
-    var inner = circleLoop(0, 0, P.modernCavityR, n, false);
+    /* The body follows its own diameter; only the threaded neck above it is
+       shade-derived, so a wider base simply reaches the neck down a taller
+       45 deg shoulder. */
+    var R = P.modernBaseR, wall = P.modernWall, n = P.arc;
     var outer = circleLoop(0, 0, R, n, true);
     var bore = circleLoop(0, 0, P.socketBore / 2, n, false);
     var cbore = circleLoop(0, 0, P.socketCbore / 2, n, false);
@@ -2363,25 +2385,32 @@ var Kumiko = (function () {
       if (!uniqueCuts.length || cuts[ci] - uniqueCuts[uniqueCuts.length - 1] > TOL)
         uniqueCuts.push(cuts[ci]);
     function outerAt(z) {
-      if (z <= P.modernShoulderZ + TOL) return outer;
-      var radius = Math.max(P.modernThreadCoreR,
-                            R - (z - P.modernShoulderZ));
-      var scale = radius / R;
-      return outer.map(function (p) { return [p[0] * scale, p[1] * scale]; });
+      var scale = modernBaseOuterAt(P, z) / R;
+      return scale === 1 ? outer
+        : outer.map(function (p) { return [p[0] * scale, p[1] * scale]; });
     }
-    var skins = uniqueCuts.map(outerAt), bodyLayers = [];
+    /* The hollow follows the same profile rather than carrying one wide
+       cylinder up through a narrowing wall: past the shoulder a wide body's
+       deck would otherwise sit over rapidly disappearing material. */
+    function innerAt(z) {
+      return circleLoop(0, 0, modernBaseOuterAt(P, z) - wall, n, false);
+    }
+    var skins = uniqueCuts.map(outerAt), inners = uniqueCuts.map(innerAt);
+    var bodyLayers = [];
     for (ci = 0; ci + 1 < uniqueCuts.length; ci++) {
       var z0 = uniqueCuts[ci], z1 = uniqueCuts[ci + 1];
       if (z1 - z0 < TOL) continue;
-      var zm = (z0 + z1) / 2, voids;
+      var zm = (z0 + z1) / 2, voids, voidsTop;
       if (zm < P.modernDeckZ) {
-        voids = [inner];
-        if (zm < P.cableH) voids.push(tunnel);
+        voids = [inners[ci]];
+        voidsTop = [inners[ci + 1]];
+        if (zm < P.cableH) { voids.push(tunnel); voidsTop.push(tunnel); }
       } else {
         voids = [bore].concat(vents);
+        voidsTop = voids;
       }
       bodyLayers.push({ loops: [skins[ci]].concat(voids),
-                        loopsTop: [skins[ci + 1]].concat(voids),
+                        loopsTop: [skins[ci + 1]].concat(voidsTop),
                         z0: z0, z1: z1 });
     }
     /* Leave z=bodyH open: the varying thread-root shelf below closes it. */
@@ -3013,6 +3042,7 @@ var Kumiko = (function () {
     'Legs':'ขา', 'Joints':'รอยต่อ', 'Lamp holder':'ขั้วหลอดไฟ', 'Printer':'เครื่องพิมพ์',
     'Classic':'คลาสสิก', 'Modern':'โมเดิร์น', 'Thread':'เกลียว',
     'Diameter':'เส้นผ่านศูนย์กลาง', 'Shade height':'ความสูงโป๊ะ',
+    'Shade diameter':'เส้นผ่านศูนย์กลางโป๊ะ', 'Base diameter':'เส้นผ่านศูนย์กลางฐาน',
     'Base height':'ความสูงฐาน', 'Lattice depth':'ความลึกโครงลาย',
     'Thread clearance':'ระยะเผื่อเกลียว',
     'Holder type':'ชนิดขั้วหลอดไฟ',
@@ -3278,7 +3308,11 @@ var Kumiko = (function () {
 
   var MODERN_GROUPS = [
     { name: 'Lantern', open: true, lanternStyle: true, items: [
-      ['size', 'Diameter', 80, 200, 1, 'mm'],
+      ['size', 'Shade diameter', 80, 200, 1, 'mm'],
+      /* Starts linked to the shade: 0 in state means "follow it".  Dragging
+         this unlinks the two; dragging it back to the shade diameter relinks
+         them, so there is no separate control to hunt for. */
+      ['modernBaseD', 'Base diameter', 80, 250, 1, 'mm'],
       ['height', 'Shade height', 100, 300, 1, 'mm'],
       ['modernBaseH', 'Base height', 45, 160, 1, 'mm']
     ]},
@@ -3323,9 +3357,22 @@ var Kumiko = (function () {
     return e;
   }
 
+  /* Live slider handles, so one control can follow another without rebuilding
+     the rail mid-drag and destroying the input under the pointer. */
+  var railInputs = {};
+
+  /* While the two diameters are linked, the base slider tracks the shade. */
+  function syncLinkedBase() {
+    var r = railInputs.modernBaseD;
+    if (!r || state.modernBaseD) return;
+    r.input.value = state.size;
+    r.label.textContent = state.size + ' ' + r.unit;
+  }
+
   function buildRail() {
     var rail = document.getElementById('rail');
     rail.textContent = '';
+    railInputs = {};
     var groups = state.lanternStyle === 'modern' ? MODERN_GROUPS : CLASSIC_GROUPS;
     groups.forEach(function (g) {
       var d = el('details', 'grp');
@@ -3426,17 +3473,27 @@ var Kumiko = (function () {
         var c = el('div', 'ctl');
         var l = el('label');
         l.appendChild(el('span', null, t(lab)));
-        var v = el('span', 'val', state[key] + ' ' + it[5]);
+        /* modernBaseD carries 0 for "linked", so it shows the shade's diameter
+           rather than the sentinel. */
+        var shown = key === 'modernBaseD'
+          ? (state.modernBaseD || state.size) : state[key];
+        var v = el('span', 'val', shown + ' ' + it[5]);
         l.appendChild(v);
         var inp = document.createElement('input');
         inp.type = 'range';
         inp.min = it[2]; inp.max = it[3]; inp.step = it[4];
-        inp.value = state[key];
+        inp.value = shown;
         inp.id = 'r-' + key;
+        railInputs[key] = { input: inp, label: v, unit: it[5] };
         inp.setAttribute('aria-label', lang === 'th' ? t(lab) + ' หน่วยมิลลิเมตร' : lab + ' in millimetres');
         inp.addEventListener('input', function () {
-          state[key] = +inp.value;
+          if (key === 'modernBaseD')
+            /* Back on the shade diameter relinks them; anything else parts. */
+            state.modernBaseD = +inp.value === state.size ? 0 : +inp.value;
+          else
+            state[key] = +inp.value;
           v.textContent = (+inp.value) + ' ' + it[5];
+          if (key === 'size') syncLinkedBase();
           rebuild();
         });
         c.appendChild(l); c.appendChild(inp);
@@ -3839,13 +3896,11 @@ var Kumiko = (function () {
       'Snap tabs reach past the leg shoulder.':'บ่าสแนปยื่นพ้นไหล่ขา',
       'Finial snap recess reaches outside the post socket.':'ร่องสแนปยอดฝายื่นพ้นเบ้าเสา',
       'Modern lanterns support Kumiko patterns only.':'โคมโมเดิร์นรองรับเฉพาะลายคุมิโกะเท่านั้น',
-      'Modern diameter is too small for its 5 mm body wall.':'เส้นผ่านศูนย์กลางโคมโมเดิร์นเล็กเกินไปสำหรับผนังหนา 5 mm',
       'Modern shade is too short for two rings and a lattice.':'โป๊ะโมเดิร์นสั้นเกินไปสำหรับวงแหวนสองวงและโครงลาย',
       'Modern base is too short for its thread and mounting deck.':'ฐานโมเดิร์นสั้นเกินไปสำหรับเกลียวและแท่นติดตั้ง',
       'Modern base is too short for its 45-degree shoulder.':'ฐานโมเดิร์นสั้นเกินไปสำหรับบ่าลาด 45 องศา',
       'Modern shoulder reaches the cable outlet.':'บ่าลาดโมเดิร์นชนช่องสายไฟ',
       'Modern mounting deck is too thin below the adapter seat.':'แท่นติดตั้งโมเดิร์นบางเกินไปใต้บ่าวงแหวนแปลง',
-      'Modern shoulder leaves under two walls above the hollow body.':'บ่าลาดโมเดิร์นเหลือผนังเหนือโพรงฐานน้อยกว่าสองเส้น',
       'Modern lattice depth is under two extrusions.':'ความลึกโครงลายโมเดิร์นน้อยกว่าสองแนวฉีด',
       'Modern pattern pitch must be wider than its slats.':'ระยะลายโมเดิร์นต้องกว้างกว่าซี่ลาย',
       'Thread clearance is under the 0.10 mm radial minimum.':'ระยะเผื่อเกลียวน้อยกว่าค่าต่ำสุดตามรัศมี 0.10 mm',
@@ -3862,7 +3917,11 @@ var Kumiko = (function () {
       'Modern cable outlet dimensions must be positive.':'ขนาดช่องสายไฟโมเดิร์นต้องมากกว่าศูนย์',
       'Modern cable outlet is wider than the hollow body.':'ช่องสายไฟโมเดิร์นกว้างกว่าช่องว่างภายในฐาน',
       'Modern cable outlet reaches the mounting deck.':'ช่องสายไฟโมเดิร์นชนแท่นติดตั้ง',
-      'Modern diameter exceeds the printer bed.':'เส้นผ่านศูนย์กลางโมเดิร์นเกินพื้นที่พิมพ์',
+      'Modern shade diameter exceeds the printer bed.':'เส้นผ่านศูนย์กลางโป๊ะโมเดิร์นเกินพื้นที่พิมพ์',
+      'Modern base diameter exceeds the printer bed.':'เส้นผ่านศูนย์กลางฐานโมเดิร์นเกินพื้นที่พิมพ์',
+      'Modern base diameter is too small for its 5 mm body wall.':'เส้นผ่านศูนย์กลางฐานโมเดิร์นเล็กเกินไปสำหรับผนังหนา 5 มม.',
+      'Modern base body is narrower than its threaded neck.':'ลำตัวฐานโมเดิร์นแคบกว่าคอเกลียว',
+      'Modern hollow closes up under the mounting deck.':'ช่องกลวงโมเดิร์นตันใต้แท่นติดตั้ง',
       'Modern shade height exceeds the printer build height.':'ความสูงโป๊ะโมเดิร์นเกินความสูงพิมพ์',
       'Modern base height exceeds the printer build height.':'ความสูงฐานโมเดิร์นเกินความสูงพิมพ์'
     };
@@ -3937,6 +3996,9 @@ var Kumiko = (function () {
       if (Math.abs(state.height - 218) > 1e-9) flags.push('--height ' + state.height);
       if (Math.abs(state.modernBaseH - 90) > 1e-9)
         flags.push('--modern-base-height ' + state.modernBaseH);
+      /* Only once unlinked — inherited is the CLI default too. */
+      if (state.modernBaseD)
+        flags.push('--modern-base-diameter ' + state.modernBaseD);
       if (Math.abs(state.modernThreadClear - 0.30) > 1e-9)
         flags.push('--thread-clearance ' + state.modernThreadClear);
       if (Math.abs(state.grid - d.grid) > 1e-9) flags.push('--grid ' + state.grid);
@@ -4003,8 +4065,17 @@ var Kumiko = (function () {
       files.push({ name: p.id + (p.qty > 1 ? '_x' + p.qty : '') + '.stl',
                    data: exportPartBytes(p) });
     });
+    /* Once the two diameters part company a single number cannot describe the
+       lamp, so name both rather than pick one. */
+    var P = model.P, size;
+    if (state.lanternStyle === 'modern' &&
+        Math.abs(P.modernBaseDiameter - P.size) > 1e-9)
+      size = 'shade' + Math.round(P.size) + 'mm-base' +
+             Math.round(P.modernBaseDiameter) + 'mm';
+    else
+      size = Math.round(P.foot) + 'mm';
     download('kumiko-lamp-' + (state.lanternStyle === 'modern' ? 'modern-' : '') +
-             Math.round(model.P.foot) + 'mm-' + state.pattern + '.zip',
+             size + '-' + state.pattern + '.zip',
              K.zipStore(files), 'application/zip');
   });
 

@@ -157,6 +157,11 @@ class Params:
     lantern_style: str = "classic"
     modern_base_h: float = MODERN_DEFAULT_BASE_H
     modern_thread_clear: float = MODERN_THREAD_CLEAR
+    # None deliberately means "follow the shade diameter".  Besides keeping
+    # existing --style modern --size commands coupled as before, the sentinel
+    # lets callers opt into a separate body diameter without changing the
+    # positional layout of any of the long-standing fields above.
+    modern_base_d: float | None = None
 
     # ---- derived ---------------------------------------------------------
     @property
@@ -298,6 +303,7 @@ class Params:
 
     @property
     def modern_outer_r(self) -> float:
+        """Outer radius of the shade and its two rings."""
         return self.size / 2.0
 
     @property
@@ -306,9 +312,24 @@ class Params:
         return self.modern_outer_r - self.panel_t
 
     @property
+    def modern_base_diameter(self) -> float:
+        """Outer body diameter, inherited from the shade unless overridden."""
+        return self.size if self.modern_base_d is None else self.modern_base_d
+
+    @property
+    def modern_base_r(self) -> float:
+        """Outer radius of the cylindrical body below the threaded neck."""
+        return self.modern_base_diameter / 2.0
+
+    @property
     def modern_cavity_r(self) -> float:
         """Radius of the hollow base body below the mounting deck."""
-        return self.modern_outer_r - MODERN_BODY_WALL
+        return self.modern_base_r - MODERN_BODY_WALL
+
+    @property
+    def modern_footprint(self) -> float:
+        """Maximum assembled diameter of the independently sized two parts."""
+        return max(self.size, self.modern_base_diameter)
 
     @property
     def modern_cable_inner_y(self) -> float:
@@ -345,13 +366,27 @@ class Params:
     @property
     def modern_shoulder_h(self) -> float:
         """Height of the 45-degree base transition below the threaded neck."""
-        return self.modern_outer_r - self.modern_thread_root_r
+        return self.modern_base_r - self.modern_thread_root_r
 
     @property
     def modern_shoulder_z(self) -> float:
         """Assembled height where the full-diameter base starts tapering."""
         return (self.modern_base_h - MODERN_THREAD_ENGAGEMENT
                 - self.modern_shoulder_h)
+
+    def modern_base_outer_at(self, z: float) -> float:
+        """Outer base radius at assembled height ``z``.
+
+        The body contracts toward the shade-derived thread root on a printable
+        45-degree shoulder.  Keeping this profile in one helper makes the
+        matching inner cavity taper and its validation use identical maths.
+        """
+        body_h = self.modern_base_h - MODERN_THREAD_ENGAGEMENT
+        if z <= self.modern_shoulder_z:
+            return self.modern_base_r
+        if z >= body_h:
+            return self.modern_thread_root_r
+        return self.modern_base_r - (z - self.modern_shoulder_z)
 
 
 # --------------------------------------------------------------------------
@@ -2012,7 +2047,7 @@ def _modern_vent_cutters(P: Params, z0: float, z1: float):
 
 def build_modern_base(P: Params) -> trimesh.Trimesh:
     """Upright hollow base; invert with ``modern_base_for_print`` for export."""
-    r_out = P.modern_outer_r
+    r_out = P.modern_base_r
     shell_top = P.modern_base_h - MODERN_THREAD_ENGAGEMENT
     deck_bottom = P.modern_base_h - P.base_t
     r_root = P.modern_thread_root_r
@@ -2032,12 +2067,32 @@ def build_modern_base(P: Params) -> trimesh.Trimesh:
                              P.modern_base_h, P.arc)
     base = union([body, shoulder, neck, thread])
 
-    # Open underside and 5 mm cylindrical wall; the last ``base_t`` millimetres
-    # form the holder deck.  Inverted for printing, that deck starts on the bed
-    # and the open cavity grows upward without a bridge or support.
-    cutters = [cyl(2 * P.modern_cavity_r, -EPS,
-                   deck_bottom + EPS, sections=P.arc),
-               cyl(P.socket_bore, deck_bottom - EPS,
+    # Open underside and 5 mm wall; the last ``base_t`` millimetres form the
+    # holder deck.  When a wider independent body makes the deck cross the
+    # shoulder, taper the cavity in parallel with the outside instead of
+    # carrying a large cylinder through the narrowing wall.  The inherited
+    # nominal case stays on the original one-cylinder path byte-for-byte.
+    if deck_bottom <= P.modern_shoulder_z:
+        cavity = [cyl(2 * P.modern_cavity_r, -EPS,
+                      deck_bottom + EPS, sections=P.arc)]
+    else:
+        cavity = [cyl(2 * P.modern_cavity_r, -EPS,
+                      P.modern_shoulder_z + EPS, sections=P.arc)]
+        taper_top = min(deck_bottom + EPS, shell_top)
+        if taper_top > P.modern_shoulder_z:
+            inner_top = (P.modern_base_outer_at(taper_top)
+                         - MODERN_BODY_WALL)
+            cavity.append(_conical_frustum(
+                P.modern_cavity_r, inner_top,
+                P.modern_shoulder_z, taper_top, P.arc))
+        if deck_bottom + EPS > shell_top:
+            cavity.append(cyl(2 * (r_root - MODERN_BODY_WALL),
+                               shell_top - EPS, deck_bottom + EPS,
+                               sections=P.arc))
+
+    # Inverted for printing, the deck starts on the bed and the open cavity
+    # grows upward without a bridge or support.
+    cutters = cavity + [cyl(P.socket_bore, deck_bottom - EPS,
                    P.modern_base_h + EPS, sections=P.arc),
                cyl(P.socket_cbore,
                    P.modern_base_h - P.socket_cbore_d,
@@ -2217,8 +2272,10 @@ def check_modern_fits(P: Params, pattern=None):
     issues = []
     if pattern is not None and pattern not in kumiko_pattern_names():
         issues.append("modern lantern supports Kumiko line patterns only")
-    if P.size <= 2 * (MODERN_BODY_WALL + P.nozzle):
-        issues.append("modern diameter is too small for its 5 mm body wall")
+    if P.modern_base_diameter <= 2 * (MODERN_BODY_WALL + P.nozzle):
+        issues.append("modern base diameter is too small for its 5 mm body wall")
+    if P.modern_base_r < P.modern_thread_crest_r - 1e-9:
+        issues.append("modern base body is narrower than its threaded neck")
     if P.height <= 2 * MODERN_RING_H + 2 * P.slat_w:
         issues.append("modern shade is too short for two rings and a lattice")
     if P.modern_base_h <= MODERN_THREAD_ENGAGEMENT + P.base_t:
@@ -2229,19 +2286,15 @@ def check_modern_fits(P: Params, pattern=None):
         issues.append("modern shoulder reaches the cable outlet")
     if P.base_t < P.socket_cbore_d + 3 * 0.2 - 1e-9:
         issues.append("modern mounting deck is too thin below the adapter seat")
-    shell_top = P.modern_base_h - MODERN_THREAD_ENGAGEMENT
     deck_bottom = P.modern_base_h - P.base_t
-    if deck_bottom <= P.modern_shoulder_z:
-        deck_outer_r = P.modern_outer_r
-    elif deck_bottom < shell_top:
-        deck_outer_r = P.modern_outer_r - (deck_bottom
-                                            - P.modern_shoulder_z)
-    else:
-        deck_outer_r = P.modern_thread_root_r
-    deck_transition_wall = (deck_outer_r
-                            - (P.modern_outer_r - MODERN_BODY_WALL))
-    if deck_transition_wall < 2 * P.nozzle - 1e-9:
-        issues.append("modern shoulder leaves under two walls above the hollow body")
+    # The hollow now follows the same 45-degree profile wherever it reaches the
+    # shoulder, so the wall there is MODERN_BODY_WALL by construction and the
+    # old "disappearing remainder" cannot happen.  What is still reachable is
+    # the far end of that taper closing up: the cavity is narrowest under the
+    # deck, and once it runs out the base has no hollow left to wire through.
+    deck_inner_r = P.modern_base_outer_at(deck_bottom) - MODERN_BODY_WALL
+    if deck_inner_r < 2 * P.nozzle - 1e-9:
+        issues.append("modern hollow closes up under the mounting deck")
     if P.panel_t < 2 * P.nozzle:
         issues.append("modern lattice depth is under two extrusion widths")
     if P.slat_w < 2 * P.nozzle:
@@ -2280,12 +2333,14 @@ def check_modern_fits(P: Params, pattern=None):
     cavity_h = P.modern_base_h - P.base_t
     if P.cable_w <= 0 or P.cable_h <= 0:
         issues.append("modern cable outlet dimensions must be positive")
-    if P.cable_w >= P.size - 2 * MODERN_BODY_WALL:
+    if P.cable_w >= P.modern_base_diameter - 2 * MODERN_BODY_WALL:
         issues.append("modern cable outlet is wider than the hollow body")
     if P.cable_h >= cavity_h:
         issues.append("modern cable outlet reaches the mounting deck")
     if P.size > min(P.bed[0], P.bed[1]) + 1e-9:
-        issues.append("modern diameter exceeds the printer bed")
+        issues.append("modern shade diameter exceeds the printer bed")
+    if P.modern_base_diameter > min(P.bed[0], P.bed[1]) + 1e-9:
+        issues.append("modern base diameter exceeds the printer bed")
     if P.height > P.bed[2] + 1e-9:
         issues.append("modern shade height exceeds the printer build height")
     if P.modern_base_h > P.bed[2] + 1e-9:
@@ -2531,6 +2586,9 @@ def main(argv=None):
                                         "bare flag uses 0.2 mm, 0 disables")
     ap.add_argument("--modern-base-height", type=float,
                     help="Modern hollow base height (mm); default 90")
+    ap.add_argument("--modern-base-diameter", type=float,
+                    help="Modern base body diameter (mm); defaults to the "
+                         "shade diameter")
     ap.add_argument("--thread-clearance", type=float,
                     help="Modern thread radial clearance (mm); default 0.30")
     ap.add_argument("--split-posts", action="store_true",
@@ -2564,6 +2622,7 @@ def main(argv=None):
                       ("post_insert_d", args.post_insert),
                       ("snap_engagement", args.snap_lock),
                       ("modern_base_h", args.modern_base_height),
+                      ("modern_base_d", args.modern_base_diameter),
                       ("modern_thread_clear", args.thread_clearance)):
         if val is not None:
             setattr(P, attr, val)
@@ -2582,9 +2641,10 @@ def main(argv=None):
     prev.mkdir(parents=True, exist_ok=True)
 
     if P.lantern_style == "modern":
-        print(f"kumiko lamp modern  {P.size:.0f} diameter x "
+        print(f"kumiko lamp modern  {P.modern_footprint:.0f} diameter x "
               f"{P.total_height:.0f} mm"
               f"   shade {P.size:.1f} x {P.height:.0f} x {P.panel_t}"
+              f"   base {P.modern_base_diameter:.1f} x {P.modern_base_h:.0f}"
               f"   pattern {args.pattern}")
     else:
         print(f"kumiko lamp  {P.foot:.0f} x {P.foot:.0f} x {P.total_height:.0f} mm"
@@ -2709,7 +2769,8 @@ def main(argv=None):
     problems += check_clearances(parts, clearance_names)
 
     if P.lantern_style == "modern":
-        print(f"\nassembled: {P.size:.0f} diameter x {P.total_height:.0f} mm"
+        print(f"\nassembled: {P.modern_footprint:.0f} diameter x "
+              f"{P.total_height:.0f} mm"
               f"   built in {time.time() - t0:.1f} s")
     else:
         print(f"\nassembled: {P.foot:.0f} x {P.foot:.0f} x {P.total_height:.0f} mm"

@@ -518,10 +518,19 @@ function zipEntry(buf, wanted) {
           .includes('อย่าฝืนขัน'),
         'Modern full-engagement warning localizes to Thai');
   const shippedHtml = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+  /* The old "shoulder leaves under two walls" guard went vacuous once the
+     cavity started following the outer 45 deg profile: the wall there is
+     modernWall by construction.  The reachable failure is now the far end of
+     that taper closing up. */
   check(shippedHtml.includes("'Modern base is too short for its 45-degree shoulder.':'ฐานโมเดิร์นสั้นเกินไปสำหรับบ่าลาด 45 องศา'") &&
-        shippedHtml.includes("'Modern shoulder leaves under two walls above the hollow body.':'บ่าลาดโมเดิร์นเหลือผนังเหนือโพรงฐานน้อยกว่าสองเส้น'") &&
+        shippedHtml.includes("'Modern hollow closes up under the mounting deck.':'ช่องกลวงโมเดิร์นตันใต้แท่นติดตั้ง'") &&
         shippedHtml.includes("'Modern shoulder reaches the cable outlet.':'บ่าลาดโมเดิร์นชนช่องสายไฟ'"),
         'Modern shoulder safety guards carry Thai translations');
+  check(shippedHtml.includes("'Modern base diameter is too small for its 5 mm body wall.':") &&
+        shippedHtml.includes("'Modern base body is narrower than its threaded neck.':") &&
+        shippedHtml.includes("'Modern base diameter exceeds the printer bed.':") &&
+        shippedHtml.includes("'Modern shade diameter exceeds the printer bed.':"),
+        'independent base-diameter guards carry Thai translations');
   await page.fill('#r-size', '80'); await page.dispatchEvent('#r-size', 'input');
   await page.waitForTimeout(400);
   check(/คอฐานโมเดิร์น|ช่องระบายอากาศโมเดิร์น/.test(await page.textContent('#problems')),
@@ -529,6 +538,35 @@ function zipEntry(buf, wanted) {
   await page.fill('#r-size', '100'); await page.dispatchEvent('#r-size', 'input');
   await page.waitForTimeout(500);
   await page.click('#lang-label'); await page.waitForTimeout(250);
+
+  // the two diameters start linked, part when the base is dragged, and relink
+  check(await page.inputValue('#r-modernBaseD') === '100',
+        'base diameter starts showing the shade diameter');
+  await page.fill('#r-size', '120'); await page.dispatchEvent('#r-size', 'input');
+  await page.waitForTimeout(500);
+  check(await page.inputValue('#r-modernBaseD') === '120',
+        'a linked base follows the shade');
+  check(!/--modern-base-diameter/.test(await page.textContent('#cli')),
+        'a linked base emits no CLI flag', await page.textContent('#cli'));
+  await page.fill('#r-modernBaseD', '150');
+  await page.dispatchEvent('#r-modernBaseD', 'input');
+  await page.waitForTimeout(600);
+  check(/--modern-base-diameter 150/.test(await page.textContent('#cli')),
+        'editing the base unlinks it', await page.textContent('#cli'));
+  const wide = await page.textContent('#d-overall');
+  check(/^150 /.test(wide.trim()), 'the wider base drives the assembled footprint',
+        wide.trim());
+  await page.fill('#r-size', '110'); await page.dispatchEvent('#r-size', 'input');
+  await page.waitForTimeout(600);
+  check(await page.inputValue('#r-modernBaseD') === '150',
+        'an unlinked base ignores later shade changes');
+  await page.fill('#r-modernBaseD', '110');
+  await page.dispatchEvent('#r-modernBaseD', 'input');
+  await page.waitForTimeout(600);
+  check(!/--modern-base-diameter/.test(await page.textContent('#cli')),
+        'matching the shade relinks them', await page.textContent('#cli'));
+  await page.fill('#r-size', '100'); await page.dispatchEvent('#r-size', 'input');
+  await page.waitForTimeout(600);
 
   await page.click('button[data-lantern-style="classic"]');
   await page.waitForTimeout(650);

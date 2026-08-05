@@ -26,6 +26,7 @@ python3 kumiko_lamp.py --snap-lock              # 0.2 mm foot + finial detents
 python3 kumiko_lamp.py --style modern            # reference cylindrical lamp
 python3 kumiko_lamp.py --style modern --all      # 11 shades + base/ring + assembly preview
 python3 kumiko_lamp.py --style modern --size 120 --height 240 --modern-base-height 100
+python3 kumiko_lamp.py --style modern --modern-base-diameter 140  # Ø100 shade, wider body
 python3 kumiko_lamp.py --style modern --holder e14 --thread-clearance 0.35
 python3 render_preview.py                 # optional PNG previews, needs matplotlib
 python3 -m py_compile kumiko_lamp.py
@@ -72,19 +73,24 @@ tabs keep separate in-session settings; switching styles hides irrelevant groups
 discarding their values. Every tab, group, part label, note and validation message needs
 both English and Thai text.
 
-Modern reuses `size` as cylinder diameter, `height` as shade height and `panel_t` /
+Modern reuses `size` as **shade** diameter, `height` as shade height and `panel_t` /
 `panelT` as radial lattice depth. `--panel-thickness` controls that shared value: Classic
 panel thickness in Classic mode and radial lattice depth in Modern mode. The browser
 relabels the same `panelT` slider for the active style and its CLI echo must emit
 `--panel-thickness` for any non-default value. Its additional public parameters are
-`modern_base_h` /
+`modern_base_d` / `modernBaseD` (omitted or zero means inherit `size`), `modern_base_h` /
 `modernBaseH` (90 mm) and `modern_thread_clear` / `modernThreadClear` (0.30 mm), exposed as
-`--modern-base-height` and `--thread-clearance`. `--style {classic,modern}` is the only
+`--modern-base-diameter`, `--modern-base-height` and `--thread-clearance`.
+`--style {classic,modern}` is the only
 style selector. `--style modern --all` emits one Modern base, the stable adapter ring, all
 eleven Kumiko shades and the non-printable assembly preview; Classic `--all` continues to
 emit all fourteen patterns and both post styles.
 
-The reference Modern geometry is a Ø100 × 218 mm shade over a 90 mm hollow base. The base
+The reference Modern geometry is a Ø100 × 218 mm shade over a Ø100 × 90 mm hollow base.
+Shade and base radii are separate derived values: the rings, lattice and both halves of the
+thread follow `size`, while the lower hollow body, circular deck, cable outlet and bed
+footprint follow `modern_base_d`. The 45° shoulder spans from that body radius to the
+shade-sized thread root. The base
 has a 5 mm wall, circularly adapted ventilation, the existing Ø40/50 mm holder bore and
 counterbore, and a bottom cable outlet. The shade has 10 mm upper and lower rings and wraps
 the selected periodic line pattern around the circumference. Subdivide mapped segments as
@@ -95,7 +101,8 @@ must produce a validation error, never a fallback pattern.
 
 The base's full-radius body ends at `modern_shoulder_z`; from there it contracts at 45
 degrees to `modern_thread_root_r` at the bottom of the 10 mm threaded neck. Derive
-`modern_shoulder_h` as `modern_outer_r - modern_thread_root_r`, so the inverted print grows
+`modern_shoulder_h` from the **base body radius** minus `modern_thread_root_r`, so the
+inverted print grows
 from the neck to the body without a horizontal cantilever. Validate both positive shoulder
 height and at least two nozzle-width walls wherever the hollow cavity reaches the taper.
 
@@ -104,10 +111,14 @@ The removable joint is a 10 mm-long printed thread with 2 mm pitch, 0.8 mm radia
 neck, making the reference assembly 298 mm high. Keep the base model upright in assembly
 space but export `modern_base.stl` inverted for support-free printing. Modern outputs are
 `modern_base.stl` and `modern_shade_<pattern>.stl`; the reference base and all eleven
-reference shades are checked in, but the source comparison STLs are not.
+reference shades are checked in, but the source comparison STLs are not. Stable part names
+do not encode either diameter. Browser ZIP names retain
+`kumiko-lamp-modern-100mm-<pattern>.zip` for equal diameters and use the unambiguous
+`kumiko-lamp-modern-shade100mm-base140mm-<pattern>.zip` form when they differ.
 
 Both implementations must reject unsafe thread walls/clearance/engagement, a thin mounting
-deck, holder conflicts, bad wrapped seams and bed overflow before export. Test the thread at
+deck, holder conflicts, an impossible shade-to-base shoulder, bad wrapped seams and each
+diameter's bed overflow before export. Test the thread at
 0.20, 0.30 and 0.60 mm, E27 and E14, single-pattern and `--all` generation, assembled and
 exploded placement, and STL round-trips. Hash all existing Classic artifacts before and
 after regeneration: adding the style switch is not permission to rewrite them.
@@ -198,10 +209,19 @@ and the `GROUPS` slider table in the app ([index.html:1378](web/index.html#L1378
 visibility, CLI echo, dimensions, preview assembly, part downloads and ZIP contents also
 branch on `lanternStyle`; cover each branch when adding a style-specific parameter.
 
+Modern diameter controls have one app-only interaction contract. The preset starts with
+`size = modernBaseD = 100` and `modernBaseLinked = true`; while linked, Shade diameter
+input mirrors into Base diameter. Any unequal base-slider input unlinks them, subsequent
+shade changes preserve the chosen base, and setting the base equal to the shade relinks the
+pair and restores the clean CLI without `--modern-base-diameter`. Keep the boolean inside
+the copied per-style state so a Classic/Modern round trip preserves both the values and
+their link state. The controls are `#r-size` and `#r-modernBaseD`, visibly labelled Shade
+diameter/Base diameter in both English and Thai.
+
 `derive()` coerces every key with unary `+`, and the app copies `DEFAULTS` into `state`
 key by key. **A non-numeric parameter needs an explicit escape hatch** next to the ones
-`pattern`, `holderType` and `lanternStyle` have, and an array default would alias `DEFAULTS`
-into `state` and be mutated in place.
+`pattern`, `holderType`, `lanternStyle` and the app-only `modernBaseLinked` have, and an
+array default would alias `DEFAULTS` into `state` and be mutated in place.
 
 `holderType` is metadata plus a starting point, not a claim that Edison screw size fixes
 the mounting neck. `HOLDER_PRESETS` changes only `socket_neck` / `socketNeck`; the Classic

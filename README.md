@@ -8,8 +8,9 @@ unchanged.
 The Classic parts print with **no supports** and assemble with sliding
 mortise-and-groove joints — no glue and, as it ships, no fasteners of any kind. Four M3
 screws are an option, not a requirement; see *Screwing the Classic cap down*. The stock
-Classic is **190 × 190 × 236 mm** on its four legs. The stock Modern is
-**Ø100 × 298 mm** assembled. Both are designed for the 256 mm bed of the A1 / P1S / X1C.
+Classic is **190 × 190 × 236 mm** on its four legs. The stock Modern pairs a
+**Ø100 shade and Ø100 base** at 298 mm assembled height. Both are designed for the
+256 mm bed of the A1 / P1S / X1C.
 
 ![assembled Classic lamp](preview/assembly.png)
 
@@ -39,13 +40,19 @@ posts, with separate feet, a grooved base and a removable top cap. It supports a
 patterns, optional diffusers, two-piece posts, cap screws, finials and reusable snap locks.
 
 **Modern** is a hollow cylindrical base and a removable cylindrical shade. The reference
-preset uses a 100 mm diameter, a 218 mm shade and a 90 mm base. The shade overlaps the
+preset uses a 100 mm shade diameter, a 100 mm base diameter, a 218 mm shade and a 90 mm
+base. In the configurator, **Shade diameter** and **Base diameter** begin linked: moving
+the shade-diameter control moves both until you edit Base diameter directly. That first
+base edit unlinks them, allowing a broader body while later shade changes keep
+the chosen base size. Set Base diameter equal to Shade diameter to relink them; this link
+state is remembered when you switch between Classic and Modern. The shade overlaps the
 base's threaded neck by 10 mm, producing the 298 mm assembled height. Its upper and lower
 rings are each 10 mm high, with the selected Kumiko lattice wrapped continuously around the
 cylinder between them. The base carries the male thread and the shade's lower ring carries
-the matching female thread. Immediately below the neck, the base contracts through a
-45-degree transition; after the base is inverted for printing, that transition expands
-without the former 4.8 mm horizontal cantilever.
+the matching female thread. The threaded neck follows the shade diameter; the base body
+uses its independently selected diameter. Immediately below the neck, the body contracts
+through a 45-degree transition; after the base is inverted for printing, that transition
+expands without a horizontal cantilever.
 
 Modern supports the eleven Kumiko patterns only. The three Lai Thai compositions are
 panel-sized artwork and cannot be wrapped periodically, so Modern rejects them instead of
@@ -93,7 +100,11 @@ Replace `asanoha` in the shade filename with `kikkou`, `mitsukude`, `kawari_asan
 downloaded on demand. The supplied reference STLs used to establish the proportions are
 not copied into the repository.
 The configurator's part table, individual filenames, ZIP name and ZIP contents follow the
-selected style; a Modern download does not include Classic-only parts.
+selected style; a Modern download does not include Classic-only parts. Individual filenames
+stay stable at `modern_base.stl`, `modern_shade_<pattern>.stl` and
+`socket_adapter_ring.stl`. A linked Ø100 pair downloads as
+`kumiko-lamp-modern-100mm-<pattern>.zip`; unequal diameters are explicit in names such as
+`kumiko-lamp-modern-shade100mm-base140mm-<pattern>.zip`.
 
 **Seigaiha** (青海波, "blue sea wave") is the odd one among the kumiko: a field of curves
 rather than a straight lattice. Rows of overlapping fans, three concentric arcs apiece,
@@ -208,7 +219,9 @@ python3 kumiko_lamp.py --style modern --thread-clearance 0.60  # looser
 
 Start at 0.30 mm, then tune for the material, layer height and dimensional accuracy of your
 printer. The generator rejects settings that leave unsafe thread walls or mounting-deck
-thickness.
+thickness. A wider independent base does not change the thread fit: its neck still matches
+the shade, while the lower body and its support-free 45° transition expand to the selected
+base diameter. Check that diameter against both printer-bed axes.
 
 ## Classic legs
 
@@ -368,13 +381,16 @@ python3 kumiko_lamp.py --diffuser-plate 1.2     # printed diffuser behind each l
 python3 kumiko_lamp.py --style modern           # Ø100 × 218 shade + 90 mm base
 python3 kumiko_lamp.py --style modern --all     # 11 shades + base/ring + assembly preview
 python3 kumiko_lamp.py --style modern --size 120 --height 240
+python3 kumiko_lamp.py --style modern --modern-base-diameter 140  # wider body, Ø100 shade
 python3 kumiko_lamp.py --style modern --panel-thickness 5  # deeper radial lattice
 python3 kumiko_lamp.py --style modern --modern-base-height 100
 python3 kumiko_lamp.py --style modern --thread-clearance 0.35
 python3 kumiko_lamp.py --style modern --holder e14
 ```
 
-For Modern, `--size` is the cylinder diameter and `--height` is the shade height.
+For Modern, `--size` is the **shade** diameter and `--height` is the shade height.
+The base diameter follows `--size` when `--modern-base-diameter` is omitted; supplying the
+new flag makes the body independent while the threaded neck remains matched to the shade.
 `--panel-thickness` controls Classic panel thickness or Modern radial lattice depth; its
 default is 4 mm in either style. `--grid` and `--slat` keep their pattern-pitch and
 slat-width meanings. `--style` defaults to `classic`, so existing commands and generated
@@ -436,7 +452,8 @@ strict mesh is checked separately against the Python volume.
   groove clearances come out as intended, slat width is a whole multiple of the nozzle,
   the cord tunnel does not break into the groove above it, post sockets do not burst out
   of the side of the Classic base. Modern additionally checks its thread walls, clearance,
-  engagement, mounting deck, holder spacing and circular bed footprint.
+  engagement, mounting deck, holder spacing, independently selected shade/base diameters,
+  the 45° transition between them and each circular bed footprint.
 - **Every exported part, reloaded from its STL** — not the mesh in memory. Watertight,
   consistent winding, a single connected body, and inside the build volume. The round-trip
   through float32 with no shared-vertex index is exactly where defects show up.
@@ -450,9 +467,10 @@ across all thirteen segment patterns. Modern adds wrapped-seam, thread, volume a
 placement comparisons across its eleven supported Kumiko patterns. The page
 itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
 a deliberately unassemblable configuration to confirm it blocks rather than exports,
-Classic/Modern state switching, English/Thai labels, and a real download whose bytes are
-loaded back as a mesh. The core is extracted from the shipped HTML for those tests, so what
-is verified is what ships.
+Classic/Modern state switching, linked-until-edited Modern diameters, English/Thai labels,
+equal and unequal-diameter ZIP naming, and a real download whose bytes are loaded back as a
+mesh. The core is extracted from the shipped HTML for those tests, so what is verified is
+what ships.
 
 What that does **not** cover is a test print — I have not run one. Shrinkage and your
 printer's dimensional accuracy are the remaining unknowns, and the joints are where they
