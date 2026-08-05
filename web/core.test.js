@@ -63,6 +63,36 @@ check(K.checkFits(K.derive({ plateT: 0.4 })).length > 0,
       'plate under three layers rejected');
 check(K.checkFits(K.derive({ plateT: 0.6 })).length === 0,
       'plate at exactly three layers accepted');
+check(K.derive({}).screwed === false && K.derive({}).capFloor === 4,
+      'the stock cap is unscrewed with 4 mm of floor over the sockets');
+const M3 = K.derive({ postInsertD: 4 });
+check(M3.capScrewD === 3.4 && Math.abs(M3.finialCavityD - 6.6) < 1e-9 &&
+      Math.abs(M3.finialCavityH - 3.4) < 1e-9,
+      'M3 derives a 3.4 clearance hole and a 6.6 x 3.4 cavity');
+check(M3.totalHeight === 244, 'finials add their height to the lamp');
+check(K.checkFits(M3).length === 0, 'the working M3 insert passes');
+/* Both boundaries land on a float that is not quite the integer, and both are
+   reachable slider stops -- 4.4 gives a wall of 0.7999999999999998. */
+check(K.checkFits(K.derive({ postInsertD: 4.4 })).length === 0,
+      'an insert leaving exactly two walls to the groove accepted');
+check(K.checkFits(K.derive({ postInsertD: 4.6 })).length > 0,
+      'an insert leaving under two walls to the groove rejected');
+check(K.checkFits(K.derive({ postInsertD: 5, post: 20 })).length === 0,
+      'M4 fits once the post is widened');
+check(K.checkFits(K.derive({ postInsertD: 5 })).length > 0,
+      'M4 does not fit an 18 mm post');
+check(K.checkFits(K.derive({ postInsertD: 2.8 })).length > 0,
+      'an insert hole under 3 mm rejected');
+/* The guard nothing used to make: past capT the post sockets punch through and
+   the cap comes off the plate in two pieces. */
+check(K.checkFits(K.derive({ capT: 7, grooveD: 7, post: 20 })).length > 0,
+      'a groove as deep as the cap rejected');
+check(K.checkFits(K.derive({ capT: 7, grooveD: 6.5, post: 20 })).length > 0,
+      'half a millimetre of cap floor rejected');
+check(K.checkFits(K.derive({ capT: 7, grooveD: 6, post: 20 })).length === 0,
+      'a millimetre of cap floor accepted');
+check(K.checkFits(K.derive({ postInsertD: 4, capT: 8.5 })).length > 0,
+      'a finial socket that eats the cap floor rejected');
 
 console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
@@ -123,7 +153,7 @@ console.log('\nparts vs Python trimesh');
    alone -- if this drifts DOWN through the lower bound, the browser's chamfer
    is removing more than Python's. */
 const PY = { post: 56.5, base: 506.0, top_cap: 318.3, socket_adapter_ring: 5.5,
-             leg: 5.6, diffuser_plate: 39.2 };
+             leg: 5.6, diffuser_plate: 39.2, finial: 3.3 };
 const LATTICE = { top_cap: 1 };
 const built = {
   post: K.buildPost(P),
@@ -133,7 +163,10 @@ const built = {
   leg: K.buildLeg(P),
   /* Measured at the working thickness -- the stock lamp is unglazed, so P's
      own plateT is 0 and would give an empty solid. */
-  diffuser_plate: K.buildDiffuserPlate(K.derive({ plateT: 1.2 }))
+  diffuser_plate: K.buildDiffuserPlate(K.derive({ plateT: 1.2 })),
+  /* Measured with the insert fitted — the stock lamp is unscrewed, so P's own
+     postInsertD is 0 and there would be no finial to build. */
+  finial: K.buildCapFinial(K.derive({ postInsertD: 4 }))
 };
 for (const [name, m] of Object.entries(built)) {
   const v = Math.abs(K.volume(m.tris)) / 1000;
@@ -199,6 +232,13 @@ check(Math.abs((qLo - pHi) - gp.slotClear) < 1e-6,
       'slotClear falls entirely between panel and plate',
       (qLo - pHi).toFixed(3));
 
+const screwed = K.buildAll({ postInsertD: 4 });
+check(screwed.parts.length === 7 && screwed.parts[5].id === 'finial' &&
+      screwed.parts[1].id === 'post',
+      'screwing adds a finial row under the leg row, post still second');
+check(screwed.assembly.filter(p => /^finial/.test(p.name)).length === 4,
+      'four finials placed');
+
 console.log('\nvariations');
 for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'mitsukude', slatW: 2.4 }, { grid: 20 },
@@ -210,6 +250,8 @@ for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'seigaiha' }, { pattern: 'seigaiha', grid: 16 },
                  { pattern: 'masu' }, { pattern: 'senbon' },
                  { pattern: 'senbon', grid: 45 },
+                 { postInsertD: 4 }, { postInsertD: 4, capT: 9 },
+                 { postInsertD: 5, post: 20 }, { postInsertD: 4, plateT: 1.2 },
                  { pattern: 'thai_rosette' },
                  { pattern: 'thai_rosette', size: 150, height: 170 },
                  { legH: 30 }, { legTenonH: 4, legClear: 0.5 },

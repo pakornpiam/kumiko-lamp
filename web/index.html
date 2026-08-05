@@ -357,8 +357,9 @@ pre.cmd {
           <li>Slide each panel down between two posts, lattice facing out.</li>
           <li>Fit the cap over the post tops and panel top edges.</li>
         </ol>
-        <p>Friction fit throughout, so the cap lifts off to change the bulb. If panels
-           bind, raise the slot clearance and reprint only the posts.</p>
+        <p>Friction fit throughout, so the cap lifts off to change the bulb &mdash; unless
+           you fit the optional cap screws, which means prising four finials off first.
+           If panels bind, raise the slot clearance and reprint only the posts.</p>
       </div>
       <div>
         <h3>Diffuser</h3>
@@ -433,6 +434,7 @@ var Kumiko = (function () {
     grooveD: 6, slotClear: 0.4, panelClear: 0.3, socketClear: 0.4,
     plinth: 5, baseT: 16, capT: 10, edgeChamfer: 2,
     leg: 20, legH: 12, legTenon: 10, legTenonH: 8, legClear: 0.35,
+    postInsertD: 0, postInsertH: 6.5, finialH: 8, finialTenonH: 2,
     socketBore: 40, socketCbore: 50, socketCboreD: 4, socketNeck: 26.5,
     cableW: 9, cableH: 5, cableFloor: 2,
     baseVents: 16, baseVentR0: 29, baseVentR1: 37,
@@ -453,7 +455,21 @@ var Kumiko = (function () {
     p.foot = p.size + 2 * p.plinth;
     p.socketSz = p.post + p.socketClear;
     p.legSocketSz = p.legTenon + p.legClear;
-    p.totalHeight = p.legH + p.baseT + (p.height - 2 * p.grooveD) + p.capT;
+    /* The whole top fixing hangs off one number, the way plateT does for the
+       plate.  postInsertD is the insert's pilot hole, and a heat-set insert
+       runs about a millimetre over its thread, so 4.0 is M3. */
+    p.screwed = p.postInsertD > 0;
+    p.screwD = p.postInsertD - 1;
+    p.capScrewD = p.screwD + 0.4;            /* 3.4 at M3: the standard hole */
+    p.screwHeadD = 1.8 * p.screwD;           /* ISO 4762 socket cap head */
+    p.finialCavityD = p.screwHeadD + 1.2;
+    p.finialCavityH = p.screwD + 0.4;        /* head height is d, plus a little */
+    /* All that is left of the cap over a post socket: the sockets cut up from
+       the underside and the finial socket eats down from the top. */
+    p.capFloor = p.capT - p.grooveD - (p.screwed ? p.finialTenonH : 0);
+    p.postWall = p.post / 2 - p.grooveD - p.postInsertD / 2;
+    p.totalHeight = p.legH + p.baseT + (p.height - 2 * p.grooveD) + p.capT +
+                    (p.screwed ? p.finialH : 0);
     p.openW = p.panelW - 2 * p.panelBorder;
     p.openH = p.height - 2 * p.panelBorder;
     p.diffuserW = p.panelW - 2 * p.rebateLip;
@@ -507,6 +523,13 @@ var Kumiko = (function () {
     if (2 * P.edgeChamfer >= P.capT)
       bad('Edge chamfer ' + P.edgeChamfer + ' mm is more than half the ' +
           P.capT + ' mm cap thickness.');
+    /* The post sockets cut up from the cap's underside to grooveD and the
+       finial socket eats down from the top; what is between them is the whole
+       floor.  Nothing guarded it, and past capT the sockets became through
+       holes that this build exported without a word. */
+    if (P.capFloor < 3 * 0.2)
+      bad('Only ' + P.capFloor.toFixed(1) + ' mm of cap is left over the post ' +
+          'sockets; that needs at least three layers.');
     if (2 * P.edgeChamfer >= P.baseT)
       bad('Edge chamfer ' + P.edgeChamfer + ' mm is more than half the ' +
           P.baseT + ' mm base thickness.');
@@ -536,6 +559,21 @@ var Kumiko = (function () {
       bad('Leg socket runs into the ventilation slots.');
     if (P.legH < 3 * 0.2)
       bad('Leg is under three layers tall.');
+    if (P.postInsertD > 0 && P.postInsertD < 3)
+      bad('Insert hole ' + P.postInsertD + ' mm is smaller than any heat-set insert.');
+    /* The only guard this cut can have: the hole is blind, so the post reloads
+       as one watertight body even after it has opened into a groove.  The 1e-9
+       is load-bearing -- post 18 with a 4.4 hole lands on 0.7999999999999998
+       against 2 * 0.4, and 4.4 is a slider stop. */
+    if (P.screwed && P.postWall < 2 * P.nozzle - 1e-9)
+      bad('Insert hole ' + P.postInsertD + ' mm leaves under two walls between ' +
+          'it and the panel grooves in the ' + P.post + ' mm post.');
+    if (P.screwed && P.finialTenonH < 3 * 0.2)
+      bad('Finial skirt is under three layers deep.');
+    if (P.screwed && P.legTenon - P.finialCavityD < 4 * P.nozzle - 1e-9)
+      bad('Screw cavity leaves under two walls of finial skirt.');
+    if (P.screwed && P.finialH + P.finialTenonH - P.finialCavityH < 3 * 0.2)
+      bad('Screw cavity breaks out of the top of the finial.');
     return out;
   }
 
@@ -1685,8 +1723,18 @@ var Kumiko = (function () {
              [sw, a], [sw, gin], [-sw, gin], [-sw, a], [-a, a]];
     if (c > 0) L.push([-a, -a + c], [-a + c, -a]);
     else L.push([-a, -a]);
-    return { tris: extrudeStack([{ loops: [orient(L, true)], z0: 0, z1: P.height }]),
-             manifold: true };
+    var prof = orient(L, true);
+    if (!P.screwed)
+      return { tris: extrudeStack([{ loops: [prof], z0: 0, z1: P.height }]),
+               manifold: true };
+    /* Blind pilot hole for the heat-set insert, down from the top face — two
+       layers rather than one, because the bore is a void only in the top slab. */
+    var zi = P.height - P.postInsertH;
+    return { tris: extrudeStack([
+      { loops: [prof], z0: 0, z1: zi },
+      { loops: [prof, circleLoop(0, 0, P.postInsertD / 2, P.arc, false)],
+        z0: zi, z1: P.height }
+    ]), manifold: true };
   }
 
   /* Post sockets and panel grooves, as void loops.  They overlap each other;
@@ -1725,6 +1773,46 @@ var Kumiko = (function () {
       for (var sy = -1; sy <= 1; sy += 2)
         v.push(rectLoop(sx * pc - s, sy * pc - s, sx * pc + s, sy * pc + s, false));
     return v;
+  }
+
+  /* Clearance holes for the cap screws, one on each post axis, straight
+     through: the head bears on the finial socket floor and stands proud, and
+     the finial swallows it.  No counterbore, no countersink. */
+  function capScrewVoids(P) {
+    var v = [], pc = P.postCenter;
+    for (var sx = -1; sx <= 1; sx += 2)
+      for (var sy = -1; sy <= 1; sy += 2)
+        v.push(circleLoop(sx * pc, sy * pc, P.capScrewD / 2, P.arc, false));
+    return v;
+  }
+
+  /* Square pockets in the cap's top face that take the finial skirts.  Same
+     size as the leg sockets, so one clearance serves both — and concentric
+     with and strictly inside the post sockets, so no new guard is needed for
+     the vent, the rim or the edge chamfer. */
+  function finialSocketVoids(P) {
+    var v = [], pc = P.postCenter, s = P.legSocketSz / 2;
+    for (var sx = -1; sx <= 1; sx += 2)
+      for (var sy = -1; sy <= 1; sy += 2)
+        v.push(rectLoop(sx * pc - s, sy * pc - s, sx * pc + s, sy * pc + s, false));
+    return v;
+  }
+
+  /* One finial, standing skirt-up — the same convention as the leg, and
+     assemble() turns it over.  Printed as exported the decorative face is on
+     the plate, the shoulder faces up, and the cavity is a blind bore opening
+     upward, so there is nothing to support. */
+  function buildCapFinial(P) {
+    var a = P.leg / 2, b = P.legTenon / 2;
+    var zc = P.finialH + P.finialTenonH - P.finialCavityH;
+    var cav = circleLoop(0, 0, P.finialCavityD / 2, P.arc, false);
+    var body = rectLoop(-a, -a, a, a, true);
+    return { tris: extrudeStack([
+      { loops: [body], z0: 0, z1: zc },
+      { loops: [body, cav], z0: zc, z1: P.finialH },
+      { loops: [rectLoop(-b, -b, b, b, true), cav], z0: P.finialH,
+        z1: P.finialH + P.finialTenonH }
+    ]), manifold: true };
   }
 
   /* The stack is built from sorted breakpoints rather than a fixed list of
@@ -1804,9 +1892,15 @@ var Kumiko = (function () {
       return rectLoop(-f + d, -f + d, f - d, f - d, true);
     }
 
+    var screws = P.screwed ? capScrewVoids(P) : null;
+    var pockets = P.screwed ? finialSocketVoids(P) : null;
+    var zFin = t - P.finialTenonH;
+
     /* Breakpoints rather than a fixed pair of layers, so the chamfer and the
-       groove floor can land in any order as the sliders move. */
-    var cuts = [0, ch, P.grooveD, t - ch, t]
+       groove floor can land in any order as the sliders move.  zFin only joins
+       them when the cap is screwed, so an unscrewed cap decomposes into exactly
+       the slabs it always did. */
+    var cuts = [0, ch, P.grooveD, t - ch, t].concat(P.screwed ? [zFin] : [])
       .filter(function (z) { return z > -TOL && z < t + TOL; })
       .sort(function (a, b) { return a - b; });
     var layers = [];
@@ -1814,6 +1908,10 @@ var Kumiko = (function () {
       var a0 = cuts[k], a1 = cuts[k + 1];
       if (a1 - a0 < TOL) continue;
       var rest = [vent];
+      /* Neither new void crosses the outer boundary, so the tapered chamfer
+         bands keep the property extrudeStack needs. */
+      if (screws) rest = rest.concat(screws);
+      if (pockets && (a0 + a1) / 2 >= zFin) rest = rest.concat(pockets);
       if ((a0 + a1) / 2 <= P.grooveD) rest = rest.concat(joinery);
       layers.push({ loops: [outerAt(a0)].concat(rest),
                     loopsTop: ch > 0 ? [outerAt(a1)].concat(rest) : undefined,
@@ -1878,7 +1976,7 @@ var Kumiko = (function () {
   function capPrintTransform(P) { return mul(trans(0, 0, P.capT), rotX(180)); }
 
   /* Port of place_parts(). */
-  function assemble(P, panel, plate, post, base, cap, leg) {
+  function assemble(P, panel, plate, post, base, cap, leg, finial) {
     var pc = P.postCenter, t = P.panelT, zb = P.baseT - P.grooveD, out = [];
     out.push({ name: 'base', tris: base, kind: 'plate' });
     var ang = { '-1,-1': 0, '1,-1': 90, '1,1': 180, '-1,1': 270 };
@@ -1915,6 +2013,15 @@ var Kumiko = (function () {
       place(places(pc - P.slotW / 2 + P.plateT), plate, 'plate', true);
     out.push({ name: 'cap', kind: 'plate',
       tris: transform(cap, trans(0, 0, zb + P.height - P.grooveD)) });
+    /* Finials sit on the cap's top face, skirt down.  Modelled skirt-up like
+       the leg, so the 180 deg turn-over lives here rather than in the part. */
+    if (finial) {
+      var zf = zb + P.height - P.grooveD + P.capT + P.finialH;
+      for (i = 0; i < 4; i++)
+        out.push({ name: 'finial' + i, kind: 'post',
+          tris: transform(finial, mul(trans(corners[i][0] * pc, corners[i][1] * pc, zf),
+                                      rotX(180))) });
+    }
     // Legs sit below z = 0, so the assembly's origin is the base underside and
     // its z-extent comes out as totalHeight.
     if (leg) {
@@ -2053,6 +2160,7 @@ var Kumiko = (function () {
     var pattern = P.pattern;
     var panel = buildPanel(P, pattern);
     var plate = P.glazed ? buildDiffuserPlate(P) : null;
+    var finial = P.screwed ? buildCapFinial(P) : null;
     var post = buildPost(P);
     var base = buildBase(P);
     var cap = buildCap(P, pattern);
@@ -2073,7 +2181,14 @@ var Kumiko = (function () {
       { id: 'top_cap', label: 'Top cap', qty: 1,
         mesh: { tris: transform(cap.tris, capPrintTransform(P)), manifold: true },
         note: 'already flipped for printing' },
-      { id: 'leg', label: 'Leg', qty: 4, mesh: leg, note: 'tenon up, as exported' },
+      { id: 'leg', label: 'Leg', qty: 4, mesh: leg, note: 'tenon up, as exported' });
+    /* The finial row sits under the leg row, and is absent entirely on an
+       unscrewed lamp rather than listed as nothing to print.  Under the leg
+       specifically, so rows 1 and 2 stay panel and post. */
+    if (P.screwed)
+      parts.push({ id: 'finial', label: 'Cap finial', qty: 4, mesh: finial,
+        note: 'skirt up, as exported' });
+    parts.push(
       { id: 'socket_adapter_ring', label: 'E27 adapter ring', qty: 1, mesh: ring,
         note: 'match to your holder' });
     for (var i = 0; i < parts.length; i++) {
@@ -2088,7 +2203,8 @@ var Kumiko = (function () {
     return {
       P: P, problems: [], parts: parts, slats: panel.slats,
       assembly: assemble(P, panel.tris, plate && plate.tris,
-                         post.tris, base.tris, cap.tris, leg.tris)
+                         post.tris, base.tris, cap.tris, leg.tris,
+                         finial && finial.tris)
     };
   }
 
@@ -2102,7 +2218,7 @@ var Kumiko = (function () {
     derive: derive, checkFits: checkFits, buildAll: buildAll,
     buildPanel: buildPanel, buildPost: buildPost, buildBase: buildBase,
     buildCap: buildCap, buildRing: buildRing, buildLeg: buildLeg,
-    buildDiffuserPlate: buildDiffuserPlate,
+    buildDiffuserPlate: buildDiffuserPlate, buildCapFinial: buildCapFinial,
     latticeSegments: latticeSegments, clipRect: clipRect, clipCircle: clipCircle,
     extrudeStack: extrudeStack, rectLoop: rectLoop, circleLoop: circleLoop,
     slatLoop: slatLoop, orient: orient, quadPrism: quadPrism,
@@ -2124,6 +2240,7 @@ var Kumiko = (function () {
   var TH = {
     'Lantern':'ตัวโคม', 'Pattern':'ลวดลาย', 'Panel':'แผงโคม', 'Frame':'โครง',
     'Legs':'ขา', 'Joints':'รอยต่อ', 'Lamp holder':'ขั้วหลอดไฟ', 'Printer':'เครื่องพิมพ์',
+    'Cap screws':'สกรูยึดฝา', 'Insert hole':'รูอินเสิร์ต', 'Finial height':'ความสูงยอดฝา',
     'Width':'ความกว้าง', 'Height':'ความสูง', 'Pattern pitch':'ระยะลาย', 'Slat width':'ความกว้างซี่',
     'Thickness':'ความหนา', 'Frame border':'ขอบกรอบ', 'Diffuser plate':'แผ่นกระจายแสง',
     'Diffuser rebate':'ร่องแผ่นกระจายแสง', 'Rebate lip inset':'ระยะขอบร่อง',
@@ -2264,6 +2381,13 @@ var Kumiko = (function () {
       ['legTenon', 'Tenon section', 5, 20, 0.5, 'mm'],
       ['legTenonH', 'Tenon depth', 3, 9, 0.5, 'mm'],
       ['legClear', 'Tenon clearance', 0.1, 1.0, 0.05, 'mm']
+    ]},
+    { name: 'Cap screws', items: [
+      /* 0 means no insert, so this slider is the on/off switch for the whole
+         top fixing — the same trick plateT uses.  The top notch is past what
+         an 18 mm post will take; checkFits catches it and says why. */
+      ['postInsertD', 'Insert hole', 0, 5.6, 0.2, 'mm'],
+      ['finialH', 'Finial height', 4, 24, 0.5, 'mm']
     ]},
     { name: 'Joints', items: [
       ['slotClear', 'Groove clearance', 0.1, 1.0, 0.05, 'mm'],
@@ -2453,6 +2577,8 @@ var Kumiko = (function () {
       var off = 0;
       if (viewMode === 'exp') {
         if (part.name === 'cap') off = H * 0.34;
+        /* Above the cap, or they hang where it used to be. */
+        else if (part.name.indexOf('finial') === 0) off = H * 0.46;
         else if (part.kind === 'panel') off = H * 0.12;
       }
       var t = part.tris, start = pos.length / 3;
@@ -2653,10 +2779,12 @@ var Kumiko = (function () {
       var tr = el('tr');
       var td0 = el('td');
       var partLabels = { diffuser_plate:'แผ่นกระจายแสง', post:'เสามุม', base:'ฐาน',
-        top_cap:'ฝาบน', leg:'ขา', socket_adapter_ring:'วงแหวนแปลง E27' };
+        top_cap:'ฝาบน', leg:'ขา', finial:'ยอดฝา',
+        socket_adapter_ring:'วงแหวนแปลง E27' };
       var partNotes = { diffuser_plate:'วางราบ พิมพ์ด้วย PETG ใส', post:'วางตั้งและใช้ปีกยึด',
         base:'ใช้ทิศทางตามไฟล์ส่งออก', top_cap:'พลิกพร้อมสำหรับการพิมพ์แล้ว',
-        leg:'หงายเดือยขึ้นตามไฟล์ส่งออก', socket_adapter_ring:'ปรับให้ตรงกับขั้วหลอดของคุณ' };
+        leg:'หงายเดือยขึ้นตามไฟล์ส่งออก', finial:'หงายเดือยขึ้นตามไฟล์ส่งออก',
+        socket_adapter_ring:'ปรับให้ตรงกับขั้วหลอดของคุณ' };
       var label = p.id.indexOf('panel_') === 0
         ? (lang === 'th' ? (K.PATTERN_FAMILY[state.pattern] === 'laithai' ? 'แผงลายไทย' : 'แผงคุมิโกะ') : p.label)
         : (lang === 'th' ? partLabels[p.id] : p.label);
@@ -2703,8 +2831,18 @@ var Kumiko = (function () {
       'Leg tenon is not narrower than the leg, so it has no shoulder.':'เดือยขาไม่แคบกว่าตัวขา จึงไม่มีบ่ารับ',
       'Leg overhangs the edge of the base.':'ขายื่นพ้นขอบฐาน',
       'Leg socket runs into the ventilation slots.':'เบ้าขาชนช่องระบายอากาศ',
-      'Leg is under three layers tall.':'ขาสูงน้อยกว่าสามชั้นพิมพ์'
+      'Leg is under three layers tall.':'ขาสูงน้อยกว่าสามชั้นพิมพ์',
+      'Finial skirt is under three layers deep.':'บ่ายอดฝาลึกน้อยกว่าสามชั้นพิมพ์',
+      'Screw cavity leaves under two walls of finial skirt.':'โพรงสกรูเหลือผนังบ่ายอดฝาน้อยกว่าสองเส้น',
+      'Screw cavity breaks out of the top of the finial.':'โพรงสกรูทะลุออกด้านบนของยอดฝา'
     };
+    /* The interpolated ones cannot be looked up, so match on their stem. */
+    if (/^Only .* of cap is left over the post sockets/.test(m))
+      return 'เหลือเนื้อฝาเหนือเบ้าเสาน้อยกว่าสามชั้นพิมพ์';
+    if (/^Insert hole .* is smaller than any heat-set insert/.test(m))
+      return 'รูอินเสิร์ตเล็กกว่าอินเสิร์ตแบบฝังความร้อนทุกขนาด';
+    if (/^Insert hole .* leaves under two walls/.test(m))
+      return 'รูอินเสิร์ตเหลือผนังถึงร่องแผงน้อยกว่าสองเส้น';
     if (fixed[m]) return fixed[m];
     return m
       .replace(/^Diffuser plate (.+) mm is under three layers thick\.$/, 'แผ่นกระจายแสงหนา $1 mm ซึ่งน้อยกว่าสามชั้นพิมพ์')
@@ -2756,7 +2894,7 @@ var Kumiko = (function () {
     var d = K.DEFAULTS, flags = [];
     [['size','--size'],['height','--height'],['grid','--grid'],['slatW','--slat'],
      ['socketNeck','--socket-neck'],['edgeChamfer','--edge-chamfer'],
-     ['plateT','--diffuser-plate']].forEach(function (f) {
+     ['plateT','--diffuser-plate'],['postInsertD','--post-insert']].forEach(function (f) {
       if (Math.abs(state[f[0]] - d[f[0]]) > 1e-9) flags.push(f[1] + ' ' + state[f[0]]);
     });
     if (state.pattern !== d.pattern) flags.push('--pattern ' + state.pattern);

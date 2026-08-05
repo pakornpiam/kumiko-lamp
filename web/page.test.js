@@ -210,6 +210,31 @@ const check = (ok, msg, extra) => {
         'back to six rows once the plate is off');
   check(!(await page.isDisabled('#dl-all')), 'export re-enabled unglazed');
 
+  // the cap screws and finials.  Off by default, so this runs last.
+  await page.fill('#r-postInsertD', '4');
+  await page.dispatchEvent('#r-postInsertD', 'input');
+  await page.waitForTimeout(600);
+  check(await page.$$eval('#parts tr', r => r.length) === 7,
+        'the insert adds a finial print row');
+  const fnotes = await page.$$eval('#parts .note', n => n.map(x => x.textContent.split(' ')[0]));
+  check(fnotes[5] === 'finial.stl', 'finial row sits under the leg row', fnotes.join(','));
+  const tall = await page.textContent('#d-overall');
+  check(tall.trim() === '190 × 190 × 244 mm', 'finials add to the overall height',
+        tall.trim());
+  check(/--post-insert 4/.test(await page.textContent('#cli')),
+        'CLI echo carries the insert', await page.textContent('#cli'));
+  // the top notch is past what an 18 mm post takes, and must say so
+  await page.fill('#r-postInsertD', '5.6');
+  await page.dispatchEvent('#r-postInsertD', 'input');
+  await page.waitForTimeout(500);
+  check(!!(await page.$('#problems .problems')) && await page.isDisabled('#dl-all'),
+        'an insert that reaches the panel groove blocks export');
+  await page.fill('#r-postInsertD', '0');
+  await page.dispatchEvent('#r-postInsertD', 'input');
+  await page.waitForTimeout(600);
+  check(await page.$$eval('#parts tr', r => r.length) === 6,
+        'back to six rows once the insert is off');
+
   // screenshots, both themes -- collapse the rail back to its default state
   await page.evaluate(() => {
     document.querySelectorAll('details.grp').forEach((d, i) => { d.open = i < 2; });

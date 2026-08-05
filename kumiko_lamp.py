@@ -88,6 +88,17 @@ class Params:
     leg_tenon_h: float = 8.0     # tenon length == socket depth
     leg_clear: float = 0.35      # socket size minus tenon size
 
+    # --- top fixing and finials ------------------------------------------
+    # A heat-set insert in the top of each post lets the cap be screwed down
+    # instead of friction-fitted, and a finial over each screw hides the head
+    # and rhymes with the legs under the base.  0 disables the whole feature,
+    # the way plate_t does for the diffuser plate, and the lamp ships unscrewed
+    # -- with the screws in, changing a bulb means prising four finials off.
+    post_insert_d: float = 0.0   # insert pilot hole; 4.0 for an M3 x 5.7
+    post_insert_h: float = 6.5   # blind depth in the post top: insert + relief
+    finial_h: float = 8.0        # finial body standing above the cap
+    finial_tenon_h: float = 2.0  # skirt depth == socket depth in the cap top
+
     # --- E27 lamp holder -------------------------------------------------
     socket_bore: float = 40.0        # clear bore through the base
     socket_cbore: float = 50.0       # counterbore that seats the adapter ring
@@ -155,9 +166,68 @@ class Params:
         return self.leg_tenon + self.leg_clear
 
     @property
+    def screwed(self) -> bool:
+        """Is the cap screwed down?  One number switches the whole feature."""
+        return self.post_insert_d > 0
+
+    @property
+    def screw_d(self) -> float:
+        """
+        Nominal thread the insert takes.  A heat-set insert's pilot hole runs
+        about a millimetre over its thread right across the M series, so this
+        inverts the one number you actually look up: 3.5 -> M2.5, 4.0 -> M3,
+        5.0 -> M4.
+        """
+        return self.post_insert_d - 1.0
+
+    @property
+    def cap_screw_d(self) -> float:
+        """Clearance hole through the cap.  3.4 at M3, the standard medium fit."""
+        return self.screw_d + 0.4
+
+    @property
+    def screw_head_d(self) -> float:
+        """ISO 4762 socket cap head is 1.8 d, within 0.1 across M2.5 to M4."""
+        return 1.8 * self.screw_d
+
+    @property
+    def finial_cavity_d(self) -> float:
+        """Bore in the finial that swallows the head, 0.55 radially clear."""
+        return self.screw_head_d + 1.2
+
+    @property
+    def finial_cavity_h(self) -> float:
+        """
+        Depth of that bore from the skirt face, which is the plane the head
+        bears on.  ISO 4762 head height is d, plus a little.
+        """
+        return self.screw_d + 0.4
+
+    @property
+    def cap_floor(self) -> float:
+        """
+        What is left of the cap over a post socket.  The sockets are cut up
+        from the underside to groove_d and the finial socket eats down from the
+        top; this is the material the screw clamps, and the only thing between
+        the sockets and being through holes.
+        """
+        return self.cap_t - self.groove_d - (self.finial_tenon_h
+                                             if self.screwed else 0.0)
+
+    @property
+    def post_wall(self) -> float:
+        """
+        Material between the insert hole and the nearest point of a panel
+        groove.  The grooves reach in to post/2 - groove_d, so their closest
+        approach to the post axis is that far out whatever their width -- which
+        is why glazing the lamp does not move this.
+        """
+        return self.post / 2.0 - self.groove_d - self.post_insert_d / 2.0
+
+    @property
     def total_height(self) -> float:
         return (self.leg_h + self.base_t + (self.height - 2 * self.groove_d)
-                + self.cap_t)
+                + self.cap_t + (self.finial_h if self.screwed else 0.0))
 
 
 # --------------------------------------------------------------------------
@@ -1236,6 +1306,22 @@ def build_diffuser_plate(P: Params) -> trimesh.Trimesh:
     return cleanup(box(-P.panel_w / 2, 0, 0, P.panel_w / 2, P.height, P.plate_t))
 
 
+def _post_insert_cutter(P: Params):
+    """
+    Blind pilot hole for a heat-set insert, down from the post's top face.
+
+    Concentric with the post, so what binds is the nearest point of either
+    panel groove -- (post/2 - groove_d, 0) -- which is `post_wall` away.
+    check_fits has to keep two extrusions there because nothing else can: the
+    hole is blind, so the post below it holds the outer corner on and a hole
+    that has already opened into a groove still reloads as one watertight body.
+    """
+    if not P.screwed:
+        return []
+    return [cyl(P.post_insert_d, P.height - P.post_insert_h, P.height + EPS,
+                sections=P.arc)]
+
+
 def build_post(P: Params, part: str = "full") -> trimesh.Trimesh:
     """
     A corner post, standing up for printing.
@@ -1253,6 +1339,9 @@ def build_post(P: Params, part: str = "full") -> trimesh.Trimesh:
         box(g_in, -sw, -EPS, a + EPS, sw, L + EPS),     # groove on +X face
         box(-sw, g_in, -EPS, sw, a + EPS, L + EPS),     # groove on +Y face
     ]
+    # Before the two-piece split below, so "full", "lower" and "upper" all get
+    # it right for free: the hole is at the top, so only "upper" keeps it.
+    cutters += _post_insert_cutter(P)
 
     # chamfer the outward-facing vertical edge, at (-a, -a)
     if P.post_chamfer > 0:
@@ -1310,6 +1399,59 @@ def _joint_cutters(P: Params, z_top: float, downward: bool):
     for sx in (-1, 1):
         cutters.append(box(sx * pc - sw, -pc, z0, sx * pc + sw, pc, z1))
     return cutters
+
+
+def _cap_screw_holes(P: Params):
+    """
+    Plain clearance holes through the cap, one on each post axis.  No
+    counterbore and no countersink: the head bears on the floor of the finial
+    socket, stands proud of the cap, and the finial's cavity swallows it.
+    """
+    if not P.screwed:
+        return []
+    pc = P.post_center
+    return [cyl(P.cap_screw_d, -EPS, P.cap_t + EPS, x=sx * pc, y=sy * pc,
+                sections=P.arc)
+            for sx in (-1, 1) for sy in (-1, 1)]
+
+
+def _finial_sockets(P: Params):
+    """
+    Square pockets in the cap's top face that take the finial skirts.  Same
+    size as the leg sockets in the base underside, so one clearance serves both.
+
+    They are concentric with, and strictly inside, the post sockets -- 10.35
+    inside 18.4 at stock -- so every guard that already keeps a post socket
+    clear of the vent, the rim and the edge chamfer covers these too.
+    """
+    if not P.screwed:
+        return []
+    s = P.leg_socket_sz / 2.0
+    pc = P.post_center
+    return [box(sx * pc - s, sy * pc - s, P.cap_t - P.finial_tenon_h,
+                sx * pc + s, sy * pc + s, P.cap_t + EPS)
+            for sx in (-1, 1) for sy in (-1, 1)]
+
+
+def build_cap_finial(P: Params) -> trimesh.Trimesh:
+    """
+    One finial for the cap, standing skirt-up for printing.
+
+    Same square footprint and square tenon as the leg under the base, just
+    shorter, and hollowed so the proud screw head disappears inside it.
+    Modelled skirt-up like the leg: printed as exported the decorative face is
+    on the plate, the shoulder round the skirt faces up, and the cavity is a
+    blind bore opening upward, so there is nothing to support.  place_parts
+    turns it over.
+    """
+    a = P.leg / 2.0
+    b = P.leg_tenon / 2.0
+    top = P.finial_h + P.finial_tenon_h
+    body = box(-a, -a, 0, a, a, P.finial_h)
+    skirt = box(-b, -b, P.finial_h - EPS, b, b, top)
+    cavity = cyl(P.finial_cavity_d, top - P.finial_cavity_h, top + EPS,
+                 sections=P.arc)
+    return cleanup(difference(union([body, skirt]), [cavity]))
 
 
 def build_leg(P: Params) -> trimesh.Trimesh:
@@ -1416,9 +1558,10 @@ def build_cap(P: Params, pattern: str) -> trimesh.Trimesh:
     cap = box(-f, -f, 0, f, f, t)
     cap = difference(cap, _joint_cutters(P, 0.0, downward=False))
 
-    # vent opening
+    # vent opening, plus the screw holes and finial pockets when screwed down
     r = P.cap_vent_d / 2.0
-    cap = difference(cap, [cyl(P.cap_vent_d, -EPS, t + EPS, sections=P.arc)])
+    cap = difference(cap, [cyl(P.cap_vent_d, -EPS, t + EPS, sections=P.arc)]
+                          + _finial_sockets(P) + _cap_screw_holes(P))
 
     # coarse grille filling the vent
     g = P.grid * P.cap_grille_f
@@ -1458,7 +1601,8 @@ def _rotx(deg):
     return trimesh.transformations.rotation_matrix(math.radians(deg), (1, 0, 0))
 
 
-def place_parts(P: Params, panel, post, base, cap, leg=None, plate=None):
+def place_parts(P: Params, panel, post, base, cap, leg=None, plate=None,
+                finial=None):
     """
     Return {name: transformed copy} for every part in assembled position.
 
@@ -1515,6 +1659,16 @@ def place_parts(P: Params, panel, post, base, cap, leg=None, plate=None):
     c.apply_translation((0, 0, z_base + P.height - P.groove_d))
     out["cap"] = c
 
+    # Finials sit on the cap's top face, skirt down.  Modelled skirt-up like
+    # the leg, so the turn-over lives here rather than in the part.
+    if finial is not None and P.screwed:
+        z_top = z_base + P.height - P.groove_d + P.cap_t
+        for idx, (sx, sy) in enumerate([(-1, -1), (1, -1), (1, 1), (-1, 1)]):
+            g = finial.copy()
+            g.apply_transform(_rotx(180))
+            g.apply_translation((sx * pc, sy * pc, z_top + P.finial_h))
+            out[f"finial{idx}"] = g
+
     # Legs hang below z = 0, so the assembly's origin is the base underside and
     # its z-extent comes out as total_height.  Only ever a preview, never printed.
     if leg is not None:
@@ -1525,8 +1679,9 @@ def place_parts(P: Params, panel, post, base, cap, leg=None, plate=None):
     return out
 
 
-def build_assembly(P: Params, panel, post, base, cap, leg=None, plate=None):
-    parts = place_parts(P, panel, post, base, cap, leg, plate)
+def build_assembly(P: Params, panel, post, base, cap, leg=None, plate=None,
+                   finial=None):
+    parts = place_parts(P, panel, post, base, cap, leg, plate, finial)
     return trimesh.util.concatenate(list(parts.values())), parts
 
 
@@ -1601,6 +1756,13 @@ def check_fits(P: Params):
         issues.append("edge chamfer cuts into the socket walls of the base/cap")
     if 2 * P.edge_chamfer >= P.cap_t:
         issues.append("top and bottom chamfers meet through the cap")
+    # The post sockets are cut up from the cap's underside to groove_d and the
+    # finial socket eats down from the top; what is between them is the whole
+    # floor.  Nothing guarded it: past cap_t the sockets became through holes,
+    # which check_part reported as "a floating slat" and the browser, having no
+    # body count at all, exported in two pieces without a word.
+    if P.cap_floor < 3 * 0.2:
+        issues.append("less than three layers of cap left over the post sockets")
     if 2 * P.edge_chamfer >= P.base_t:
         issues.append("top and bottom chamfers meet through the base")
     if P.edge_chamfer > P.cable_floor:
@@ -1619,6 +1781,21 @@ def check_fits(P: Params):
         issues.append("leg socket runs into the ventilation slots")
     if P.leg_h < 3 * 0.2:
         issues.append("leg is under three layers tall")
+    if 0 < P.post_insert_d < 3.0:
+        issues.append("insert hole is smaller than any heat-set insert")
+    # The only guard that can exist for this: the hole is blind, so the post
+    # reloads as one watertight body even after it has opened into a groove.
+    # The 1e-9 is load-bearing -- post 18 with a 4.4 hole lands on
+    # 0.7999999999999998 against 2 * 0.4, and 4.4 is a slider stop.
+    if P.screwed and P.post_wall < 2 * P.nozzle - 1e-9:
+        issues.append("insert hole leaves under two walls to the panel grooves")
+    if P.screwed and P.finial_tenon_h < 3 * 0.2:
+        issues.append("finial skirt is under three layers deep")
+    if P.screwed and P.leg_tenon - P.finial_cavity_d < 4 * P.nozzle - 1e-9:
+        issues.append("screw cavity leaves under two walls of finial skirt")
+    if P.screwed and (P.finial_h + P.finial_tenon_h
+                      - P.finial_cavity_h) < 3 * 0.2:
+        issues.append("screw cavity breaks out of the top of the finial")
     return issues
 
 
@@ -1631,7 +1808,7 @@ def check_clearances(parts):
     one this has to prove.  Plates are absent when the lamp is unglazed.
     """
     names = [n for n in ("base", "cap", "post0", "panel0", "panel2",
-                         "plate0", "plate2", "leg0") if n in parts]
+                         "plate0", "plate2", "leg0", "finial0") if n in parts]
     issues = []
     for i, a in enumerate(names):
         for b in names[i + 1:]:
@@ -1731,6 +1908,9 @@ def main(argv=None):
     ap.add_argument("--diffuser-plate", type=float,
                     help="clear plate behind each lattice, in the same groove "
                          "(mm); 0 for none, 1.2 is the working value")
+    ap.add_argument("--post-insert", type=float,
+                    help="heat-set insert pilot hole in each post top (mm); "
+                         "0 for none, 4.0 is the working value for M3")
     ap.add_argument("--split-posts", action="store_true",
                     help="also export the two-piece post")
     ap.add_argument("--all", action="store_true",
@@ -1747,7 +1927,8 @@ def main(argv=None):
                       ("slat_w", args.slat), ("grid", args.grid),
                       ("socket_neck", args.socket_neck),
                       ("edge_chamfer", args.edge_chamfer),
-                      ("plate_t", args.diffuser_plate)):
+                      ("plate_t", args.diffuser_plate),
+                      ("post_insert_d", args.post_insert)):
         if val is not None:
             setattr(P, attr, val)
 
@@ -1829,8 +2010,18 @@ def main(argv=None):
         print("  building diffuser plate ...", flush=True)
         emit("diffuser_plate", build_diffuser_plate(ref))
 
+    # --all exports one at the working diameter so stl/finial.stl stays in the
+    # checked-in set even though the stock lamp is unscrewed.
+    finial = None
+    if P.screwed:
+        print("  building finial ...", flush=True)
+        finial = emit("finial", build_cap_finial(P))
+    elif args.all:
+        print("  building finial ...", flush=True)
+        emit("finial", build_cap_finial(replace(P, post_insert_d=4.0)))
+
     print("  assembling ...", flush=True)
-    asm, parts = build_assembly(P, panel, post, base, cap, leg, plate)
+    asm, parts = build_assembly(P, panel, post, base, cap, leg, plate, finial)
     emit("assembly_preview", asm, bodies=len(parts), printable=False)
 
     # ---- report ---------------------------------------------------------

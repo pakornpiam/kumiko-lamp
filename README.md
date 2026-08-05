@@ -2,7 +2,8 @@
 
 A square four-panel kumiko lantern for an E27 LED bulb. Every part prints flat with
 **no supports**, and the whole thing assembles with sliding mortise-and-groove joints —
-no glue, no screws, no fasteners of any kind.
+no glue and, as it ships, no fasteners of any kind. Four M3 screws are an option, not a
+requirement; see *Screwing the cap down*.
 
 Assembled: **190 × 190 × 236 mm** on its four legs. Designed for the 256 mm bed of the
 A1 / P1S / X1C.
@@ -37,6 +38,7 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `leg.stl` | **4** | 20 × 20 × 20 | Standing on its foot, as exported. Tenon points up. |
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 holder* below. |
 | `diffuser_plate.stl` | 0 or **4** | 155.7 × 210 × 1.2 | Flat, as exported. Only if you want a printed diffuser — see *Diffuser* below. |
+| `finial.stl` | 0 or **4** | 20 × 20 × 10 | Standing on its head, as exported. Skirt points up. Only with the cap screws — see below. |
 
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
 `panel_kagome.stl`, `panel_masu.stl`, `panel_masu_tsunagi.stl`, `panel_senbon.stl`,
@@ -123,7 +125,8 @@ slicer's estimate is the one to trust.
    side edges, and its bottom edge lands in the groove in the base. Lattice faces out.
 4. Fit the **top cap** over the four post tops and the four panel top edges.
 
-It is a friction fit throughout, so the cap lifts off to change the bulb. Joint
+It is a friction fit throughout, so the cap lifts off to change the bulb. Fit the optional
+cap screws and it does not: four finials come off and four screws come out first. Joint
 clearances are 0.4 mm on the grooves, 0.3 mm on panel width and 0.35 mm on the leg
 tenons. If your printer runs tight and the panels bind, raise `slot_clear` and reprint
 the posts — that is the one part you would need to redo.
@@ -137,6 +140,36 @@ socket under each corner post, so the load runs straight down post → base → 
 rather than a round pin, so a leg cannot rotate out of line with the base edges.
 
 They also lift the base 12 mm off the table, which gives the cord somewhere to go.
+
+## Screwing the cap down
+
+The cap is a friction fit and needs nothing else. If you would rather it could not be
+lifted off — a lamp that travels, or one somewhere a cat can reach — each post top can
+take a **heat-set threaded insert**, with an M3 screw down through the cap into it and a
+finial over each screw to hide the head. The finials echo the four legs: four feet below,
+four caps above.
+
+```bash
+python3 kumiko_lamp.py --post-insert 4.0    # M3, the working value
+python3 kumiko_lamp.py --post-insert 0      # none (the default)
+```
+
+In the configurator it is the **Insert hole** slider under *Cap screws*; `0` means none.
+
+**You will need:** 4 × M3 heat-set insert, OD 4.6 × 5.7 mm long (the common
+Ruthex/CNC-Kitchen size, 4.0 mm pilot) · 4 × M3 × 8 socket cap screw · a 2.5 mm hex key ·
+a soldering iron to set the inserts.
+
+Set the inserts into the post tops before assembly, build as usual, then drop a screw
+through each corner of the cap and nip it up — **snug, not tight**. The screw pulls the cap
+down until the post bottoms out against it, so there is nothing to gain from more torque
+and an insert to strip if you keep going. The finials are a light press fit; leave them
+unglued or you will never get the bulb out.
+
+**Ø4.0 is the largest hole an 18 mm post will really take.** The panel grooves reach in to
+within 3 mm of the post axis, so a 4 mm hole leaves a 1 mm wall — and that wall is where
+the insert's melt wants to bulge, into the groove face. `check_fits` refuses anything past
+two extrusions of wall, but if you want M4, widen the post to 20 mm first.
 
 ## Diffuser
 

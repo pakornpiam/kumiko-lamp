@@ -18,6 +18,7 @@ python3 kumiko_lamp.py --all              # every pattern, both post styles, all
 python3 kumiko_lamp.py --pattern kikkou   # one pattern's part set
 python3 kumiko_lamp.py --size 150 --height 170 --grid 20 --slat 2.0 --socket-neck 23.5
 python3 kumiko_lamp.py --diffuser-plate 1.2 --edge-chamfer 1.5
+python3 kumiko_lamp.py --post-insert 4.0        # M3 inserts, screws, finials
 python3 render_preview.py                 # optional PNG previews, needs matplotlib
 
 # Configurator tests (from web/)
@@ -79,7 +80,35 @@ it. `plate_t = 0` collapses `slot_w` to the un-glazed width, which is why the st
 is byte-identical with the feature present.
 
 Minimum-layer checks are written `x < 3 * 0.2`, and `3 * 0.2` is `0.6000000000000001` in
-both languages — subtract an epsilon if the boundary is a reachable slider stop.
+both languages — subtract an epsilon if the boundary is a reachable slider stop. The same
+trap bites the insert guards: `post 18` with a 4.4 hole lands on `0.7999999999999998`
+against `2 * nozzle`, and `legTenon 10` against a 5.0 insert on `1.5999999999999996`.
+Both are reachable stops, so both guards carry `- 1e-9`.
+
+**The cap's floor over the post sockets is `cap_floor`, and nothing used to guard it.**
+`_joint_cutters(P, 0.0, downward=False)` cuts up from the underside to `groove_d`; past
+`cap_t` the sockets are through holes and the cap comes off the plate in two pieces.
+Python's `check_part` reported that as `bodies != 1` *with the wrong reason* ("a floating
+slat or an unsupported grille"); the browser has no body count at all and exported it
+silently. `cap_floor < 3 * 0.2` is the guard, and it also carries the finial socket's bite
+out of the top. Minimal repro was `capT 7, grooveD 7, post 20`.
+
+**The insert hole is the one cut `check_part` cannot audit.** It is blind, so the post
+below it holds the outer corner on and the part reloads watertight, one body, at *every*
+diameter — including diameters that have already opened into a panel groove. `post_wall >=
+2 * nozzle` in `check_fits` is the only thing standing there. Note the binding dimension is
+`post/2 - groove_d`, the grooves' nearest approach to the post axis, which does not depend
+on `slot_w` — so glazing the lamp does not move it.
+
+**The finial sockets are bridges, not overhangs.** They are pockets in the modelled top
+face, and `_rotx(180)` puts that face on the plate, so their floors become four 10.35 mm
+dead-flat ceilings 2 mm up. Anchored on all four sides — easier than the cord tunnel's
+existing 9 mm bridge, which is anchored on two. Say *bridges* in the docs, not "no
+overhang".
+
+A new **part id** is two more places than you expect: `partLabels` and `partNotes` in
+`renderParts` are keyed by it, and a miss renders `undefined.stl · undefined` in Thai. A
+new **slider group** is a third: its name and every label need a `TH` entry.
 
 The browser's panel and cap volumes read a few percent **high** by design (overlapping slats
 are double-counted by the divergence theorem), so `core.test.js` bounds them rather than
