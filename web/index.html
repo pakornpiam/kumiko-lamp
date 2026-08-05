@@ -110,18 +110,18 @@ a { color: var(--ai); }
 }
 .ctl input[type=range]:focus-visible { outline: 2px solid var(--ai); outline-offset: 3px; }
 
-.famtabs { display: flex; gap: 4px; margin-bottom: 8px; }
-.famtabs button {
+.famtabs, .styletabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.famtabs button, .styletabs button {
   flex: 1; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
   text-transform: uppercase; padding: 6px 4px; cursor: pointer;
   background: transparent; color: var(--sumi-3);
   border: 1px solid var(--edge); border-radius: 2px;
 }
-.famtabs button:hover { border-color: var(--kigara); color: var(--sumi); }
-.famtabs button[aria-selected="true"] {
+.famtabs button:hover, .styletabs button:hover { border-color: var(--kigara); color: var(--sumi); }
+.famtabs button[aria-selected="true"], .styletabs button[aria-pressed="true"] {
   background: var(--ai); border-color: var(--ai); color: var(--washi);
 }
-.famtabs button:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+.famtabs button:focus-visible, .styletabs button:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
 
 .styles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .styles button {
@@ -432,6 +432,7 @@ var Kumiko = (function () {
   // Parameters — defaults identical to Params in kumiko_lamp.py
   // ------------------------------------------------------------------
   var DEFAULTS = {
+    lanternStyle: 'classic',
     size: 180, height: 210,
     bedX: 256, bedY: 256, bedZ: 256, nozzle: 0.4,
     post: 18, postChamfer: 2,
@@ -447,6 +448,7 @@ var Kumiko = (function () {
     cableW: 9, cableH: 5, cableFloor: 2,
     baseVents: 16, baseVentR0: 29, baseVentR1: 37,
     capVentD: 70, capGrilleF: 0.75,
+    modernBaseH: 90, modernThreadClear: 0.30,
     arc: 64,
     pattern: 'asanoha'
   };
@@ -455,6 +457,7 @@ var Kumiko = (function () {
     var p = {};
     for (var k in DEFAULTS) p[k] = (raw && raw[k] !== undefined) ? +raw[k] : DEFAULTS[k];
     if (raw && raw.pattern) p.pattern = raw.pattern;
+    p.lanternStyle = raw && raw.lanternStyle ? raw.lanternStyle : DEFAULTS.lanternStyle;
     p.holderType = raw && raw.holderType ? raw.holderType : DEFAULTS.holderType;
     if (raw && raw.holderType && raw.socketNeck === undefined &&
         HOLDER_PRESETS[p.holderType] !== undefined)
@@ -493,6 +496,44 @@ var Kumiko = (function () {
     p.diffuserW = p.panelW - 2 * p.rebateLip;
     p.diffuserH = p.height - p.rebateLip;
     p.glazed = p.plateT > 0;
+    /* Modern keeps the familiar Width, Height and panel Thickness controls,
+       but reads them as shade diameter, shade height and radial lattice depth.
+       The fixed proportions deliberately live here (and in Python), rather
+       than being editable state that the two generators could let drift. */
+    p.modernRingH = 10;
+    p.modernWall = 5;
+    p.modernThreadPitch = 2;
+    p.modernThreadDepth = 0.8;
+    p.modernThreadEngagement = 10;
+    p.modernChordError = 0.1;
+    p.modernOuterR = p.size / 2;
+    p.modernCavityR = p.modernOuterR - p.modernWall;
+    /* Carry the rectangular cord cutter a full outlet width beyond the
+       circular cavity tangent so the complete opening reaches the hollow. */
+    p.modernCableInnerY = -p.modernCavityR + p.cableW;
+    p.modernPatternR = p.modernOuterR;
+    p.modernOpenW = 2 * Math.PI * p.modernPatternR;
+    p.modernOpenH = p.height - 2 * p.modernRingH;
+    p.modernBodyH = p.modernBaseH - p.modernThreadEngagement;
+    p.modernDeckZ = p.modernBaseH - p.baseT;
+    p.modernThreadCoreR = p.modernOuterR - p.panelT - p.modernThreadDepth;
+    p.modernThreadCrestR = p.modernThreadCoreR + p.modernThreadDepth;
+    p.modernShoulderH = p.modernOuterR - p.modernThreadCoreR;
+    p.modernShoulderZ = p.modernBodyH - p.modernShoulderH;
+    p.modernFemaleThreadR = p.modernThreadCoreR + p.modernThreadClear;
+    p.modernThreadWall = p.modernOuterR -
+                         (p.modernThreadCrestR + p.modernThreadClear);
+    var modernVentRm = (p.baseVentR0 + p.baseVentR1) / 2;
+    p.modernVentHalfLen = p.baseVents > 0
+      ? Math.PI * modernVentRm / p.baseVents * 0.60 : Infinity;
+    p.modernVentCornerR = Math.hypot(p.baseVentR1, p.modernVentHalfLen);
+    if (p.lanternStyle === 'modern') {
+      p.foot = p.size;
+      p.totalHeight = p.modernBaseH + p.height - p.modernThreadEngagement;
+      p.openW = p.modernOpenW;
+      p.openH = p.modernOpenH;
+      p.glazed = false;
+    }
     return p;
   }
 
@@ -500,8 +541,85 @@ var Kumiko = (function () {
   function checkFits(P) {
     var out = [];
     function bad(m) { out.push(m); }
+    if (P.nozzle <= 0)
+      bad('Nozzle diameter must be positive.');
+    if (P.arc < 24)
+      bad('Circle resolution must be at least 24 segments.');
+    if (P.lanternStyle !== 'classic' && P.lanternStyle !== 'modern')
+      bad('Unknown lantern style ' + P.lanternStyle + '.');
     if (HOLDER_PRESETS[P.holderType] === undefined)
       bad('Unknown lamp holder type ' + P.holderType + '.');
+    if (P.lanternStyle === 'modern') {
+      if (PATTERN_FAMILY[P.pattern] !== 'kumiko')
+        bad('Modern lanterns support Kumiko patterns only.');
+      if (P.size <= 2 * (P.modernWall + P.nozzle))
+        bad('Modern diameter is too small for its 5 mm body wall.');
+      if (P.height <= 2 * P.modernRingH + 2 * P.slatW)
+        bad('Modern shade is too short for two rings and a lattice.');
+      if (P.modernBaseH <= P.modernThreadEngagement + P.baseT)
+        bad('Modern base is too short for its thread and mounting deck.');
+      if (P.modernShoulderZ <= 0)
+        bad('Modern base is too short for its 45-degree shoulder.');
+      if (P.modernShoulderZ < P.cableH - 1e-9)
+        bad('Modern shoulder reaches the cable outlet.');
+      if (P.baseT < P.socketCboreD + 3 * 0.2 - 1e-9)
+        bad('Modern mounting deck is too thin below the adapter seat.');
+      var deckOuterR;
+      if (P.modernDeckZ <= P.modernShoulderZ)
+        deckOuterR = P.modernOuterR;
+      else if (P.modernDeckZ < P.modernBodyH)
+        deckOuterR = P.modernOuterR -
+                     (P.modernDeckZ - P.modernShoulderZ);
+      else
+        deckOuterR = P.modernThreadCoreR;
+      if (deckOuterR - (P.modernOuterR - P.modernWall) <
+          2 * P.nozzle - 1e-9)
+        bad('Modern shoulder leaves under two walls above the hollow body.');
+      if (P.slatW < 2 * P.nozzle)
+        bad('Slat width ' + P.slatW + ' mm is under two extrusions.');
+      if (P.nozzle > 0 &&
+          Math.abs(P.slatW / P.nozzle - Math.round(P.slatW / P.nozzle)) > 1e-6)
+        bad('Slat width ' + P.slatW + ' mm is not a multiple of the ' + P.nozzle + ' mm nozzle.');
+      if (P.panelT < 2 * P.nozzle)
+        bad('Modern lattice depth is under two extrusions.');
+      if (P.grid <= P.slatW)
+        bad('Modern pattern pitch must be wider than its slats.');
+      if (P.modernThreadClear < 0.1 - 1e-9)
+        bad('Thread clearance is under the 0.10 mm radial minimum.');
+      if (P.modernThreadWall < 2 * P.nozzle - 1e-9)
+        bad('Female thread leaves under two walls at the shade outside.');
+      if (!(P.baseVentR0 > 0 && P.baseVentR1 > P.baseVentR0))
+        bad('Modern vent radii must satisfy 0 < inner < outer.');
+      if (P.baseVents < 3)
+        bad('Modern base needs at least three ventilation slots.');
+      if (P.modernThreadCoreR <= P.socketCbore / 2 + 2 * P.nozzle)
+        bad('Modern neck has insufficient wall outside the holder deck.');
+      if (P.socketCbore / 2 >= P.baseVentR0)
+        bad('Adapter counterbore runs into the ventilation slots.');
+      if (P.baseVentR0 > 0 && P.baseVentR1 > P.baseVentR0 && P.baseVents >= 3 &&
+          P.modernVentCornerR >= P.modernThreadCoreR - 2 * P.nozzle)
+        bad('Modern ventilation slots run into the threaded neck wall.');
+      var ringOd = P.socketCbore - 0.4;
+      if (P.socketNeck <= 0 || P.socketNeck >= ringOd - 4 * P.nozzle)
+        bad('Lamp holder bore leaves under two walls in the adapter ring.');
+      if (P.socketBore <= 0 || P.socketCbore <= P.socketBore)
+        bad('Adapter counterbore must be wider than the holder bore.');
+      if (P.socketCboreD <= 0)
+        bad('Adapter seat depth must be positive.');
+      if (P.cableW <= 0 || P.cableH <= 0)
+        bad('Modern cable outlet dimensions must be positive.');
+      if (P.cableW >= P.size - 2 * P.modernWall)
+        bad('Modern cable outlet is wider than the hollow body.');
+      if (P.cableH >= P.modernDeckZ)
+        bad('Modern cable outlet reaches the mounting deck.');
+      if (P.size > Math.min(P.bedX, P.bedY) + 1e-9)
+        bad('Modern diameter exceeds the printer bed.');
+      if (P.height > P.bedZ + 1e-9)
+        bad('Modern shade height exceeds the printer build height.');
+      if (P.modernBaseH > P.bedZ + 1e-9)
+        bad('Modern base height exceeds the printer build height.');
+      return out;
+    }
     if (Math.abs((P.panelW + P.panelClear) - P.grooveSpan) > 1e-9)
       bad('Panel width does not match the post groove span.');
     if (Math.abs((P.slotW - P.panelT - P.plateT) - P.slotClear) > 1e-9)
@@ -1540,7 +1658,7 @@ var Kumiko = (function () {
    * slicer may offer to "repair" the mesh.  Splitting every edge at the
    * vertices lying on it fixes that without moving any geometry.
    */
-  function weldTJunctions(tris) {
+  function weldTJunctions(tris, centroidFan) {
     var n = tris.length / 9, i, j;
     if (!n) return tris;
 
@@ -1602,6 +1720,14 @@ var Kumiko = (function () {
       var A = [tris[o], tris[o + 1], tris[o + 2]];
       var B = [tris[o + 3], tris[o + 4], tris[o + 5]];
       var C = [tris[o + 6], tris[o + 7], tris[o + 8]];
+      if (centroidFan) {
+        var ux0 = B[0] - A[0], uy0 = B[1] - A[1], uz0 = B[2] - A[2];
+        var vx0 = C[0] - A[0], vy0 = C[1] - A[1], vz0 = C[2] - A[2];
+        var cx0 = uy0 * vz0 - uz0 * vy0;
+        var cy0 = uz0 * vx0 - ux0 * vz0;
+        var cz0 = ux0 * vy0 - uy0 * vx0;
+        if (cx0 * cx0 + cy0 * cy0 + cz0 * cz0 < 1e-20) continue;
+      }
       var eAB = onEdge(A, B), eBC = onEdge(B, C), eCA = onEdge(C, A);
       if (!eAB && !eBC && !eCA) {
         pushTri(out, A, B, C);
@@ -1614,7 +1740,20 @@ var Kumiko = (function () {
       if (eBC) for (j = 0; j < eBC.length; j++) ring.push(eBC[j][1]);
       ring.push(C);
       if (eCA) for (j = 0; j < eCA.length; j++) ring.push(eCA[j][1]);
-      for (j = 1; j + 1 < ring.length; j++) pushTri(out, ring[0], ring[j], ring[j + 1]);
+      if (centroidFan) {
+        /* A fan from a boundary corner creates zero-area triangles when that
+           corner's edge is split.  Fanning from the triangle centroid keeps
+           every new boundary segment on a real face, which is required for
+           exact float32 STL edge pairing. */
+        var mid = [(A[0] + B[0] + C[0]) / 3,
+                   (A[1] + B[1] + C[1]) / 3,
+                   (A[2] + B[2] + C[2]) / 3];
+        for (j = 0; j < ring.length; j++)
+          pushTri(out, mid, ring[j], ring[(j + 1) % ring.length]);
+      } else {
+        for (j = 1; j + 1 < ring.length; j++)
+          pushTri(out, ring[0], ring[j], ring[j + 1]);
+      }
     }
     return out;
   }
@@ -1632,7 +1771,7 @@ var Kumiko = (function () {
    * a different parameter top and bottom, and the crossing splits are computed
    * on the bottom profile alone.  checkFits keeps the cord tunnel out of the
    * tapered bands for exactly this reason. */
-  function extrudeStack(layers) {
+  function extrudeStack(layers, openTop, robustWeld) {
     var out = [], all = [];
     for (var i = 0; i < layers.length; i++) {
       all = all.concat(layers[i].loops);
@@ -1656,9 +1795,10 @@ var Kumiko = (function () {
       emitFaces(out, slabFaces(Et[i], Eb[i + 1], ys), z, true);      // shelf
       emitFaces(out, slabFaces(Eb[i + 1], Et[i], ys), z, false);     // ceiling
     }
-    emitFaces(out, slabFaces(Et[Et.length - 1], null, ys),
-              layers[layers.length - 1].z1, true);
-    return weldTJunctions(out);
+    if (!openTop)
+      emitFaces(out, slabFaces(Et[Et.length - 1], null, ys),
+                layers[layers.length - 1].z1, true);
+    return weldTJunctions(out, robustWeld);
   }
 
   // ------------------------------------------------------------------
@@ -1682,6 +1822,150 @@ var Kumiko = (function () {
   function prismFromLoop(loop, z0, z1) {
     if (loop.length === 4) return quadPrism(loop, z0, z1);
     return extrudeStack([{ loops: [orient(loop, true)], z0: z0, z1: z1 }]);
+  }
+
+  /* 45-degree printable thread profile.  The 2 mm pitch contains two 0.8 mm
+     flanks and 0.2 mm flats at root and crest.  Advancing theta by one turn
+     shifts the phase by exactly one pitch, so the seam closes bit-for-bit. */
+  function modernThreadProfile(z, theta, pitch, depth) {
+    var q = z - pitch * theta / (2 * Math.PI);
+    q = ((q % pitch) + pitch) % pitch;
+    return Math.max(0, depth - Math.min(q, pitch - q));
+  }
+
+  /* A watertight annulus with one helically varying wall.  `varyInner` makes
+     the female groove; false makes the male thread.  Top and bottom caps use
+     the same phase as the side surface, so no special seam patch is needed. */
+  function modernThreadedAnnulus(innerBase, outerBase, z0, z1, pitch, depth,
+                                  varyInner, nTheta) {
+    var out = [], nt = Math.max(32, nTheta || 64);
+    var nz = Math.max(8, Math.ceil((z1 - z0) / 0.2));
+    function radii(i, j) {
+      var th = 2 * Math.PI * i / nt;
+      var z = z0 + (z1 - z0) * j / nz;
+      var d = modernThreadProfile(z - z0, th, pitch, depth);
+      return { th: th, z: z,
+        ri: innerBase + (varyInner ? d : 0),
+        ro: outerBase + (varyInner ? 0 : d) };
+    }
+    function pt(r, th, z) { return [r * Math.cos(th), r * Math.sin(th), z]; }
+    for (var i = 0; i < nt; i++) {
+      for (var j = 0; j < nz; j++) {
+        var a = radii(i, j), b = radii(i + 1, j);
+        var c = radii(i + 1, j + 1), d = radii(i, j + 1);
+        pushQuad(out, pt(a.ro, a.th, a.z), pt(b.ro, b.th, b.z),
+                      pt(c.ro, c.th, c.z), pt(d.ro, d.th, d.z));
+        pushQuad(out, pt(a.ri, a.th, a.z), pt(d.ri, d.th, d.z),
+                      pt(c.ri, c.th, c.z), pt(b.ri, b.th, b.z));
+      }
+      var ib = radii(i, 0), jb = radii(i + 1, 0);
+      pushQuad(out, pt(ib.ri, ib.th, ib.z), pt(jb.ri, jb.th, jb.z),
+                    pt(jb.ro, jb.th, jb.z), pt(ib.ro, ib.th, ib.z));
+      var it = radii(i, nz), jt = radii(i + 1, nz);
+      pushQuad(out, pt(it.ri, it.th, it.z), pt(it.ro, it.th, it.z),
+                    pt(jt.ro, jt.th, jt.z), pt(jt.ri, jt.th, jt.z));
+    }
+    return out;
+  }
+
+  function modernThreadOuterLoop(P, z) {
+    var L = [], n = P.arc;
+    for (var i = 0; i < n; i++) {
+      var th = 2 * Math.PI * i / n;
+      var r = P.modernThreadCoreR + modernThreadProfile(
+        z - P.modernBodyH, th, P.modernThreadPitch, P.modernThreadDepth);
+      L.push([r * Math.cos(th), r * Math.sin(th)]);
+    }
+    return orient(L, true);
+  }
+
+  /* Join corresponding planar loops with a ruled wall.  CCW loops face out
+     and clockwise loops face into a void, so the same winding works for the
+     threaded skin, holder bores and ventilation slots. */
+  function modernLoopWall(out, lower, upper, z0, z1) {
+    for (var i = 0; i < lower.length; i++) {
+      var j = (i + 1) % lower.length;
+      pushQuad(out, [lower[i][0], lower[i][1], z0],
+                    [lower[j][0], lower[j][1], z0],
+                    [upper[j][0], upper[j][1], z1],
+                    [upper[i][0], upper[i][1], z1]);
+    }
+  }
+
+  /* Sweep one straight line from the unwrapped pattern around a cylinder.
+     Station spacing is derived from the requested chord error; the sweep is
+     evaluated with unbounded angles, so a slat crossing +/-pi stays continuous
+     and its two seam halves meet at identical coordinates. */
+  function modernCurvedSlat(p, q, width, r0, r1, chordError, zOffset,
+                            angleScale) {
+    var du = q[0] - p[0], dz = q[1] - p[1], len = Math.hypot(du, dz);
+    if (len < TOL) return [];
+    var overlap = Math.min(width * 0.20, 0.25);
+    p = [p[0] - du / len * overlap, p[1] - dz / len * overlap];
+    q = [q[0] + du / len * overlap, q[1] + dz / len * overlap];
+    du = q[0] - p[0]; dz = q[1] - p[1]; len = Math.hypot(du, dz);
+    var half = width / 2, nu = -dz / len * half, nz = du / len * half;
+    var maxDa = 2 * Math.acos(Math.max(-1, 1 - chordError / Math.max(r1, 1)));
+    var count = Math.max(1, Math.ceil(Math.abs(du / r1) / maxDa));
+    function station(t) {
+      var u = p[0] + du * t, z = p[1] + dz * t + zOffset;
+      function at(r, uu, zz) {
+        var a = uu * (angleScale === undefined ? 1 / r1 : angleScale);
+        return [r * Math.cos(a), r * Math.sin(a), zz];
+      }
+      /* CCW cross-section when viewed along the centreline. */
+      return [at(r0, u - nu, z - nz), at(r1, u - nu, z - nz),
+              at(r1, u + nu, z + nz), at(r0, u + nu, z + nz)];
+    }
+    var out = [], first = station(0), last = first;
+    pushTri(out, first[0], first[3], first[2]);
+    pushTri(out, first[0], first[2], first[1]);
+    for (var k = 0; k < count; k++) {
+      var next = station((k + 1) / count);
+      for (var e = 0; e < 4; e++) {
+        var en = (e + 1) % 4;
+        pushQuad(out, last[e], last[en], next[en], next[e]);
+      }
+      last = next;
+    }
+    pushTri(out, last[0], last[1], last[2]);
+    pushTri(out, last[0], last[2], last[3]);
+    if (volume(out) < 0) {
+      for (var w = 0; w < out.length; w += 9) {
+        var bx = out[w + 3], by = out[w + 4], bz = out[w + 5];
+        out[w + 3] = out[w + 6]; out[w + 4] = out[w + 7]; out[w + 5] = out[w + 8];
+        out[w + 6] = bx; out[w + 7] = by; out[w + 8] = bz;
+      }
+    }
+    return out;
+  }
+
+  function modernAnnularSector(r0, r1, z0, z1, a0, a1, sections) {
+    var steps = Math.max(2, Math.ceil(Math.abs(a1 - a0) /
+                                      (2 * Math.PI) * Math.max(24, sections)));
+    var rings = [], out = [];
+    for (var i = 0; i <= steps; i++) {
+      var a = a0 + (a1 - a0) * i / steps, co = Math.cos(a), si = Math.sin(a);
+      rings.push([[r1 * co, r1 * si, z0], [r1 * co, r1 * si, z1],
+                  [r0 * co, r0 * si, z1], [r0 * co, r0 * si, z0]]);
+    }
+    pushTri(out, rings[0][0], rings[0][2], rings[0][1]);
+    pushTri(out, rings[0][0], rings[0][3], rings[0][2]);
+    for (i = 0; i < steps; i++)
+      for (var j = 0; j < 4; j++) {
+        var k = (j + 1) % 4;
+        pushQuad(out, rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]);
+      }
+    var last = rings[steps];
+    pushTri(out, last[0], last[1], last[2]);
+    pushTri(out, last[0], last[2], last[3]);
+    if (volume(out) < 0)
+      for (var o = 0; o < out.length; o += 9) {
+        var x = out[o + 3], y = out[o + 4], z = out[o + 5];
+        out[o + 3] = out[o + 6]; out[o + 4] = out[o + 7]; out[o + 5] = out[o + 8];
+        out[o + 6] = x; out[o + 7] = y; out[o + 8] = z;
+      }
+    return out;
   }
 
   // ------------------------------------------------------------------
@@ -1806,6 +2090,350 @@ var Kumiko = (function () {
     var b = P.legTenon / 2, w = P.snapTabW / 2, o = P.snapTabOut;
     return [rectLoop(b - TOL, -w, o, w, positive),
             rectLoop(-o, -w, -b + TOL, w, positive)];
+  }
+
+  function buildModernShade(P, pattern) {
+    if (PATTERN_FAMILY[pattern] !== 'kumiko')
+      throw new Error('Modern lanterns support Kumiko patterns only.');
+    var R = P.modernOuterR, ri = R - P.panelT, H = P.height;
+    var ring = P.modernRingH, n = P.arc, tris = [];
+    /* The lower ring carries the female thread.  Its varying inner radius is
+       the male surface plus radial clearance at every helical phase. */
+    tris = tris.concat(modernThreadedAnnulus(
+      P.modernFemaleThreadR, R, 0, ring, P.modernThreadPitch,
+      P.modernThreadDepth, true, n));
+    tris = tris.concat(extrudeStack([{ loops: [circleLoop(0, 0, R, n, true),
+      circleLoop(0, 0, ri, n, false)], z0: H - ring, z1: H }]));
+
+    var grow = 0.8, C = P.modernOpenW;
+    var join = Math.min(0.2, P.slatW / 4), gapArc = Math.min(0.4, P.slatW / 4);
+    var fieldW = C - P.slatW + 2 * join;
+    var segs = (PATTERNS[pattern] || PATTERNS.asanoha)(C, P.modernOpenH, P.grid);
+    segs = clipRect(segs, -fieldW / 2, -P.modernOpenH / 2 - grow,
+                    fieldW / 2, P.modernOpenH / 2 + grow);
+    var bendScale = (2 * Math.PI - gapArc / R) / C;
+    for (var i = 0; i < segs.length; i++)
+      tris = tris.concat(modernCurvedSlat(segs[i][0], segs[i][1], P.slatW,
+        ri, R, P.modernChordError, H / 2, bendScale));
+    /* A 0.4 mm developed gap avoids coincident +/-pi faces.  This full-height
+       1.6 mm curved rail bridges it with 0.6 mm overlap on each side. */
+    var railA = P.slatW / R;
+    tris = tris.concat(modernAnnularSector(ri, R, 0, H,
+      Math.PI - railA / 2, Math.PI + railA / 2, P.arc));
+    return { tris: tris, slats: segs.length, manifold: false };
+  }
+
+  /* -----------------------------------------------------------------
+   * Strict Modern shade export
+   * -----------------------------------------------------------------
+   *
+   * The swept solids above are deliberately light enough to rebuild while a
+   * slider moves, but their overlaps are not one strict shell.  Downloads use
+   * a periodic theta/z cell complex instead: mark the developed slats, include
+   * both rings in the same occupancy field, and emit only the boundary of the
+   * occupied radial cells.  Internal faces never exist, and every emitted
+   * vertex is rounded and cached at STL float32 precision. */
+  function modernLowerBound(a, x) {
+    var lo = 0, hi = a.length;
+    while (lo < hi) {
+      var m = (lo + hi) >>> 1;
+      if (a[m] < x) lo = m + 1;
+      else hi = m;
+    }
+    return lo;
+  }
+
+  function modernSectionGrid(a, b, target, out) {
+    var count = Math.max(1, Math.ceil((b - a) / target));
+    for (var i = out.length ? 1 : 0; i <= count; i++)
+      out.push(a + (b - a) * i / count);
+  }
+
+  function modernStrictAxialGrid(H, ring, target) {
+    var out = [];
+    /* Match the regular thread builder's 0.2 mm axial resolution so the
+       0.8 mm, 45-degree groove flanks survive the coarser motif raster. */
+    modernSectionGrid(0, ring, Math.min(target, 0.2), out);
+    modernSectionGrid(ring, H - ring, target, out);
+    modernSectionGrid(H - ring, H, target, out);
+    return out;
+  }
+
+  function modernPointInSlat(u, z, p, q, half, endGrow) {
+    var dx = q[0] - p[0], dz = q[1] - p[1];
+    var len = Math.hypot(dx, dz);
+    if (len < 1e-9) return false;
+    var along = ((u - p[0]) * dx + (z - p[1]) * dz) / len;
+    if (along < -endGrow || along > len + endGrow) return false;
+    var across = Math.abs((u - p[0]) * dz - (z - p[1]) * dx) / len;
+    return across <= half;
+  }
+
+  function modernStrictRaster(P, pattern, opts) {
+    opts = opts || {};
+    var R = P.modernOuterR, C = 2 * Math.PI * R;
+    var ring = P.modernRingH;
+    /* Two cells across the stock 1.6 mm slat holds motif error to roughly
+       +/-0.4 mm without turning Seigaiha into an impractical export. */
+    var target = opts.cell || Math.min(P.slatW / 2, 0.8);
+    var chordStep = 2 * R * Math.acos(Math.max(-1,
+      1 - P.modernChordError / R));
+    /* A multiple of four puts vertices exactly on both X and Y extrema, so a
+       nominal 100 mm shade remains exactly 100 x 100 after float32 export. */
+    var wanted = Math.max(32, Math.ceil(C / Math.min(target, chordStep)));
+    var nu = 4 * Math.ceil(wanted / 4), du = C / nu;
+    var zs = modernStrictAxialGrid(P.height, ring, target);
+    var nz = zs.length - 1, mask = new Uint8Array(nu * nz);
+    function index(i, j) {
+      return j * nu + ((i % nu) + nu) % nu;
+    }
+
+    var i, j;
+    for (j = 0; j < nz; j++) {
+      var zm = (zs[j] + zs[j + 1]) / 2;
+      if (zm < ring || zm > P.height - ring)
+        mask.fill(1, j * nu, (j + 1) * nu);
+    }
+
+    /* Pattern generators carry generous construction padding.  Clip it before
+       using periodic column indices; wrapping the padding itself would fold
+       neighbouring construction tiles onto the shade. */
+    var grow = 0.8;
+    var segs = clipRect(PATTERNS[pattern](C, P.modernOpenH, P.grid),
+      -C / 2, -P.modernOpenH / 2 - grow,
+       C / 2,  P.modernOpenH / 2 + grow);
+    var half = P.slatW / 2;
+    var endGrow = Math.min(P.slatW * 0.20, 0.25);
+    var zShift = P.height / 2;
+    for (var s = 0; s < segs.length; s++) {
+      var raw = segs[s];
+      var p = [raw[0][0] + C / 2, raw[0][1] + zShift];
+      var q = [raw[1][0] + C / 2, raw[1][1] + zShift];
+      var dx = q[0] - p[0], dz = q[1] - p[1], len = Math.hypot(dx, dz);
+      if (len < 1e-9) continue;
+      var nx = Math.abs(dz / len) * half;
+      var zpad = Math.abs(dx / len) * half;
+      var ux = Math.abs(dx / len) * endGrow;
+      var zz = Math.abs(dz / len) * endGrow;
+      var u0 = Math.min(p[0], q[0]) - nx - ux;
+      var u1 = Math.max(p[0], q[0]) + nx + ux;
+      var z0 = Math.max(ring, Math.min(p[1], q[1]) - zpad - zz);
+      var z1 = Math.min(P.height - ring,
+                        Math.max(p[1], q[1]) + zpad + zz);
+      if (z1 <= z0) continue;
+      var ia = Math.floor(u0 / du - 0.5) - 1;
+      var ib = Math.ceil(u1 / du - 0.5) + 1;
+      var ja = Math.max(0, modernLowerBound(zs, z0) - 1);
+      var jb = Math.min(nz - 1, modernLowerBound(zs, z1));
+      for (var ii = ia; ii <= ib; ii++) {
+        var um = (ii + 0.5) * du;
+        for (j = ja; j <= jb; j++) {
+          zm = (zs[j] + zs[j + 1]) / 2;
+          if (zm < ring || zm > P.height - ring) continue;
+          if (modernPointInSlat(um, zm, p, q, half, endGrow))
+            mask[index(ii, j)] = 1;
+        }
+      }
+    }
+
+    /* Diagonally touching cells would put four faces on one radial edge.
+       Filling the other two cells resolves that ambiguous 2x2 vertex while
+       changing the motif by no more than one raster cell. */
+    var filled = 0;
+    for (var pass = 0; pass < 8; pass++) {
+      var add = [];
+      for (j = 0; j + 1 < nz; j++) {
+        for (i = 0; i < nu; i++) {
+          var a = mask[index(i, j)], b = mask[index(i + 1, j)];
+          var c = mask[index(i, j + 1)], d = mask[index(i + 1, j + 1)];
+          if (a && d && !b && !c)
+            add.push(index(i + 1, j), index(i, j + 1));
+          else if (b && c && !a && !d)
+            add.push(index(i, j), index(i + 1, j + 1));
+        }
+      }
+      if (!add.length) break;
+      for (i = 0; i < add.length; i++)
+        if (!mask[add[i]]) { mask[add[i]] = 1; filled++; }
+    }
+
+    return { mask: mask, nu: nu, nz: nz, du: du, zs: zs, C: C,
+      slats: segs.length, filled: filled, target: target,
+      chordError: R * (1 - Math.cos(Math.PI / nu)) };
+  }
+
+  function modernStrictMaskComponents(raster) {
+    var mask = raster.mask, nu = raster.nu, nz = raster.nz;
+    var seen = new Uint8Array(mask.length), components = 0, occupied = 0;
+    var i, j;
+    for (i = 0; i < mask.length; i++) occupied += mask[i];
+    function index(x, y) { return y * nu + ((x % nu) + nu) % nu; }
+    for (var start = 0; start < mask.length; start++) {
+      if (!mask[start] || seen[start]) continue;
+      components++;
+      var queue = [start]; seen[start] = 1;
+      for (var head = 0; head < queue.length; head++) {
+        var k = queue[head];
+        j = Math.floor(k / nu); i = k - j * nu;
+        var neighbours = [index(i - 1, j), index(i + 1, j)];
+        if (j) neighbours.push(k - nu);
+        if (j + 1 < nz) neighbours.push(k + nu);
+        for (var n = 0; n < neighbours.length; n++) {
+          var next = neighbours[n];
+          if (mask[next] && !seen[next]) {
+            seen[next] = 1; queue.push(next);
+          }
+        }
+      }
+    }
+    return { components: components, occupied: occupied };
+  }
+
+  function modernStrictMesh(P, raster) {
+    var mask = raster.mask, nu = raster.nu, nz = raster.nz, zs = raster.zs;
+    var R = P.modernOuterR, ri = R - P.panelT;
+    var cache = new Array(nu * (nz + 1) * 2), out = [];
+    function index(i, j) { return j * nu + ((i % nu) + nu) % nu; }
+    function vertex(i, j, outer) {
+      i = ((i % nu) + nu) % nu;
+      var key = (j * nu + i) * 2 + (outer ? 1 : 0);
+      if (cache[key]) return cache[key];
+      var th = 2 * Math.PI * i / nu, z = zs[j], r = R;
+      if (!outer) {
+        if (z <= P.modernRingH + 1e-9)
+          r = P.modernFemaleThreadR + modernThreadProfile(z, th,
+            P.modernThreadPitch, P.modernThreadDepth);
+        else r = ri;
+      }
+      return cache[key] = [Math.fround(r * Math.cos(th)),
+                           Math.fround(r * Math.sin(th)), Math.fround(z)];
+    }
+    for (var j = 0; j < nz; j++) {
+      for (var i = 0; i < nu; i++) {
+        if (!mask[index(i, j)]) continue;
+        var i00 = vertex(i, j, false), i10 = vertex(i + 1, j, false);
+        var i01 = vertex(i, j + 1, false), i11 = vertex(i + 1, j + 1, false);
+        var o00 = vertex(i, j, true), o10 = vertex(i + 1, j, true);
+        var o01 = vertex(i, j + 1, true), o11 = vertex(i + 1, j + 1, true);
+        pushQuad(out, o00, o10, o11, o01);
+        pushQuad(out, i00, i01, i11, i10);
+        if (!mask[index(i - 1, j)]) pushQuad(out, i00, o00, o01, i01);
+        if (!mask[index(i + 1, j)]) pushQuad(out, i10, i11, o11, o10);
+        if (!j || !mask[index(i, j - 1)]) pushQuad(out, i00, i10, o10, o00);
+        if (j + 1 === nz || !mask[index(i, j + 1)])
+          pushQuad(out, i01, o01, o11, i11);
+      }
+    }
+    return out;
+  }
+
+  function buildStrictModernShade(P, pattern, opts) {
+    if (!P || P.modernOuterR === undefined) P = derive(P || {});
+    pattern = pattern || P.pattern;
+    if (PATTERN_FAMILY[pattern] !== 'kumiko')
+      throw new Error('Modern lanterns support Kumiko patterns only.');
+    var raster = modernStrictRaster(P, pattern, opts);
+    var connected = modernStrictMaskComponents(raster);
+    if (connected.components !== 1)
+      throw new Error('Modern shade pattern does not form one connected body.');
+    return { tris: modernStrictMesh(P, raster), manifold: true,
+      slats: raster.slats, occupied: connected.occupied, raster: raster };
+  }
+
+  function buildModernBase(P) {
+    var R = P.modernOuterR, wall = P.modernWall, n = P.arc;
+    var inner = circleLoop(0, 0, P.modernCavityR, n, false);
+    var outer = circleLoop(0, 0, R, n, true);
+    var bore = circleLoop(0, 0, P.socketBore / 2, n, false);
+    var cbore = circleLoop(0, 0, P.socketCbore / 2, n, false);
+    var vents = ventVoids(P);
+    var tunnel = rectLoop(-P.cableW / 2, -R - EPS, P.cableW / 2,
+                          P.modernCableInnerY, false);
+    /* Shoulder and deck can cross when lattice depth changes: at 4.4 mm the
+       reference deck begins at z=75 while the taper begins at z=74.8.  Sort
+       every axial event, then select the void and the outer radius at the
+       interval midpoint.  This keeps all slabs positive and lets the taper
+       begin in the hollow wall before continuing through the mounting deck. */
+    var cuts = [0, P.cableH, P.modernDeckZ,
+                P.modernShoulderZ, P.modernBodyH]
+      .filter(function (z) { return z >= -TOL && z <= P.modernBodyH + TOL; })
+      .sort(function (a, b) { return a - b; });
+    var uniqueCuts = [];
+    for (var ci = 0; ci < cuts.length; ci++)
+      if (!uniqueCuts.length || cuts[ci] - uniqueCuts[uniqueCuts.length - 1] > TOL)
+        uniqueCuts.push(cuts[ci]);
+    function outerAt(z) {
+      if (z <= P.modernShoulderZ + TOL) return outer;
+      var radius = Math.max(P.modernThreadCoreR,
+                            R - (z - P.modernShoulderZ));
+      var scale = radius / R;
+      return outer.map(function (p) { return [p[0] * scale, p[1] * scale]; });
+    }
+    var skins = uniqueCuts.map(outerAt), bodyLayers = [];
+    for (ci = 0; ci + 1 < uniqueCuts.length; ci++) {
+      var z0 = uniqueCuts[ci], z1 = uniqueCuts[ci + 1];
+      if (z1 - z0 < TOL) continue;
+      var zm = (z0 + z1) / 2, voids;
+      if (zm < P.modernDeckZ) {
+        voids = [inner];
+        if (zm < P.cableH) voids.push(tunnel);
+      } else {
+        voids = [bore].concat(vents);
+      }
+      bodyLayers.push({ loops: [skins[ci]].concat(voids),
+                        loopsTop: [skins[ci + 1]].concat(voids),
+                        z0: z0, z1: z1 });
+    }
+    /* Leave z=bodyH open: the varying thread-root shelf below closes it. */
+    var body = extrudeStack(bodyLayers, true, true);
+    var root = skins[skins.length - 1];
+
+    var out = body.slice();
+    var nz = Math.max(8, Math.ceil((P.modernBaseH - P.modernBodyH) / 0.2));
+    var rows = [];
+    for (var k = 0; k <= nz; k++)
+      rows.push(modernThreadOuterLoop(P, P.modernBodyH +
+        (P.modernBaseH - P.modernBodyH) * k / nz));
+
+    /* The male thread is the base's one and only outer wall, rather than a
+       second closed annulus laid over a neck.  The downward-facing root shelf
+       joins its varying first row to the body's open root circle. */
+    var shelfLoops = [rows[0], orient(root, false)];
+    var shelfEdges = edgesOf(shelfLoops), shelfYs = bandYs(shelfLoops);
+    emitFaces(out, slabFaces(shelfEdges, null, shelfYs),
+              P.modernBodyH, false);
+    for (k = 0; k < nz; k++)
+      modernLoopWall(out, rows[k], rows[k + 1],
+        P.modernBodyH + (P.modernBaseH - P.modernBodyH) * k / nz,
+        P.modernBodyH + (P.modernBaseH - P.modernBodyH) * (k + 1) / nz);
+
+    var seatZ = P.modernBaseH - P.socketCboreD;
+    modernLoopWall(out, bore, bore, P.modernBodyH, seatZ);
+    modernLoopWall(out, cbore, cbore, seatZ, P.modernBaseH);
+    for (var v = 0; v < vents.length; v++)
+      modernLoopWall(out, vents[v], vents[v],
+                     P.modernBodyH, P.modernBaseH);
+
+    /* The larger counterbore removes an annulus above seatZ, whose exposed
+       surface faces upward. */
+    var below = [rows[Math.round((seatZ - P.modernBodyH) /
+                                 (P.modernBaseH - P.modernBodyH) * nz)],
+                 bore].concat(vents);
+    var above = [below[0], cbore].concat(vents);
+    var transitionYs = bandYs(below.concat(above));
+    emitFaces(out, slabFaces(edgesOf(below), edgesOf(above), transitionYs),
+              seatZ, true);
+
+    var topLoops = [rows[nz], cbore].concat(vents);
+    var topEdges = edgesOf(topLoops), topYs = bandYs(topLoops);
+    emitFaces(out, slabFaces(topEdges, null, topYs), P.modernBaseH, true);
+    var finished = weldTJunctions(out, true);
+    /* sin(pi) and circle samples on the axes differ from literal zero by a few
+       quadrillionths.  STL stores independent float32 vertices, so canonicalize
+       those values before export to make every seam edge bit-identical. */
+    for (var fi = 0; fi < finished.length; fi++)
+      if (Math.abs(finished[fi]) < 1e-9) finished[fi] = 0;
+    return { tris: finished, manifold: true };
   }
 
   function snapRecessVoids(P, cx, cy) {
@@ -2070,6 +2698,19 @@ var Kumiko = (function () {
   function trans(x, y, z) { return [1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z]; }
 
   function capPrintTransform(P) { return mul(trans(0, 0, P.capT), rotX(180)); }
+  function modernBasePrintTransform(P) {
+    return mul(trans(0, 0, P.modernBaseH), rotX(180));
+  }
+
+  function assembleModern(P, base, shade, ring) {
+    return [
+      { name: 'modern_base', kind: 'plate', tris: base },
+      { name: 'modern_shade', kind: 'panel',
+        tris: transform(shade, trans(0, 0, P.modernBodyH)) },
+      { name: 'adapter', kind: 'post',
+        tris: transform(ring, trans(0, 0, P.modernBaseH - P.socketCboreD)) }
+    ];
+  }
 
   /* Port of place_parts(). */
   function assemble(P, panel, plate, post, base, cap, leg, finial) {
@@ -2254,6 +2895,33 @@ var Kumiko = (function () {
     var problems = checkFits(P);
     if (problems.length) return { P: P, problems: problems, parts: null };
     var pattern = P.pattern;
+    if (P.lanternStyle === 'modern') {
+      var shade = buildModernShade(P, pattern);
+      var modernBase = buildModernBase(P);
+      var modernRing = buildRing(P);
+      var modernParts = [
+        { id: 'modern_shade_' + pattern, label: 'Modern ' +
+          (PATTERN_LABEL[pattern] || pattern) + ' shade', qty: 1, mesh: shade,
+          note: 'upright, add a brim if needed' },
+        { id: 'modern_base', label: 'Modern lamp-holder base', qty: 1,
+          mesh: { tris: transform(modernBase.tris, modernBasePrintTransform(P)),
+                  manifold: modernBase.manifold },
+          note: 'already inverted for support-free printing' },
+        { id: 'socket_adapter_ring', label: P.holderType.toUpperCase() + ' adapter ring',
+          qty: 1, mesh: modernRing, note: 'match to your holder' }
+      ];
+      for (var mi = 0; mi < modernParts.length; mi++) {
+        modernParts[mi].vol = Math.abs(volume(modernParts[mi].mesh.tris));
+        modernParts[mi].bbox = bbox(modernParts[mi].mesh.tris);
+        modernParts[mi].tris = modernParts[mi].mesh.tris.length / 9;
+        var ms = modernParts[mi].bbox.size.slice().sort(function (a, b) { return a - b; });
+        var mb = [P.bedX, P.bedY].sort(function (a, b) { return a - b; });
+        modernParts[mi].fits = ms[0] <= mb[0] + 1e-6 && ms[1] <= mb[1] + 1e-6 &&
+                              ms[2] <= P.bedZ + 1e-6;
+      }
+      return { P: P, problems: [], parts: modernParts, slats: shade.slats,
+        assembly: assembleModern(P, modernBase.tris, shade.tris, modernRing.tris) };
+    }
     var panel = buildPanel(P, pattern);
     var plate = P.glazed ? buildDiffuserPlate(P) : null;
     var finial = P.screwed ? buildCapFinial(P) : null;
@@ -2316,13 +2984,18 @@ var Kumiko = (function () {
     derive: derive, checkFits: checkFits, buildAll: buildAll,
     buildPanel: buildPanel, buildPost: buildPost, buildBase: buildBase,
     buildCap: buildCap, buildRing: buildRing, buildLeg: buildLeg,
+    buildModernShade: buildModernShade, buildStrictModernShade: buildStrictModernShade,
+    buildModernBase: buildModernBase,
     buildDiffuserPlate: buildDiffuserPlate, buildCapFinial: buildCapFinial,
     latticeSegments: latticeSegments, clipRect: clipRect, clipCircle: clipCircle,
     extrudeStack: extrudeStack, rectLoop: rectLoop, circleLoop: circleLoop,
     slatLoop: slatLoop, orient: orient, quadPrism: quadPrism,
     weldTJunctions: weldTJunctions,
     volume: volume, bbox: bbox, stlBinary: stlBinary, zipStore: zipStore,
-    transform: transform, capPrintTransform: capPrintTransform
+    transform: transform, capPrintTransform: capPrintTransform,
+    modernBasePrintTransform: modernBasePrintTransform,
+    modernThreadProfile: modernThreadProfile,
+    modernThreadedAnnulus: modernThreadedAnnulus
   };
 })();
 </script>
@@ -2338,6 +3011,10 @@ var Kumiko = (function () {
   var TH = {
     'Lantern':'ตัวโคม', 'Pattern':'ลวดลาย', 'Panel':'แผงโคม', 'Frame':'โครง',
     'Legs':'ขา', 'Joints':'รอยต่อ', 'Lamp holder':'ขั้วหลอดไฟ', 'Printer':'เครื่องพิมพ์',
+    'Classic':'คลาสสิก', 'Modern':'โมเดิร์น', 'Thread':'เกลียว',
+    'Diameter':'เส้นผ่านศูนย์กลาง', 'Shade height':'ความสูงโป๊ะ',
+    'Base height':'ความสูงฐาน', 'Lattice depth':'ความลึกโครงลาย',
+    'Thread clearance':'ระยะเผื่อเกลียว',
     'Holder type':'ชนิดขั้วหลอดไฟ',
     'Cap screws':'สกรูยึดฝา', 'Insert hole':'รูอินเสิร์ต', 'Finial height':'ความสูงยอดฝา',
     'Snap engagement':'ระยะล็อกสแนป',
@@ -2412,7 +3089,7 @@ var Kumiko = (function () {
     '.block:nth-of-type(2) .cols > div:nth-child(3) dl':'<div><dt>แผ่นกระจายแสง</dt><dd id="s-diff">—</dd></div><div><dt>ความลึกร่อง</dt><dd id="s-reb">—</dd></div>',
     '.block:nth-of-type(2) .warn p:nth-of-type(1)':'<strong>ใช้หลอด LED เท่านั้น กำลังไม่เกิน 9 W</strong> หลอดไส้หรือฮาโลเจนจะทำให้โคมนิ่มและเสียรูป — PLA เริ่มอ่อนตัวที่ประมาณ 60&nbsp;°C',
     '.block:nth-of-type(2) .warn p:nth-of-type(2)':'พิมพ์<strong>ฐานและฝาด้วย PETG</strong> เพราะอยู่ใกล้หลอดไฟที่สุด ส่วนแผงและเสาใช้ PLA ได้ การเดินสายไฟบ้านเป็นความรับผิดชอบของผู้ประกอบ',
-    '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(1)':'<strong>ฐาน เสา และวงแหวนแปลง</strong>เป็นเปลือกกันน้ำชิ้นเดียว และปริมาตรตรงกับตัวสร้าง Python',
+    '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(1)':'<strong>ฐาน เสา และวงแหวนแปลง</strong>เป็นเปลือกปิดสนิทชิ้นเดียว และปริมาตรตรงกับตัวสร้าง Python',
     '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(2)':'<strong>โครงลายแผงและตะแกรงฝา</strong>สร้างเป็นของแข็งปิดหนึ่งชิ้นต่อหนึ่งซี่และซ้อนกันตรงจุดตัด การรวมจุดตัดเป็นเปลือกเดียวต้องใช้เอนจิน CSG ซึ่งเบราว์เซอร์ไม่มี การแยกองค์ประกอบจะเพิ่มจำนวนสามเหลี่ยมถึงสิบแปดเท่าและใช้เวลาหลายวินาทีต่อการปรับค่า ไม่มีขอบเปิด แต่ขอบร่วมบางจุดอยู่บนสี่หน้าแทนที่จะเป็นสองหน้า เครื่องมือตรวจแมนิโฟลด์แบบเข้มงวดจึงอาจเรียกว่า non-manifold และสไลเซอร์อาจเสนอให้ซ่อม ของแข็งปิดที่ซ้อนกันจะถูกรวมอย่างถูกต้องและพิมพ์ได้ตามภาพ',
     '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(3)':'หากต้องการไฟล์แมนิโฟลด์อย่างเคร่งครัด ตัวสร้าง Python ในรีโพนี้จะสร้างโคมแบบเดียวกันด้วย CSG จริง:',
     '.block:nth-of-type(3) .cols > div:nth-child(2) p':'หมายเหตุ: ปริมาตรของแผงและฝาที่แสดงด้านบนจะนับซี่ที่ซ้อนกันสองครั้ง จึงสูงกว่าจริงเล็กน้อย ส่วนอีกสามชิ้นมีค่าตรง',
@@ -2426,6 +3103,48 @@ var Kumiko = (function () {
   Object.keys(HTML_TH).forEach(function (sel) {
     var e = document.querySelector(sel); if (e) htmlEnglish[sel] = e.innerHTML;
   });
+  var MODERN_STATIC = {
+    en: {
+      '.mast p':'A two-part cylindrical lantern with a continuously wrapped Kumiko shade and a reusable printed thread. Change the proportions, pattern, holder, or thread fit and both printable bodies rebuild together.',
+      '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'Shade liner'
+    },
+    th: {
+      '.mast p':'โคมทรงกระบอกสองชิ้นพร้อมโป๊ะลายคุมิโกะพันต่อเนื่องและเกลียวพิมพ์แบบถอดใช้ซ้ำได้ ปรับสัดส่วน ลวดลาย ขั้วหลอด หรือระยะเผื่อเกลียว แล้วระบบจะสร้างชิ้นพิมพ์ทั้งสองใหม่พร้อมกัน',
+      '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'แผ่นซับแสงโป๊ะ'
+    }
+  };
+  var MODERN_HTML = {
+    en: {
+      '.block:nth-of-type(2) .cols > div:nth-child(2) ol':'<li>Fit the E27 or E14 adapter ring and wire the LED holder in the base.</li><li>Lower the shade over the base neck, then turn gently until the threads engage.</li><li>Turn only until the full 10 mm thread engagement is reached; do not force it.</li>',
+      '.block:nth-of-type(2) .cols > div:nth-child(2) p':'The shade remains removable for bulb access. Start with 0.30 mm thread clearance; increase it after a small test section if your printer makes the fit tight.',
+      '.block:nth-of-type(2) .cols > div:nth-child(3) p':'Modern mode does not generate a diffuser part. Add a removable paper or vellum cylinder behind the lattice if softer light is wanted.',
+      '.block:nth-of-type(2) .cols > div:nth-child(3) dl':'<div><dt>Generated diffuser</dt><dd id="s-diff">none</dd></div><div><dt>Thread engagement</dt><dd id="s-reb">10.0 mm</dd></div>',
+      '.block:nth-of-type(2) .warn p:nth-of-type(2)':'Print the <strong>base in PETG</strong>; it sits nearest the bulb. PETG is also recommended for the threaded lower shade ring. Mains wiring is your responsibility.',
+      '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(1)':'The <strong>downloaded Modern shade, base and adapter ring</strong> are each emitted as one watertight body. The shade export shares float32 vertices across its continuous wrap, rings and female thread, so strict STL checks see one consistently wound shell.',
+      '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(2)':'The live Modern preview deliberately uses lightweight overlapping curved slats so every control responds immediately. Clicking its STL button or downloading the ZIP transparently rebuilds the shade with the strict single-body export mesh.',
+      '.block:nth-of-type(3) .cols > div:nth-child(2) p':'The shade volume shown in the table belongs to the lightweight preview and counts overlapping slats more than once. The downloaded watertight shade has unioned volume close to the Python CSG file; base and adapter-ring volumes are unchanged.'
+    },
+    th: {
+      '.block:nth-of-type(2) .cols > div:nth-child(2) ol':'<li>ติดตั้งวงแหวนแปลง E27 หรือ E14 และเดินสายขั้วหลอด LED ในฐาน</li><li>สวมโป๊ะครอบคอฐาน แล้วหมุนเบา ๆ จนเกลียวเริ่มจับกัน</li><li>หมุนเพียงจนเกลียวสวมกันครบระยะ 10 mm อย่าฝืนขัน</li>',
+      '.block:nth-of-type(2) .cols > div:nth-child(2) p':'ถอดโป๊ะออกเพื่อเปลี่ยนหลอดไฟได้ เริ่มด้วยระยะเผื่อเกลียว 0.30 mm และเพิ่มค่าหลังพิมพ์ชิ้นทดสอบเล็ก ๆ หากเครื่องพิมพ์ของคุณทำให้เกลียวแน่นเกินไป',
+      '.block:nth-of-type(2) .cols > div:nth-child(3) p':'โหมดโมเดิร์นไม่สร้างชิ้นส่วนกระจายแสง หากต้องการแสงนุ่มขึ้น ให้ใส่กระดาษหรือเวลลัมทรงกระบอกแบบถอดได้ไว้หลังโครงลาย',
+      '.block:nth-of-type(2) .cols > div:nth-child(3) dl':'<div><dt>ชิ้นส่วนกระจายแสงที่สร้าง</dt><dd id="s-diff">ไม่มี</dd></div><div><dt>ระยะเกลียวสวม</dt><dd id="s-reb">10.0 mm</dd></div>',
+      '.block:nth-of-type(2) .warn p:nth-of-type(2)':'พิมพ์<strong>ฐานด้วย PETG</strong> เพราะอยู่ใกล้หลอดไฟที่สุด และแนะนำ PETG สำหรับวงแหวนเกลียวล่างของโป๊ะด้วย การเดินสายไฟบ้านเป็นความรับผิดชอบของผู้ประกอบ',
+      '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(1)':'<strong>โป๊ะโมเดิร์น ฐาน และวงแหวนแปลงที่ดาวน์โหลด</strong>ถูกสร้างเป็นเมชปิดสนิทชิ้นเดียวแต่ละชิ้น ไฟล์โป๊ะใช้จุดยอด float32 ร่วมกันตลอดลายพันรอบ วงแหวน และเกลียวตัวเมีย เครื่องมือตรวจ STL แบบเข้มงวดจึงเห็นเป็นเปลือกเดียวที่เรียงหน้าสม่ำเสมอ',
+      '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(2)':'ภาพตัวอย่างโมเดิร์นใช้ซี่โค้งแบบซ้อนที่มีน้ำหนักเบาเพื่อให้ทุกตัวควบคุมตอบสนองทันที เมื่อกดดาวน์โหลด STL หรือ ZIP ระบบจะสร้างโป๊ะใหม่ด้วยเมชส่งออกแบบชิ้นเดียวที่เป็นแมนิโฟลด์อย่างเข้มงวดโดยอัตโนมัติ',
+      '.block:nth-of-type(3) .cols > div:nth-child(2) p':'ปริมาตรโป๊ะในตารางมาจากภาพตัวอย่างน้ำหนักเบา จึงนับซี่ที่ซ้อนกันมากกว่าหนึ่งครั้ง โป๊ะเมชปิดสนิทที่ดาวน์โหลดมีปริมาตรหลังรวมใกล้เคียงไฟล์ CSG จาก Python ส่วนปริมาตรฐานและวงแหวนแปลงไม่เปลี่ยนแปลง'
+    }
+  };
+  function applyStyleContent() {
+    if (!state || state.lanternStyle !== 'modern') return;
+    var texts = MODERN_STATIC[lang], html = MODERN_HTML[lang];
+    Object.keys(texts).forEach(function (sel) {
+      var e = document.querySelector(sel); if (e) e.textContent = texts[sel];
+    });
+    Object.keys(html).forEach(function (sel) {
+      var e = document.querySelector(sel); if (e) e.innerHTML = html[sel];
+    });
+  }
   function applyStaticLanguage() {
     document.documentElement.lang = lang;
     Object.keys(STATIC_TH).forEach(function (sel) {
@@ -2439,15 +3158,59 @@ var Kumiko = (function () {
     toggle.setAttribute('aria-label', lang === 'th' ? 'เปลี่ยนภาษาเป็นอังกฤษ' : 'Switch language to Thai');
     document.getElementById('lang-en').classList.toggle('active', lang === 'en');
     document.getElementById('lang-th').classList.toggle('active', lang === 'th');
+    applyStyleContent();
   }
 
   // ---------------------------------------------------------------- state
   var state = {};
   for (var k in K.DEFAULTS) state[k] = K.DEFAULTS[k];
   var model = null, viewMode = 'asm';
+  /* Strict shade meshes are intentionally absent from the live model.  Cache
+     their serialized export bytes by every derived value the builder reads so
+     a direct STL followed by a ZIP does not rebuild the high-resolution shell. */
+  var strictShadeCache = {}, strictShadeOrder = [];
+  function strictShadeKey(P, pattern) {
+    return JSON.stringify([pattern, P.modernOuterR, P.height, P.modernRingH,
+      P.modernChordError, P.slatW, P.grid, P.modernOpenH, P.panelT,
+      P.modernFemaleThreadR, P.modernThreadPitch, P.modernThreadDepth]);
+  }
+  function strictShadeBytes(P, pattern) {
+    var key = strictShadeKey(P, pattern), hit = strictShadeCache[key];
+    if (hit) return hit;
+    /* Serialize immediately and retain only the compact Uint8Array.  Keeping
+       the numeric triangle array too would roughly triple each cache entry. */
+    hit = K.stlBinary(K.buildStrictModernShade(P, pattern).tris);
+    strictShadeCache[key] = hit;
+    strictShadeOrder.push(key);
+    if (strictShadeOrder.length > 4)
+      delete strictShadeCache[strictShadeOrder.shift()];
+    return hit;
+  }
+  function exportPartBytes(p) {
+    if (p.id.indexOf('modern_shade_') === 0) {
+      var pattern = p.id.slice('modern_shade_'.length);
+      return strictShadeBytes(model.P, pattern);
+    }
+    return K.stlBinary(p.mesh.tris);
+  }
 
-  var GROUPS = [
-    { name: 'Lantern', open: true, items: [
+  function copyState(src) {
+    var out = {};
+    for (var key in src) out[key] = src[key];
+    return out;
+  }
+  var modernPreset = copyState(state);
+  modernPreset.lanternStyle = 'modern';
+  modernPreset.size = 100;
+  modernPreset.height = 218;
+  modernPreset.panelT = 4;
+  modernPreset.modernBaseH = 90;
+  modernPreset.modernThreadClear = 0.30;
+  modernPreset.pattern = 'asanoha';
+  var styleStates = { classic: copyState(state), modern: modernPreset };
+
+  var CLASSIC_GROUPS = [
+    { name: 'Lantern', open: true, lanternStyle: true, items: [
       ['size', 'Width', 120, 245, 1, 'mm'],
       ['height', 'Height', 130, 250, 1, 'mm']
     ]},
@@ -2513,6 +3276,46 @@ var Kumiko = (function () {
     ]}
   ];
 
+  var MODERN_GROUPS = [
+    { name: 'Lantern', open: true, lanternStyle: true, items: [
+      ['size', 'Diameter', 80, 200, 1, 'mm'],
+      ['height', 'Shade height', 100, 300, 1, 'mm'],
+      ['modernBaseH', 'Base height', 45, 160, 1, 'mm']
+    ]},
+    { name: 'Pattern', open: true, style: true, kumikoOnly: true, items: [
+      ['grid', 'Pattern pitch', 12, 45, 0.5, 'mm'],
+      ['slatW', 'Slat width', 0.8, 3.2, 0.4, 'mm'],
+      ['panelT', 'Lattice depth', 2, 7, 0.2, 'mm']
+    ]},
+    { name: 'Thread', items: [
+      ['modernThreadClear', 'Thread clearance', 0.1, 0.8, 0.05, 'mm']
+    ]},
+    { name: 'Lamp holder', holder: true, items: [
+      ['socketBore', 'Bore', 20, 60, 0.5, 'mm'],
+      ['socketCbore', 'Counterbore', 26, 74, 0.5, 'mm'],
+      ['socketNeck', 'Adapter ring bore', 10, 52, 0.5, 'mm'],
+      ['cableW', 'Cord tunnel width', 5, 16, 0.5, 'mm'],
+      ['cableH', 'Cord tunnel height', 3, 12, 0.5, 'mm']
+    ]},
+    { name: 'Printer', items: [
+      ['bedX', 'Bed X', 150, 400, 1, 'mm'],
+      ['bedY', 'Bed Y', 150, 400, 1, 'mm'],
+      ['bedZ', 'Bed Z', 150, 500, 1, 'mm'],
+      ['nozzle', 'Nozzle', 0.2, 0.8, 0.2, 'mm']
+    ]}
+  ];
+
+  function selectLanternStyle(id) {
+    if (id === state.lanternStyle) return;
+    styleStates[state.lanternStyle] = copyState(state);
+    state = copyState(styleStates[id]);
+    state.lanternStyle = id;
+    cam.dist = 0;
+    buildRail();
+    applyStaticLanguage();
+    rebuild();
+  }
+
   function el(tag, cls, txt) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -2523,11 +3326,28 @@ var Kumiko = (function () {
   function buildRail() {
     var rail = document.getElementById('rail');
     rail.textContent = '';
-    GROUPS.forEach(function (g) {
+    var groups = state.lanternStyle === 'modern' ? MODERN_GROUPS : CLASSIC_GROUPS;
+    groups.forEach(function (g) {
       var d = el('details', 'grp');
       if (g.open) d.open = true;
       d.appendChild(el('summary', null, t(g.name)));
       var body = el('div', 'body');
+
+      if (g.lanternStyle) {
+        var st = el('div', 'styletabs');
+        st.setAttribute('role', 'tablist');
+        ['classic', 'modern'].forEach(function (id) {
+          var sb = el('button', null, t(id === 'classic' ? 'Classic' : 'Modern'));
+          sb.type = 'button';
+          sb.dataset.lanternStyle = id;
+          sb.setAttribute('role', 'tab');
+          sb.setAttribute('aria-pressed', String(state.lanternStyle === id));
+          sb.setAttribute('aria-selected', String(state.lanternStyle === id));
+          sb.addEventListener('click', function () { selectLanternStyle(id); });
+          st.appendChild(sb);
+        });
+        body.appendChild(st);
+      }
 
       if (g.style) {
         /* One tab per pattern family, then only that family's buttons.  Nine
@@ -2535,6 +3355,7 @@ var Kumiko = (function () {
            as what they are — two different traditions, not one long list. */
         var fams = [];
         K.patternNames().forEach(function (id) {
+          if (g.kumikoOnly && K.PATTERN_FAMILY[id] !== 'kumiko') return;
           var f = K.PATTERN_FAMILY[id];
           if (fams.indexOf(f) < 0) fams.push(f);
         });
@@ -2549,6 +3370,7 @@ var Kumiko = (function () {
           });
           wrap.textContent = '';
           K.patternNames().forEach(function (id) {
+            if (g.kumikoOnly && K.PATTERN_FAMILY[id] !== 'kumiko') return;
             if (K.PATTERN_FAMILY[id] !== active) return;
             var b = el('button', null, lang === 'th' ? PATTERN_TH[id] : K.PATTERN_LABEL[id]);
             b.setAttribute('aria-pressed', String(id === state.pattern));
@@ -2703,6 +3525,8 @@ var Kumiko = (function () {
         if (part.name === 'cap') off = H * 0.34;
         /* Above the cap, or they hang where it used to be. */
         else if (part.name.indexOf('finial') === 0) off = H * 0.46;
+        else if (part.name === 'modern_shade') off = H * 0.24;
+        else if (part.name === 'adapter') off = H * 0.10;
         else if (part.kind === 'panel') off = H * 0.12;
       }
       var t = part.tris, start = pos.length / 3;
@@ -2788,7 +3612,8 @@ var Kumiko = (function () {
       0, 0, (2 * far * near) / (near - far), 0
     ]);
     gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'uMVP'), false, mul4(proj, view));
-    gl.uniform3f(gl.getUniformLocation(prog, 'uBulb'), 0, 0, model.P.baseT + 45);
+    gl.uniform3f(gl.getUniformLocation(prog, 'uBulb'), 0, 0,
+      model.P.lanternStyle === 'modern' ? model.P.modernBaseH + 35 : model.P.baseT + 45);
     gl.uniform3f(gl.getUniformLocation(prog, 'uKey'), 0.45, -0.8, 0.75);
 
     [['aPos', buf.pos, 3], ['aNor', buf.nor, 3], ['aCol', buf.col, 4]]
@@ -2830,7 +3655,9 @@ var Kumiko = (function () {
   function drawFlat() {
     var c = document.getElementById('flat'), P = K.derive(state);
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var W = c.clientWidth || 208, H2 = Math.round(W * P.height / P.panelW);
+    var W = c.clientWidth || 208;
+    var H2 = Math.round(W * P.height /
+                        (P.lanternStyle === 'modern' ? P.size : P.panelW));
     c.width = W * dpr; c.height = H2 * dpr;
     c.style.height = H2 + 'px';
     var x = c.getContext('2d');
@@ -2839,6 +3666,43 @@ var Kumiko = (function () {
     x.fillStyle = cs.getPropertyValue('--stage').trim();
     x.fillRect(0, 0, W, H2);
     var sc = W / P.panelW;
+    if (P.lanternStyle === 'modern') {
+      sc = W / P.size;
+      x.save();
+      x.translate(W / 2, H2 / 2);
+      x.scale(sc, -sc);
+      x.fillStyle = cs.getPropertyValue('--washi').trim();
+      x.fillRect(-P.size / 2, -P.height / 2, P.size, P.height);
+      x.fillStyle = cs.getPropertyValue('--kigara').trim();
+      x.fillRect(-P.size / 2, -P.height / 2, P.size, P.modernRingH);
+      x.fillRect(-P.size / 2, P.height / 2 - P.modernRingH,
+                 P.size, P.modernRingH);
+      var previewSegs = K.latticeSegments(P, state.pattern, P.size,
+                                          P.modernOpenH, 0);
+      x.save();
+      x.beginPath();
+      x.rect(-P.size / 2, -P.modernOpenH / 2, P.size, P.modernOpenH);
+      x.clip();
+      x.strokeStyle = cs.getPropertyValue('--kigara').trim();
+      x.lineWidth = P.slatW; x.lineCap = 'butt';
+      x.beginPath();
+      for (var ps = 0; ps < previewSegs.length; ps++) {
+        x.moveTo(previewSegs[ps][0][0], previewSegs[ps][0][1]);
+        x.lineTo(previewSegs[ps][1][0], previewSegs[ps][1][1]);
+      }
+      x.stroke();
+      x.restore();
+      x.restore();
+      var wrapped = model && model.P.lanternStyle === 'modern' ? model.slats : previewSegs.length;
+      document.getElementById('sw-name').textContent = lang === 'th'
+        ? PATTERN_TH[state.pattern] : K.PATTERN_LABEL[state.pattern];
+      document.getElementById('sw-meta').textContent = lang === 'th'
+        ? wrapped + ' ซี่ · พันรอบทรงกระบอก'
+        : wrapped + ' slats · continuously wrapped';
+      document.getElementById('sw-meaning').textContent = lang === 'th'
+        ? (MEANING_TH[state.pattern] || '') : (K.PATTERN_MEANING[state.pattern] || '');
+      return;
+    }
     x.save();
     x.translate(W / 2, H2 / 2);
     x.scale(sc, -sc);
@@ -2904,16 +3768,23 @@ var Kumiko = (function () {
       var td0 = el('td');
       var partLabels = { diffuser_plate:'แผ่นกระจายแสง', post:'เสามุม', base:'ฐาน',
         top_cap:'ฝาบน', leg:'ขา', finial:'ฝาครอบหัวสกรูทรงยอด',
+        modern_base:'ฐานขั้วหลอดแบบโมเดิร์น',
         socket_adapter_ring:'วงแหวนแปลง ' + model.P.holderType.toUpperCase() };
       var partNotes = { diffuser_plate:'วางราบ พิมพ์ด้วย PETG ใส', post:'วางตั้งและใช้ปีกยึด',
         base:'ใช้ทิศทางตามไฟล์ส่งออก', top_cap:'พลิกพร้อมสำหรับการพิมพ์แล้ว',
         leg:'หงายเดือยขึ้นตามไฟล์ส่งออก',
         finial:(model.P.snapped ? 'หงายบ่าสแนปขึ้นตามไฟล์ส่งออก' : 'หงายเดือยขึ้นตามไฟล์ส่งออก'),
+        modern_base:'พลิกคว่ำพร้อมพิมพ์โดยไม่ใช้ซัพพอร์ตแล้ว',
         socket_adapter_ring:'ปรับให้ตรงกับขั้วหลอดของคุณ' };
-      var label = p.id.indexOf('panel_') === 0
+      var modernShade = p.id.indexOf('modern_shade_') === 0;
+      var label = modernShade
+        ? (lang === 'th' ? 'โป๊ะโคมโมเดิร์นลาย ' + PATTERN_TH[state.pattern] : p.label)
+        : p.id.indexOf('panel_') === 0
         ? (lang === 'th' ? (K.PATTERN_FAMILY[state.pattern] === 'laithai' ? 'แผงลายไทย' : 'แผงคุมิโกะ') : p.label)
         : (lang === 'th' ? partLabels[p.id] : p.label);
-      var note = p.id.indexOf('panel_') === 0
+      var note = modernShade
+        ? (lang === 'th' ? 'พิมพ์ตั้ง ใช้ปีกยึดหากจำเป็น' : p.note)
+        : p.id.indexOf('panel_') === 0
         ? (lang === 'th' ? 'คว่ำหน้าลายลง' : p.note)
         : (lang === 'th' ? partNotes[p.id] : p.note);
       td0.appendChild(el('div', 'part', label));
@@ -2929,7 +3800,7 @@ var Kumiko = (function () {
       var td5 = el('td');
       var b = el('button', 'dl', 'STL');
       b.addEventListener('click', function () {
-        download(p.id + '.stl', K.stlBinary(p.mesh.tris));
+        download(p.id + '.stl', exportPartBytes(p));
       });
       td5.appendChild(b);
       tr.appendChild(td5);
@@ -2966,7 +3837,34 @@ var Kumiko = (function () {
       'Snap tab is under two extrusions wide.':'บ่าสแนปกว้างน้อยกว่าสองแนวฉีด',
       'Leg snap cavity leaves no printable flexure opening.':'โพรงสแนปขาไม่เหลือช่องยืดหยุ่นที่พิมพ์ได้',
       'Snap tabs reach past the leg shoulder.':'บ่าสแนปยื่นพ้นไหล่ขา',
-      'Finial snap recess reaches outside the post socket.':'ร่องสแนปยอดฝายื่นพ้นเบ้าเสา'
+      'Finial snap recess reaches outside the post socket.':'ร่องสแนปยอดฝายื่นพ้นเบ้าเสา',
+      'Modern lanterns support Kumiko patterns only.':'โคมโมเดิร์นรองรับเฉพาะลายคุมิโกะเท่านั้น',
+      'Modern diameter is too small for its 5 mm body wall.':'เส้นผ่านศูนย์กลางโคมโมเดิร์นเล็กเกินไปสำหรับผนังหนา 5 mm',
+      'Modern shade is too short for two rings and a lattice.':'โป๊ะโมเดิร์นสั้นเกินไปสำหรับวงแหวนสองวงและโครงลาย',
+      'Modern base is too short for its thread and mounting deck.':'ฐานโมเดิร์นสั้นเกินไปสำหรับเกลียวและแท่นติดตั้ง',
+      'Modern base is too short for its 45-degree shoulder.':'ฐานโมเดิร์นสั้นเกินไปสำหรับบ่าลาด 45 องศา',
+      'Modern shoulder reaches the cable outlet.':'บ่าลาดโมเดิร์นชนช่องสายไฟ',
+      'Modern mounting deck is too thin below the adapter seat.':'แท่นติดตั้งโมเดิร์นบางเกินไปใต้บ่าวงแหวนแปลง',
+      'Modern shoulder leaves under two walls above the hollow body.':'บ่าลาดโมเดิร์นเหลือผนังเหนือโพรงฐานน้อยกว่าสองเส้น',
+      'Modern lattice depth is under two extrusions.':'ความลึกโครงลายโมเดิร์นน้อยกว่าสองแนวฉีด',
+      'Modern pattern pitch must be wider than its slats.':'ระยะลายโมเดิร์นต้องกว้างกว่าซี่ลาย',
+      'Thread clearance is under the 0.10 mm radial minimum.':'ระยะเผื่อเกลียวน้อยกว่าค่าต่ำสุดตามรัศมี 0.10 mm',
+      'Female thread leaves under two walls at the shade outside.':'เกลียวตัวเมียเหลือผนังด้านนอกโป๊ะน้อยกว่าสองเส้น',
+      'Modern neck has insufficient wall outside the holder deck.':'คอฐานโมเดิร์นมีผนังรอบแท่นขั้วหลอดไม่เพียงพอ',
+      'Modern ventilation slots run into the threaded neck wall.':'ช่องระบายอากาศโมเดิร์นชนผนังคอเกลียว',
+      'Modern vent radii must satisfy 0 < inner < outer.':'รัศมีช่องระบายอากาศโมเดิร์นต้องเป็น 0 < ด้านใน < ด้านนอก',
+      'Modern base needs at least three ventilation slots.':'ฐานโมเดิร์นต้องมีช่องระบายอากาศอย่างน้อยสามช่อง',
+      'Nozzle diameter must be positive.':'เส้นผ่านศูนย์กลางหัวฉีดต้องมากกว่าศูนย์',
+      'Circle resolution must be at least 24 segments.':'ความละเอียดส่วนโค้งต้องใช้อย่างน้อย 24 ส่วน',
+      'Lamp holder bore leaves under two walls in the adapter ring.':'รูขั้วหลอดเหลือผนังวงแหวนแปลงน้อยกว่าสองเส้น',
+      'Adapter counterbore must be wider than the holder bore.':'รูบ่าวงแหวนแปลงต้องกว้างกว่ารูขั้วหลอด',
+      'Adapter seat depth must be positive.':'ความลึกบ่าวงแหวนแปลงต้องมากกว่าศูนย์',
+      'Modern cable outlet dimensions must be positive.':'ขนาดช่องสายไฟโมเดิร์นต้องมากกว่าศูนย์',
+      'Modern cable outlet is wider than the hollow body.':'ช่องสายไฟโมเดิร์นกว้างกว่าช่องว่างภายในฐาน',
+      'Modern cable outlet reaches the mounting deck.':'ช่องสายไฟโมเดิร์นชนแท่นติดตั้ง',
+      'Modern diameter exceeds the printer bed.':'เส้นผ่านศูนย์กลางโมเดิร์นเกินพื้นที่พิมพ์',
+      'Modern shade height exceeds the printer build height.':'ความสูงโป๊ะโมเดิร์นเกินความสูงพิมพ์',
+      'Modern base height exceeds the printer build height.':'ความสูงฐานโมเดิร์นเกินความสูงพิมพ์'
     };
     /* The interpolated ones cannot be looked up, so match on their stem. */
     if (/^Only .* of cap is left over the post sockets/.test(m))
@@ -3005,8 +3903,12 @@ var Kumiko = (function () {
     var P = model.P;
     document.getElementById('d-overall').textContent =
       fmt(P.foot, 0) + ' × ' + fmt(P.foot, 0) + ' × ' + fmt(P.totalHeight, 0) + ' mm';
-    document.getElementById('d-sub').textContent =
-      (lang === 'th' ? 'แผง ' : 'panel ') + fmt(P.panelW) + ' × ' + fmt(P.height, 0) + ' × ' + fmt(P.panelT);
+    document.getElementById('d-sub').textContent = P.lanternStyle === 'modern'
+      ? (lang === 'th' ? 'โป๊ะ Ø' : 'shade Ø') + fmt(P.size, 0) + ' × ' +
+        fmt(P.height, 0) + ' · ' + fmt(P.panelT) + ' mm ' +
+        (lang === 'th' ? 'ลึก' : 'deep')
+      : (lang === 'th' ? 'แผง ' : 'panel ') + fmt(P.panelW) + ' × ' +
+        fmt(P.height, 0) + ' × ' + fmt(P.panelT);
     document.getElementById('s-noz').textContent =
       fmt(P.nozzle, 1) + ' / ' + (P.nozzle >= 0.6 ? '0.3' : '0.2') + ' mm';
     var walls = Math.round(P.slatW / P.nozzle);
@@ -3018,15 +3920,40 @@ var Kumiko = (function () {
       : 'Slats are ' + fmt(P.slatW) + ' mm wide, exactly ' + walls + ' × ' +
         fmt(P.nozzle, 1) + ' mm, so at ' + walls + ' wall loops they come out solid with no infill inside them.';
     /* A printed plate does the sheet's job, so it supersedes it when fitted. */
-    document.getElementById('s-diff').textContent = P.glazed
-      ? (lang === 'th' ? 'แผ่นพิมพ์ ×4 — ไม่ต้องใช้กระดาษ' : 'printed plate ×4 — no sheet needed')
-      : fmt(P.diffuserW) + ' × ' + fmt(P.diffuserH) + ' mm × 4';
-    document.getElementById('s-reb').textContent = fmt(P.rebateD, 1) + ' mm';
+    if (P.lanternStyle === 'modern') {
+      document.getElementById('s-diff').textContent = lang === 'th' ? 'ไม่มี — เลือกใส่กระดาษเอง' : 'none — optional paper liner';
+      document.getElementById('s-reb').textContent = fmt(P.modernThreadEngagement, 1) + ' mm';
+    } else {
+      document.getElementById('s-diff').textContent = P.glazed
+        ? (lang === 'th' ? 'แผ่นพิมพ์ ×4 — ไม่ต้องใช้กระดาษ' : 'printed plate ×4 — no sheet needed')
+        : fmt(P.diffuserW) + ' × ' + fmt(P.diffuserH) + ' mm × 4';
+      document.getElementById('s-reb').textContent = fmt(P.rebateD, 1) + ' mm';
+    }
 
     var d = K.DEFAULTS, flags = [];
+    if (P.lanternStyle === 'modern') {
+      flags.push('--style modern');
+      if (Math.abs(state.size - 100) > 1e-9) flags.push('--size ' + state.size);
+      if (Math.abs(state.height - 218) > 1e-9) flags.push('--height ' + state.height);
+      if (Math.abs(state.modernBaseH - 90) > 1e-9)
+        flags.push('--modern-base-height ' + state.modernBaseH);
+      if (Math.abs(state.modernThreadClear - 0.30) > 1e-9)
+        flags.push('--thread-clearance ' + state.modernThreadClear);
+      if (Math.abs(state.grid - d.grid) > 1e-9) flags.push('--grid ' + state.grid);
+      if (Math.abs(state.slatW - d.slatW) > 1e-9) flags.push('--slat ' + state.slatW);
+      if (Math.abs(state.panelT - d.panelT) > 1e-9)
+        flags.push('--panel-thickness ' + state.panelT);
+      if (state.pattern !== d.pattern) flags.push('--pattern ' + state.pattern);
+      if (state.holderType !== d.holderType) flags.push('--holder ' + state.holderType);
+      var modernNeck = K.HOLDER_PRESETS[state.holderType];
+      if (Math.abs(state.socketNeck - modernNeck) > 1e-9)
+        flags.push('--socket-neck ' + state.socketNeck);
+      document.getElementById('cli').textContent = 'python3 kumiko_lamp.py ' + flags.join(' ');
+    } else {
     if (state.holderType !== d.holderType)
       flags.push('--holder ' + state.holderType);
     [['size','--size'],['height','--height'],['grid','--grid'],['slatW','--slat'],
+     ['panelT','--panel-thickness'],
      ['edgeChamfer','--edge-chamfer'],
      ['plateT','--diffuser-plate'],['postInsertD','--post-insert']].forEach(function (f) {
       if (Math.abs(state[f[0]] - d[f[0]]) > 1e-9) flags.push(f[1] + ' ' + state[f[0]]);
@@ -3039,6 +3966,7 @@ var Kumiko = (function () {
     if (state.pattern !== d.pattern) flags.push('--pattern ' + state.pattern);
     document.getElementById('cli').textContent =
       'python3 kumiko_lamp.py' + (flags.length ? ' ' + flags.join(' ') : '');
+    }
 
     var bad = model.parts && model.parts.some(function (p) { return !p.fits; });
     document.getElementById('said').textContent = model.problems.length
@@ -3073,9 +4001,10 @@ var Kumiko = (function () {
     var files = [];
     model.parts.forEach(function (p) {
       files.push({ name: p.id + (p.qty > 1 ? '_x' + p.qty : '') + '.stl',
-                   data: K.stlBinary(p.mesh.tris) });
+                   data: exportPartBytes(p) });
     });
-    download('kumiko-lamp-' + Math.round(model.P.foot) + 'mm-' + state.pattern + '.zip',
+    download('kumiko-lamp-' + (state.lanternStyle === 'modern' ? 'modern-' : '') +
+             Math.round(model.P.foot) + 'mm-' + state.pattern + '.zip',
              K.zipStore(files), 'application/zip');
   });
 

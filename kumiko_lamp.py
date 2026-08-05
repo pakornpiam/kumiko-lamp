@@ -2,13 +2,14 @@
 """
 Parametric kumiko lamp generator.
 
-Produces a set of watertight, manifold STL parts that assemble into a square
-four-panel kumiko lantern with mortise-and-groove joinery.  Every part prints
-flat on the bed with no supports.
+Produces watertight, manifold STL parts for either the square four-panel
+Classic lantern or the threaded two-part cylindrical Modern lantern.  Parts
+are exported in their intended support-free print orientation.
 
     python3 kumiko_lamp.py --all              # regenerate every STL + SVG
     python3 kumiko_lamp.py --pattern kikkou   # just the default part set
     python3 kumiko_lamp.py --size 150 --height 180
+    python3 kumiko_lamp.py --style modern --all
 
 Geometry is built with real CSG (trimesh + manifold3d), not overlapping shells,
 so slicers receive clean solids that need no auto-repair.
@@ -35,6 +36,22 @@ SNAP_ROOT = 0.6     # solid root left below the leg's flexure cavity
 # working sleeve presets the configurator offers; --socket-neck remains the
 # authority for hardware that measures differently.
 HOLDER_PRESETS = {"e27": 26.5, "e14": 27.0}
+
+# The modern lantern is intentionally described by a small fixed mechanical
+# contract.  ``size``, ``height`` and ``panel_t`` remain the user-facing outer
+# diameter, shade height and radial lattice depth; these constants describe the
+# two-piece connection shared by the Python and browser generators.
+MODERN_DEFAULT_SIZE = 100.0
+MODERN_DEFAULT_SHADE_H = 218.0
+MODERN_DEFAULT_BASE_H = 90.0
+MODERN_RING_H = 10.0
+MODERN_BODY_WALL = 5.0
+MODERN_THREAD_ENGAGEMENT = 10.0
+MODERN_THREAD_PITCH = 2.0
+MODERN_THREAD_DEPTH = 0.8
+MODERN_THREAD_CLEAR = 0.30
+MODERN_CHORD_ERROR = 0.1
+MODERN_LATTICE_OVERLAP = 0.8
 
 
 # --------------------------------------------------------------------------
@@ -133,6 +150,13 @@ class Params:
 
     # --- meshing ---------------------------------------------------------
     arc: int = 96                # segments per full circle
+
+    # --- modern cylindrical style ---------------------------------------
+    # Appended rather than inserted above so positional construction of the
+    # long-standing classic Params API keeps its original field order.
+    lantern_style: str = "classic"
+    modern_base_h: float = MODERN_DEFAULT_BASE_H
+    modern_thread_clear: float = MODERN_THREAD_CLEAR
 
     # ---- derived ---------------------------------------------------------
     @property
@@ -267,8 +291,67 @@ class Params:
 
     @property
     def total_height(self) -> float:
+        if self.lantern_style == "modern":
+            return self.modern_base_h + self.height - MODERN_THREAD_ENGAGEMENT
         return (self.leg_h + self.base_t + (self.height - 2 * self.groove_d)
                 + self.cap_t + (self.finial_h if self.screwed else 0.0))
+
+    @property
+    def modern_outer_r(self) -> float:
+        return self.size / 2.0
+
+    @property
+    def modern_inner_r(self) -> float:
+        """Inner face of the rings and wrapped lattice."""
+        return self.modern_outer_r - self.panel_t
+
+    @property
+    def modern_cavity_r(self) -> float:
+        """Radius of the hollow base body below the mounting deck."""
+        return self.modern_outer_r - MODERN_BODY_WALL
+
+    @property
+    def modern_cable_inner_y(self) -> float:
+        """Inner end of the cord cutter, extended past the cavity tangent."""
+        return -self.modern_cavity_r + self.cable_w
+
+    @property
+    def modern_lattice_h(self) -> float:
+        return self.height - 2 * MODERN_RING_H
+
+    @property
+    def modern_thread_root_r(self) -> float:
+        """Male neck radius below the 0.8 mm triangular thread."""
+        return self.modern_inner_r - MODERN_THREAD_DEPTH
+
+    @property
+    def modern_thread_crest_r(self) -> float:
+        return self.modern_inner_r
+
+    @property
+    def modern_thread_bore_r(self) -> float:
+        """Female baseline bore: matching male root plus radial clearance."""
+        return self.modern_thread_root_r + self.modern_thread_clear
+
+    @property
+    def modern_thread_groove_r(self) -> float:
+        return self.modern_thread_crest_r + self.modern_thread_clear
+
+    @property
+    def modern_thread_wall(self) -> float:
+        """Minimum shade wall outside the crest of the female thread."""
+        return self.modern_outer_r - self.modern_thread_groove_r
+
+    @property
+    def modern_shoulder_h(self) -> float:
+        """Height of the 45-degree base transition below the threaded neck."""
+        return self.modern_outer_r - self.modern_thread_root_r
+
+    @property
+    def modern_shoulder_z(self) -> float:
+        """Assembled height where the full-diameter base starts tapering."""
+        return (self.modern_base_h - MODERN_THREAD_ENGAGEMENT
+                - self.modern_shoulder_h)
 
 
 # --------------------------------------------------------------------------
@@ -1245,6 +1328,11 @@ def pattern_names():
     return sorted(list(PATTERNS) + list(PATTERN_REGIONS))
 
 
+def kumiko_pattern_names():
+    """The eleven line patterns that can wrap around a modern shade."""
+    return sorted(name for name in PATTERNS if name not in LAITHAI)
+
+
 def is_region(pattern: str) -> bool:
     return pattern in PATTERN_REGIONS
 
@@ -1678,6 +1766,304 @@ def build_socket_ring(P: Params) -> trimesh.Trimesh:
 
 
 # --------------------------------------------------------------------------
+# Modern cylindrical parts
+# --------------------------------------------------------------------------
+
+def _helical_thread(r_root: float, depth: float, pitch: float,
+                    z0: float, z1: float, sections: int) -> trimesh.Trimesh:
+    """Closed 45-degree triangular thread ribbon for a radial union or cut.
+
+    The centre of the triangular profile advances by one pitch per turn.  Its
+    axial half-width equals its radial depth, which makes both printable flanks
+    45 degrees.  The ribbon is clipped to the requested engagement interval so
+    the first and last turn finish flush with the mating faces.
+    """
+    # Model a complete turn before and after the engagement interval.  Their
+    # profile tails still cross z0/z1 at other angles; starting the centreline
+    # exactly at z0 would truncate those periodic flanks around most of the rim.
+    centre0, centre1 = z0 - pitch, z1 + pitch
+    turns = (centre1 - centre0) / pitch
+    steps = max(12, int(math.ceil(turns * max(24, sections))))
+    root = r_root - EPS
+    vertices = []
+    for i in range(steps + 1):
+        t = i / steps
+        zc = centre0 + (centre1 - centre0) * t
+        # Phase is anchored to the assembled engagement start, so male and
+        # female helpers remain identical after the shade's z translation.
+        theta = 2.0 * math.pi * (zc - z0) / pitch
+        co, si = math.cos(theta), math.sin(theta)
+        vertices += [
+            (root * co, root * si, zc - depth),
+            ((r_root + depth) * co, (r_root + depth) * si, zc),
+            (root * co, root * si, zc + depth),
+        ]
+
+    faces = []
+    for i in range(steps):
+        a, b = 3 * i, 3 * (i + 1)
+        for j in range(3):
+            k = (j + 1) % 3
+            faces += [(a + j, a + k, b + k), (a + j, b + k, b + j)]
+    faces += [(0, 2, 1),
+              (3 * steps, 3 * steps + 1, 3 * steps + 2)]
+    ribbon = trimesh.Trimesh(vertices=np.asarray(vertices),
+                             faces=np.asarray(faces), process=True)
+    if not ribbon.is_winding_consistent:
+        trimesh.repair.fix_winding(ribbon)
+    if ribbon.volume < 0:
+        ribbon.invert()
+
+    # The periodic profile extends a full turn past each end before clipping,
+    # retaining every angular tail that crosses the engagement boundary.
+    clip = cyl(2 * (r_root + depth + 1.0), z0, z1,
+               sections=max(24, sections))
+    return cleanup(intersection(ribbon, clip))
+
+
+def _flat_slat_contour(p, q, width):
+    """CCW rectangle around a developed-pattern segment, with joined ends."""
+    (u0, z0), (u1, z1) = p, q
+    du, dz = u1 - u0, z1 - z0
+    length = math.hypot(du, dz)
+    if length < 1e-6:
+        raise ValueError("zero-length wrapped slat")
+    overlap = min(width * 0.20, 0.25)
+    eu, ez = du / length * overlap, dz / length * overlap
+    u0, z0, u1, z1 = u0 - eu, z0 - ez, u1 + eu, z1 + ez
+    nu, nz = -dz / length * width / 2.0, du / length * width / 2.0
+    return [(u0 + nu, z0 + nz), (u0 - nu, z0 - nz),
+            (u1 - nu, z1 - nz), (u1 + nu, z1 + nz)]
+
+
+def _annular_sector(r_inner, r_outer, z0, z1, a0, a1, sections):
+    """Closed curved rail spanning a0..a1, used to weld the wrap seam."""
+    steps = max(2, int(math.ceil(abs(a1 - a0) / (2 * math.pi)
+                                 * max(24, sections))))
+    vertices = []
+    for i in range(steps + 1):
+        a = a0 + (a1 - a0) * i / steps
+        co, si = math.cos(a), math.sin(a)
+        vertices += [(r_outer * co, r_outer * si, z0),
+                     (r_outer * co, r_outer * si, z1),
+                     (r_inner * co, r_inner * si, z1),
+                     (r_inner * co, r_inner * si, z0)]
+    faces = []
+    for i in range(steps):
+        a, b = 4 * i, 4 * (i + 1)
+        for j in range(4):
+            k = (j + 1) % 4
+            faces += [(a + j, a + k, b + k), (a + j, b + k, b + j)]
+    faces += [(0, 2, 1), (0, 3, 2),
+              (4 * steps, 4 * steps + 1, 4 * steps + 2),
+              (4 * steps, 4 * steps + 2, 4 * steps + 3)]
+    sector = trimesh.Trimesh(vertices=np.asarray(vertices),
+                             faces=np.asarray(faces), process=True)
+    if not sector.is_winding_consistent:
+        trimesh.repair.fix_winding(sector)
+    if sector.volume < 0:
+        sector.invert()
+    return sector
+
+
+def _conical_frustum(r0, r1, z0, z1, sections):
+    """Closed circular frustum with matching facets at both radii."""
+    if min(r0, r1, z1 - z0) <= 0 or sections < 3:
+        raise ValueError("invalid conical frustum")
+    vertices = []
+    for z, radius in ((z0, r0), (z1, r1)):
+        for i in range(sections):
+            a = 2.0 * math.pi * i / sections
+            vertices.append((radius * math.cos(a), radius * math.sin(a), z))
+    vertices += [(0.0, 0.0, z0), (0.0, 0.0, z1)]
+    bottom_c, top_c = 2 * sections, 2 * sections + 1
+    faces = []
+    for i in range(sections):
+        j = (i + 1) % sections
+        faces += [(i, j, sections + j),
+                  (i, sections + j, sections + i),
+                  (bottom_c, j, i),
+                  (top_c, sections + i, sections + j)]
+    return trimesh.Trimesh(vertices=np.asarray(vertices),
+                           faces=np.asarray(faces), process=True)
+
+
+def _wrapped_pattern_shell(P: Params, pattern: str) -> trimesh.Trimesh:
+    """Union in the developed plane, extrude once, then bend into a cylinder.
+
+    Doing every lattice crossing as a 2-D polygon union avoids the near-coplanar
+    3-D slivers that otherwise open after the float32 STL round-trip.  The field
+    is masked beside the wrap boundary and buried into a split vertical rail;
+    its two half-rails weld at +/-pi after bending, giving a deterministic seam.
+    """
+    import manifold3d
+
+    r_out = P.modern_outer_r
+    circumference = 2.0 * math.pi * r_out
+    lattice_h = P.modern_lattice_h
+    grow = MODERN_LATTICE_OVERLAP
+    segs = PATTERNS[pattern](circumference, lattice_h, P.grid)
+    contours = [_flat_slat_contour(p, q, P.slat_w) for p, q in segs]
+    field = manifold3d.CrossSection(contours, manifold3d.FillRule.Positive)
+
+    # Reserve one ordinary slat width for a deliberate seam rail.  The pattern
+    # overlaps each half by 0.2 mm so there can be no tangent-only attachment.
+    join = min(0.2, P.slat_w / 4.0)
+    pattern_clip = manifold3d.CrossSection.square(
+        (circumference - P.slat_w + 2 * join,
+         lattice_h + 2 * grow), center=True)
+    field = field ^ pattern_clip
+
+    rail_h = lattice_h + 2 * grow
+    half_rail = P.slat_w / 2.0
+    left_rail = manifold3d.CrossSection.square((half_rail, rail_h))
+    left_rail = left_rail.translate((-circumference / 2.0,
+                                     -rail_h / 2.0))
+    right_rail = manifold3d.CrossSection.square((half_rail, rail_h))
+    right_rail = right_rail.translate((circumference / 2.0 - half_rail,
+                                       -rail_h / 2.0))
+
+    lower = manifold3d.CrossSection.square((circumference,
+                                             MODERN_RING_H + EPS))
+    lower = lower.translate((-circumference / 2.0, -P.height / 2.0))
+    upper = manifold3d.CrossSection.square((circumference,
+                                             MODERN_RING_H + EPS))
+    upper = upper.translate((-circumference / 2.0,
+                             P.height / 2.0 - MODERN_RING_H - EPS))
+    developed = field + left_rail + right_rail + lower + upper
+    shade_clip = manifold3d.CrossSection.square((circumference, P.height),
+                                                 center=True)
+    developed = developed ^ shade_clip
+
+    # Leave a 0.4 mm developed gap so +/-pi never create coincident boundary
+    # faces.  A curved rail spans that gap below with 0.6 mm overlap per side.
+    # This is the actual split-and-weld seam; unlike merely merging coincident
+    # vertices it remains manifold through STL's unindexed float32 round-trip.
+    gap_arc = min(0.4, P.slat_w / 4.0)
+    bend_span = 2.0 * math.pi - gap_arc / r_out
+
+    # Refinement happens while the mesh is flat and manifold, so every shared
+    # edge is split conformingly.  Bounding every developed edge by max_arc
+    # guarantees the bent outer sagitta remains <= 0.1 mm.
+    max_angle = 2.0 * math.acos(max(-1.0, 1.0 - MODERN_CHORD_ERROR / r_out))
+    max_arc = r_out * max_angle
+    flat = developed.extrude(P.panel_t).refine_to_length(max_arc)
+
+    def bend(v):
+        u, z, depth = v
+        theta = bend_span * u / circumference
+        radius = P.modern_inner_r + depth
+        return (radius * math.cos(theta), radius * math.sin(theta),
+                z + P.height / 2.0)
+
+    raw = flat.warp(bend).to_mesh()
+    bent = trimesh.Trimesh(
+        vertices=np.asarray(raw.vert_properties)[:, :3].astype(np.float64),
+        faces=np.asarray(raw.tri_verts), process=False)
+    rail_angle = P.slat_w / r_out
+    seam = _annular_sector(P.modern_inner_r, r_out, 0.0, P.height,
+                           math.pi - rail_angle / 2.0,
+                           math.pi + rail_angle / 2.0, P.arc)
+    # Keep manifold's indexed result intact for the lower-sleeve union below.
+    # Rounding an intermediate boolean can collapse a micron-scale seam edge;
+    # build_modern_shade performs the normal cleanup after its final cut.
+    return union([bent, seam])
+
+
+def build_modern_shade(P: Params, pattern: str) -> trimesh.Trimesh:
+    """One threaded cylindrical shade with a continuously wrapped lattice."""
+    if pattern not in kumiko_pattern_names():
+        raise ValueError("modern lantern supports Kumiko line patterns only")
+
+    wrapped = _wrapped_pattern_shell(P, pattern)
+    # The main shell stops at the common lattice/ring inner radius.  This lower
+    # solid adds the extra half millimetre needed by the female baseline before
+    # the bore and helical groove below carve the matching internal profile.
+    lower = cyl(P.size, 0.0, MODERN_RING_H + EPS, sections=P.arc)
+    shade = union([wrapped, lower])
+
+    bore = cyl(2 * P.modern_thread_bore_r, -EPS,
+               MODERN_THREAD_ENGAGEMENT + EPS, sections=P.arc)
+    groove = _helical_thread(P.modern_thread_bore_r, MODERN_THREAD_DEPTH,
+                             MODERN_THREAD_PITCH, 0.0,
+                             MODERN_THREAD_ENGAGEMENT, P.arc)
+    # Manifold's final indexed mesh is already closed.  The classic cleanup's
+    # 0.1-micron snap is useful for boxes, but can collapse the tiny triangulated
+    # edge at a curved lattice crossing; STL's float32 conversion preserves the
+    # shared indices here without that intermediate snap.
+    return difference(shade, [bore, groove])
+
+
+def _modern_vent_cutters(P: Params, z0: float, z1: float):
+    """Classic tangential vent layout carried onto the circular modern deck."""
+    r0, r1 = P.base_vent_r0, P.base_vent_r1
+    rm = (r0 + r1) / 2.0
+    half_len = math.pi * rm / P.base_vents * 0.60
+    out = []
+    for j in range(P.base_vents):
+        ang = 2 * math.pi * j / P.base_vents
+        cx, cy = rm * math.cos(ang), rm * math.sin(ang)
+        tx, ty = -math.sin(ang), math.cos(ang)
+        a = (cx - tx * half_len, cy - ty * half_len)
+        b = (cx + tx * half_len, cy + ty * half_len)
+        out.append(slat_box(a, b, r1 - r0, z0, z1))
+    return out
+
+
+def build_modern_base(P: Params) -> trimesh.Trimesh:
+    """Upright hollow base; invert with ``modern_base_for_print`` for export."""
+    r_out = P.modern_outer_r
+    shell_top = P.modern_base_h - MODERN_THREAD_ENGAGEMENT
+    deck_bottom = P.modern_base_h - P.base_t
+    r_root = P.modern_thread_root_r
+
+    # In print orientation the threaded neck grows first.  A full-radius body
+    # beginning abruptly above it would create a 4.8 mm horizontal cantilever
+    # at the nominal dimensions, so expand at 45 degrees before continuing the
+    # cylindrical wall.  Tiny overlaps at both joins keep the boolean robust.
+    body = cyl(2 * r_out, 0.0, P.modern_shoulder_z + EPS,
+               sections=P.arc)
+    shoulder = _conical_frustum(r_out, r_root, P.modern_shoulder_z,
+                                shell_top, P.arc)
+    neck = cyl(2 * r_root, shell_top - EPS, P.modern_base_h,
+               sections=P.arc)
+    thread = _helical_thread(r_root, MODERN_THREAD_DEPTH,
+                             MODERN_THREAD_PITCH, shell_top,
+                             P.modern_base_h, P.arc)
+    base = union([body, shoulder, neck, thread])
+
+    # Open underside and 5 mm cylindrical wall; the last ``base_t`` millimetres
+    # form the holder deck.  Inverted for printing, that deck starts on the bed
+    # and the open cavity grows upward without a bridge or support.
+    cutters = [cyl(2 * P.modern_cavity_r, -EPS,
+                   deck_bottom + EPS, sections=P.arc),
+               cyl(P.socket_bore, deck_bottom - EPS,
+                   P.modern_base_h + EPS, sections=P.arc),
+               cyl(P.socket_cbore,
+                   P.modern_base_h - P.socket_cbore_d,
+                   P.modern_base_h + EPS, sections=P.arc)]
+    cutters += _modern_vent_cutters(P, deck_bottom - EPS,
+                                    P.modern_base_h + EPS)
+
+    # Bottom-open cord notch through the wall into the hollow body.  As on the
+    # Classic base, carry the cutter a full cord width past the nominal cavity
+    # tangent; stopping at that tangent leaves only a sub-millimetre throat.
+    cutters.append(box(-P.cable_w / 2.0, -r_out - EPS, -EPS,
+                       P.cable_w / 2.0,
+                       P.modern_cable_inner_y,
+                       P.cable_h))
+    return cleanup(difference(base, cutters))
+
+
+def modern_base_for_print(P: Params, base=None) -> trimesh.Trimesh:
+    """Turn the modern base deck-down so the exported STL needs no support."""
+    printed = (base if base is not None else build_modern_base(P)).copy()
+    printed.apply_transform(_rotx(180))
+    printed.apply_translation((0.0, 0.0, P.modern_base_h))
+    return printed
+
+
+# --------------------------------------------------------------------------
 # Assembly
 # --------------------------------------------------------------------------
 
@@ -1687,6 +2073,26 @@ def _rotz(deg):
 
 def _rotx(deg):
     return trimesh.transformations.rotation_matrix(math.radians(deg), (1, 0, 0))
+
+
+def place_modern_parts(P: Params, shade, base, socket_ring=None):
+    """Return the two cylindrical bodies (and holder ring) assembled upright."""
+    out = {"modern_base": base.copy()}
+    q = shade.copy()
+    q.apply_translation((0.0, 0.0,
+                         P.modern_base_h - MODERN_THREAD_ENGAGEMENT))
+    out["modern_shade"] = q
+    if socket_ring is not None:
+        r = socket_ring.copy()
+        r.apply_translation((0.0, 0.0,
+                             P.modern_base_h - P.socket_cbore_d))
+        out["socket_adapter_ring"] = r
+    return out
+
+
+def build_modern_assembly(P: Params, shade, base, socket_ring=None):
+    parts = place_modern_parts(P, shade, base, socket_ring)
+    return trimesh.util.concatenate(list(parts.values())), parts
 
 
 def place_parts(P: Params, panel, post, base, cap, leg=None, plate=None,
@@ -1806,11 +2212,101 @@ def check_part(name, mesh, P: Params, printable=True, bodies=1):
     return rows, problems
 
 
-def check_fits(P: Params):
+def check_modern_fits(P: Params, pattern=None):
+    """Modern-only guards for the shade, thread, deck and hollow base."""
+    issues = []
+    if pattern is not None and pattern not in kumiko_pattern_names():
+        issues.append("modern lantern supports Kumiko line patterns only")
+    if P.size <= 2 * (MODERN_BODY_WALL + P.nozzle):
+        issues.append("modern diameter is too small for its 5 mm body wall")
+    if P.height <= 2 * MODERN_RING_H + 2 * P.slat_w:
+        issues.append("modern shade is too short for two rings and a lattice")
+    if P.modern_base_h <= MODERN_THREAD_ENGAGEMENT + P.base_t:
+        issues.append("modern base is too short for its thread and mounting deck")
+    if P.modern_shoulder_z <= 0:
+        issues.append("modern base is too short for its 45-degree shoulder")
+    if P.modern_shoulder_z < P.cable_h - 1e-9:
+        issues.append("modern shoulder reaches the cable outlet")
+    if P.base_t < P.socket_cbore_d + 3 * 0.2 - 1e-9:
+        issues.append("modern mounting deck is too thin below the adapter seat")
+    shell_top = P.modern_base_h - MODERN_THREAD_ENGAGEMENT
+    deck_bottom = P.modern_base_h - P.base_t
+    if deck_bottom <= P.modern_shoulder_z:
+        deck_outer_r = P.modern_outer_r
+    elif deck_bottom < shell_top:
+        deck_outer_r = P.modern_outer_r - (deck_bottom
+                                            - P.modern_shoulder_z)
+    else:
+        deck_outer_r = P.modern_thread_root_r
+    deck_transition_wall = (deck_outer_r
+                            - (P.modern_outer_r - MODERN_BODY_WALL))
+    if deck_transition_wall < 2 * P.nozzle - 1e-9:
+        issues.append("modern shoulder leaves under two walls above the hollow body")
+    if P.panel_t < 2 * P.nozzle:
+        issues.append("modern lattice depth is under two extrusion widths")
+    if P.slat_w < 2 * P.nozzle:
+        issues.append(f"slat width {P.slat_w} is under two extrusions")
+    if (P.nozzle > 0 and
+            abs(P.slat_w / P.nozzle - round(P.slat_w / P.nozzle)) > 1e-6):
+        issues.append(f"slat width {P.slat_w} is not a multiple of the nozzle")
+    if P.grid <= P.slat_w:
+        issues.append("modern pattern pitch must be wider than its slats")
+    if P.modern_thread_clear < 0.1 - 1e-9:
+        issues.append("thread clearance is under the 0.10 mm radial minimum")
+    if P.modern_thread_wall < 2 * P.nozzle - 1e-9:
+        issues.append("female thread leaves under two walls at the shade outside")
+    if P.modern_thread_root_r <= P.socket_cbore / 2.0 + 2 * P.nozzle:
+        issues.append("modern neck has insufficient wall outside the holder deck")
+    vents_valid = 0 < P.base_vent_r0 < P.base_vent_r1
+    if not vents_valid:
+        issues.append("modern vent radii must satisfy 0 < inner < outer")
+    if vents_valid and P.socket_cbore / 2.0 >= P.base_vent_r0:
+        issues.append("adapter counterbore runs into the ventilation slots")
+    if P.base_vents < 3:
+        issues.append("modern base needs at least three ventilation slots")
+    elif vents_valid:
+        rm = (P.base_vent_r0 + P.base_vent_r1) / 2.0
+        half_len = math.pi * rm / P.base_vents * 0.60
+        vent_outer_corner = math.hypot(P.base_vent_r1, half_len)
+        if vent_outer_corner >= P.modern_thread_root_r - 2 * P.nozzle:
+            issues.append("modern ventilation slots run into the threaded neck wall")
+    ring_od = P.socket_cbore - 0.4
+    if P.socket_neck <= 0 or P.socket_neck >= ring_od - 4 * P.nozzle:
+        issues.append("lamp holder bore leaves under two walls in the adapter ring")
+    if P.socket_bore <= 0 or P.socket_cbore <= P.socket_bore:
+        issues.append("adapter counterbore must be wider than the holder bore")
+    if P.socket_cbore_d <= 0:
+        issues.append("adapter seat depth must be positive")
+    cavity_h = P.modern_base_h - P.base_t
+    if P.cable_w <= 0 or P.cable_h <= 0:
+        issues.append("modern cable outlet dimensions must be positive")
+    if P.cable_w >= P.size - 2 * MODERN_BODY_WALL:
+        issues.append("modern cable outlet is wider than the hollow body")
+    if P.cable_h >= cavity_h:
+        issues.append("modern cable outlet reaches the mounting deck")
+    if P.size > min(P.bed[0], P.bed[1]) + 1e-9:
+        issues.append("modern diameter exceeds the printer bed")
+    if P.height > P.bed[2] + 1e-9:
+        issues.append("modern shade height exceeds the printer build height")
+    if P.modern_base_h > P.bed[2] + 1e-9:
+        issues.append("modern base height exceeds the printer build height")
+    return issues
+
+
+def check_fits(P: Params, pattern=None):
     """Dimensional sanity checks that would otherwise only show up after a print."""
     issues = []
+    if P.lantern_style not in ("classic", "modern"):
+        issues.append(f"unknown lantern style {P.lantern_style}")
     if P.holder_type not in HOLDER_PRESETS:
         issues.append(f"unknown lamp holder type {P.holder_type}")
+    if P.nozzle <= 0:
+        issues.append("nozzle diameter must be positive")
+    if P.arc < 24:
+        issues.append("circle resolution must be at least 24 segments")
+    if P.lantern_style == "modern":
+        issues += check_modern_fits(P, pattern)
+        return issues
     if abs((P.panel_w + P.panel_clear) - P.groove_span) > 1e-9:
         issues.append("panel width does not match the post groove span")
     if abs((P.slot_w - P.panel_t - P.plate_t) - P.slot_clear) > 1e-9:
@@ -1829,7 +2325,8 @@ def check_fits(P: Params):
         issues.append("panel groove cuts the corner off the post")
     if P.slat_w < 2 * P.nozzle:
         issues.append(f"slat width {P.slat_w} is under two extrusions")
-    if abs(P.slat_w / P.nozzle - round(P.slat_w / P.nozzle)) > 1e-6:
+    if (P.nozzle > 0 and
+            abs(P.slat_w / P.nozzle - round(P.slat_w / P.nozzle)) > 1e-6):
         issues.append(f"slat width {P.slat_w} is not a multiple of the nozzle")
     if P.rebate_d >= P.panel_t:
         issues.append("rebate deeper than the panel")
@@ -1905,7 +2402,7 @@ def check_fits(P: Params):
     return issues
 
 
-def check_clearances(parts):
+def check_clearances(parts, names=None):
     """
     No two assembled parts may share any volume.
 
@@ -1913,8 +2410,12 @@ def check_clearances(parts):
     diffuser plate shares its groove with the panel, so that adjacency is the
     one this has to prove.  Plates are absent when the lamp is unglazed.
     """
-    names = [n for n in ("base", "cap", "post0", "panel0", "panel2",
-                         "plate0", "plate2", "leg0", "finial0") if n in parts]
+    if names is None:
+        names = [n for n in ("base", "cap", "post0", "panel0", "panel2",
+                             "plate0", "plate2", "leg0", "finial0")
+                 if n in parts]
+    else:
+        names = [n for n in names if n in parts]
     issues = []
     for i, a in enumerate(names):
         for b in names[i + 1:]:
@@ -2003,9 +2504,15 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pattern", default="asanoha", choices=pattern_names())
-    ap.add_argument("--size", type=float, help="lantern outer square (mm)")
-    ap.add_argument("--height", type=float, help="panel and post length (mm)")
+    ap.add_argument("--style", choices=("classic", "modern"),
+                    help="lantern style; Classic is the unchanged default")
+    ap.add_argument("--size", type=float,
+                    help="Classic outer square or Modern outer diameter (mm)")
+    ap.add_argument("--height", type=float,
+                    help="Classic panel/post or Modern shade height (mm)")
     ap.add_argument("--slat", type=float, help="lattice slat width (mm)")
+    ap.add_argument("--panel-thickness", type=float,
+                    help="Classic panel thickness or Modern lattice depth (mm)")
     ap.add_argument("--grid", type=float, help="pattern pitch (mm)")
     ap.add_argument("--holder", choices=tuple(HOLDER_PRESETS),
                     help="lamp holder sleeve preset; E27 is the default")
@@ -2022,10 +2529,14 @@ def main(argv=None):
     ap.add_argument("--snap-lock", nargs="?", const=0.2, type=float,
                     metavar="MM", help="reusable foot and finial snap engagement; "
                                         "bare flag uses 0.2 mm, 0 disables")
+    ap.add_argument("--modern-base-height", type=float,
+                    help="Modern hollow base height (mm); default 90")
+    ap.add_argument("--thread-clearance", type=float,
+                    help="Modern thread radial clearance (mm); default 0.30")
     ap.add_argument("--split-posts", action="store_true",
                     help="also export the two-piece post")
     ap.add_argument("--all", action="store_true",
-                    help="export every pattern, both post styles and all previews")
+                    help="export all patterns and previews available for the selected style")
     ap.add_argument("--out", default=str(Path(__file__).parent))
     args = ap.parse_args(argv)
 
@@ -2034,20 +2545,30 @@ def main(argv=None):
     np.seterr(invalid="ignore", divide="ignore")
 
     P = Params()
+    if args.style is not None:
+        P.lantern_style = args.style
+    if P.lantern_style == "modern":
+        # Style selection applies its preset first; explicit dimensions below
+        # remain authoritative in exactly the same way as holder presets.
+        P.size = MODERN_DEFAULT_SIZE
+        P.height = MODERN_DEFAULT_SHADE_H
     if args.holder is not None:
         P.holder_type = args.holder
         P.socket_neck = HOLDER_PRESETS[args.holder]
     for attr, val in (("size", args.size), ("height", args.height),
-                      ("slat_w", args.slat), ("grid", args.grid),
+                      ("slat_w", args.slat),
+                      ("panel_t", args.panel_thickness), ("grid", args.grid),
                       ("socket_neck", args.socket_neck),
                       ("edge_chamfer", args.edge_chamfer),
                       ("plate_t", args.diffuser_plate),
                       ("post_insert_d", args.post_insert),
-                      ("snap_engagement", args.snap_lock)):
+                      ("snap_engagement", args.snap_lock),
+                      ("modern_base_h", args.modern_base_height),
+                      ("modern_thread_clear", args.thread_clearance)):
         if val is not None:
             setattr(P, attr, val)
 
-    fit_issues = check_fits(P)
+    fit_issues = check_fits(P, args.pattern)
     if fit_issues:
         print("Parameter check FAILED:")
         for m in fit_issues:
@@ -2060,9 +2581,15 @@ def main(argv=None):
     stl.mkdir(parents=True, exist_ok=True)
     prev.mkdir(parents=True, exist_ok=True)
 
-    print(f"kumiko lamp  {P.foot:.0f} x {P.foot:.0f} x {P.total_height:.0f} mm"
-          f"   panel {P.panel_w:.1f} x {P.height:.0f} x {P.panel_t}"
-          f"   pattern {args.pattern}")
+    if P.lantern_style == "modern":
+        print(f"kumiko lamp modern  {P.size:.0f} diameter x "
+              f"{P.total_height:.0f} mm"
+              f"   shade {P.size:.1f} x {P.height:.0f} x {P.panel_t}"
+              f"   pattern {args.pattern}")
+    else:
+        print(f"kumiko lamp  {P.foot:.0f} x {P.foot:.0f} x {P.total_height:.0f} mm"
+              f"   panel {P.panel_w:.1f} x {P.height:.0f} x {P.panel_t}"
+              f"   pattern {args.pattern}")
 
     results = []
     t0 = time.time()
@@ -2079,65 +2606,88 @@ def main(argv=None):
                                   printable=printable, bodies=bodies))
         return mesh
 
-    patterns = pattern_names() if args.all else [args.pattern]
-    panels = {}
-    for name in patterns:
-        print(f"  building panel: {name} ...", flush=True)
-        panels[name] = emit(f"panel_{name}", build_panel(P, name))
-        write_svg(prev / f"panel_{name}.svg", P, name)
+    clearance_names = None
+    if P.lantern_style == "modern":
+        patterns = kumiko_pattern_names() if args.all else [args.pattern]
+        shades = {}
+        for name in patterns:
+            print(f"  building modern shade: {name} ...", flush=True)
+            shades[name] = emit(f"modern_shade_{name}",
+                                build_modern_shade(P, name))
 
-    panel = panels[args.pattern]
+        print("  building modern base ...", flush=True)
+        base = build_modern_base(P)
+        emit("modern_base", modern_base_for_print(P, base))
 
-    print("  building post ...", flush=True)
-    post = emit("post", build_post(P, "full"))
+        print("  building socket ring ...", flush=True)
+        socket_ring = emit("socket_adapter_ring", build_socket_ring(P))
 
-    if args.split_posts or args.all:
-        for half in ("lower", "upper"):
-            emit(f"post_{half}", build_post(P, half))
+        print("  assembling ...", flush=True)
+        asm, parts = build_modern_assembly(P, shades[args.pattern], base,
+                                           socket_ring)
+        emit("assembly_preview", asm, bodies=len(parts), printable=False)
+        clearance_names = ("modern_base", "modern_shade",
+                           "socket_adapter_ring")
+    else:
+        patterns = pattern_names() if args.all else [args.pattern]
+        panels = {}
+        for name in patterns:
+            print(f"  building panel: {name} ...", flush=True)
+            panels[name] = emit(f"panel_{name}", build_panel(P, name))
+            write_svg(prev / f"panel_{name}.svg", P, name)
 
-    print("  building base ...", flush=True)
-    base = emit("base", build_base(P))
+        panel = panels[args.pattern]
 
-    print("  building cap ...", flush=True)
-    cap = build_cap(P, args.pattern)
-    # The cap is modelled joinery-side-up for assembly, but has to print the
-    # other way up so those pockets face the nozzle instead of needing support.
-    # Export it already flipped so the file drops straight onto the plate.
-    cap_print = cap.copy()
-    cap_print.apply_transform(_rotx(180))
-    cap_print.apply_translation((0, 0, P.cap_t))
-    emit("top_cap", cap_print)
+        print("  building post ...", flush=True)
+        post = emit("post", build_post(P, "full"))
 
-    print("  building socket ring ...", flush=True)
-    emit("socket_adapter_ring", build_socket_ring(P))
+        if args.split_posts or args.all:
+            for half in ("lower", "upper"):
+                emit(f"post_{half}", build_post(P, half))
 
-    print("  building leg ...", flush=True)
-    leg = emit("leg", build_leg(P))
+        print("  building base ...", flush=True)
+        base = emit("base", build_base(P))
 
-    # --all exports one at the working thickness so stl/diffuser_plate.stl stays
-    # in the checked-in set even though the stock lamp is unglazed.
-    plate = None
-    if P.plate_t > 0:
-        print("  building diffuser plate ...", flush=True)
-        plate = emit("diffuser_plate", build_diffuser_plate(P))
-    elif args.all:
-        ref = replace(P, plate_t=1.2)
-        print("  building diffuser plate ...", flush=True)
-        emit("diffuser_plate", build_diffuser_plate(ref))
+        print("  building cap ...", flush=True)
+        cap = build_cap(P, args.pattern)
+        # The cap is modelled joinery-side-up for assembly, but has to print the
+        # other way up so those pockets face the nozzle instead of needing support.
+        # Export it already flipped so the file drops straight onto the plate.
+        cap_print = cap.copy()
+        cap_print.apply_transform(_rotx(180))
+        cap_print.apply_translation((0, 0, P.cap_t))
+        emit("top_cap", cap_print)
 
-    # --all exports one at the working diameter so stl/finial.stl stays in the
-    # checked-in set even though the stock lamp is unscrewed.
-    finial = None
-    if P.screwed:
-        print("  building finial ...", flush=True)
-        finial = emit("finial", build_cap_finial(P))
-    elif args.all:
-        print("  building finial ...", flush=True)
-        emit("finial", build_cap_finial(replace(P, post_insert_d=4.0)))
+        print("  building socket ring ...", flush=True)
+        emit("socket_adapter_ring", build_socket_ring(P))
 
-    print("  assembling ...", flush=True)
-    asm, parts = build_assembly(P, panel, post, base, cap, leg, plate, finial)
-    emit("assembly_preview", asm, bodies=len(parts), printable=False)
+        print("  building leg ...", flush=True)
+        leg = emit("leg", build_leg(P))
+
+        # --all exports one at the working thickness so stl/diffuser_plate.stl stays
+        # in the checked-in set even though the stock lamp is unglazed.
+        plate = None
+        if P.plate_t > 0:
+            print("  building diffuser plate ...", flush=True)
+            plate = emit("diffuser_plate", build_diffuser_plate(P))
+        elif args.all:
+            ref = replace(P, plate_t=1.2)
+            print("  building diffuser plate ...", flush=True)
+            emit("diffuser_plate", build_diffuser_plate(ref))
+
+        # --all exports one at the working diameter so stl/finial.stl stays in the
+        # checked-in set even though the stock lamp is unscrewed.
+        finial = None
+        if P.screwed:
+            print("  building finial ...", flush=True)
+            finial = emit("finial", build_cap_finial(P))
+        elif args.all:
+            print("  building finial ...", flush=True)
+            emit("finial", build_cap_finial(replace(P, post_insert_d=4.0)))
+
+        print("  assembling ...", flush=True)
+        asm, parts = build_assembly(P, panel, post, base, cap, leg, plate, finial)
+        emit("assembly_preview", asm, bodies=len(parts), printable=False)
 
     # ---- report ---------------------------------------------------------
     print()
@@ -2156,10 +2706,14 @@ def main(argv=None):
         problems += [f"{rows['part']}: {p}" for p in probs]
 
     print("\n  checking assembled clearances ...", flush=True)
-    problems += check_clearances(parts)
+    problems += check_clearances(parts, clearance_names)
 
-    print(f"\nassembled: {P.foot:.0f} x {P.foot:.0f} x {P.total_height:.0f} mm"
-          f"   built in {time.time() - t0:.1f} s")
+    if P.lantern_style == "modern":
+        print(f"\nassembled: {P.size:.0f} diameter x {P.total_height:.0f} mm"
+              f"   built in {time.time() - t0:.1f} s")
+    else:
+        print(f"\nassembled: {P.foot:.0f} x {P.foot:.0f} x {P.total_height:.0f} mm"
+              f"   built in {time.time() - t0:.1f} s")
 
     if problems:
         print("\nPROBLEMS:")

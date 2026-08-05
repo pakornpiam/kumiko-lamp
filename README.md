@@ -1,33 +1,62 @@
 # Kumiko Lamp — parametric, print-ready STL set
 
-A square four-panel kumiko lantern for an E27 or E14 LED bulb. Every part prints flat with
-**no supports**, and the whole thing assembles with sliding mortise-and-groove joints —
-no glue and, as it ships, no fasteners of any kind. Four M3 screws are an option, not a
-requirement; see *Screwing the cap down*.
+A parametric lantern for an E27 or E14 LED bulb, available in two styles. **Classic** is
+the original square four-panel lamp; **Modern** is a two-part cylindrical lamp with a
+threaded patterned shade. Classic remains the default, and its geometry and stock STLs are
+unchanged.
 
-Assembled: **190 × 190 × 236 mm** on its four legs. Designed for the 256 mm bed of the
-A1 / P1S / X1C.
+The Classic parts print with **no supports** and assemble with sliding
+mortise-and-groove joints — no glue and, as it ships, no fasteners of any kind. Four M3
+screws are an option, not a requirement; see *Screwing the Classic cap down*. The stock
+Classic is **190 × 190 × 236 mm** on its four legs. The stock Modern is
+**Ø100 × 298 mm** assembled. Both are designed for the 256 mm bed of the A1 / P1S / X1C.
 
-![assembled lamp](preview/assembly.png)
+![assembled Classic lamp](preview/assembly.png)
 
 ## Two ways to build it
 
-**[`web/index.html`](web/index.html) — the configurator.** Open it in a browser: drag
-sliders for size, pattern, joint clearances and lamp-holder sizing, turn the lamp in 3D, and
-download the STLs (individually or as a zip). No install, no network, one self-contained
-file. It re-solves the joinery live and refuses to export a lamp that will not go together.
+**[`web/index.html`](web/index.html) — the configurator.** Open it in a browser, choose
+**Classic** or **Modern** under *Lantern*, adjust the dimensions, pattern, joints and
+lamp-holder sizing, turn the lamp in 3D, and download the STLs individually or as a zip.
+Each style remembers its own settings while you switch between them. No install, no
+network, one self-contained file. It re-solves the joinery live and refuses to export a
+lamp that will not go together. The new controls and messages are available in both
+English and Thai.
 
-**`kumiko_lamp.py` — the generator.** Same lamp, same numbers, built with real CSG so
-every part is a strictly manifold shell. Use this if your slicer is fussy, or for the
-pre-generated set in `stl/`.
+**`kumiko_lamp.py` — the generator.** Same selected style, same numbers, built with real
+CSG so every part is a strictly manifold shell. Use this if your slicer is fussy, or for
+the pre-generated set in `stl/`.
 
-The two agree: for identical settings the base, posts and adapter ring come out of the
-browser watertight and volume-identical to the Python parts. The difference is in the
-lattices — see [Manifold-ness](#manifold-ness) below.
+The two agree: for identical settings the structural parts, adapter ring and downloaded
+Modern shade come out of the browser watertight and closely volume-matched to the Python
+parts. Classic's live-built lattices use a lighter representation — see
+[Manifold-ness](#manifold-ness) below.
+
+## Lantern styles
+
+**Classic** is the existing square lamp: four interchangeable panels slide between four
+posts, with separate feet, a grooved base and a removable top cap. It supports all fourteen
+patterns, optional diffusers, two-piece posts, cap screws, finials and reusable snap locks.
+
+**Modern** is a hollow cylindrical base and a removable cylindrical shade. The reference
+preset uses a 100 mm diameter, a 218 mm shade and a 90 mm base. The shade overlaps the
+base's threaded neck by 10 mm, producing the 298 mm assembled height. Its upper and lower
+rings are each 10 mm high, with the selected Kumiko lattice wrapped continuously around the
+cylinder between them. The base carries the male thread and the shade's lower ring carries
+the matching female thread. Immediately below the neck, the base contracts through a
+45-degree transition; after the base is inverted for printing, that transition expands
+without the former 4.8 mm horizontal cantilever.
+
+Modern supports the eleven Kumiko patterns only. The three Lai Thai compositions are
+panel-sized artwork and cannot be wrapped periodically, so Modern rejects them instead of
+substituting another design. Modern has no generated diffuser; add a paper or vellum liner
+inside the shade if you want softer light.
 
 ---
 
 ## Print list
+
+### Classic (default)
 
 | STL | Qty | Size (mm) | Orientation on the plate |
 |---|---|---|---|
@@ -37,7 +66,7 @@ lattices — see [Manifold-ness](#manifold-ness) below.
 | `top_cap.stl` | **1** | 190 × 190 × 10 | Flat, as exported — **already flipped** into print orientation. |
 | `leg.stl` | **4** | 20 × 20 × 20 | Standing on its foot, as exported. Tenon points up. |
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 | Flat. See *E27 / E14 holder* below. |
-| `diffuser_plate.stl` | 0 or **4** | 155.7 × 210 × 1.2 | Flat, as exported. Only if you want a printed diffuser — see *Diffuser* below. |
+| `diffuser_plate.stl` | 0 or **4** | 155.7 × 210 × 1.2 | Flat, as exported. Only if you want a printed diffuser — see *Classic diffuser* below. |
 | `finial.stl` | 0 or **4** | 20 × 20 × 10 | Screw-head finial cap, standing on its head. Skirt points up. Only with the cap screws. |
 
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
@@ -45,9 +74,26 @@ Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
 `panel_goma_gara.stl`,
 `panel_bishamon_kikkou.stl`, `panel_seigaiha.stl`, `panel_kranok_kan_khot.stl` or
 `panel_dok_phut_tan.stl` or `panel_thai_rosette.stl` for a different motif — all
-fourteen are dimensionally identical
+fourteen Classic panels are dimensionally identical
 and interchangeable. Roughly in order of open area: masu, kikkou and kranok are
 the airiest, asanoha and goma-gara the densest.
+
+### Modern
+
+| STL | Qty | Reference size | Orientation on the plate |
+|---|---|---|---|
+| `modern_shade_asanoha.stl` | **1** | Ø100 × 218 mm | Upright, as exported. Use a brim if your slicer or material needs it. |
+| `modern_base.stl` | **1** | Ø100 × 90 mm nominal | **Inverted, as exported.** The mounting deck starts on the bed and the neck reaches the body through a 45-degree transition. |
+| `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 mm | Flat. The same E27/E14 adapter used by Classic. |
+
+Replace `asanoha` in the shade filename with `kikkou`, `mitsukude`, `kawari_asanoha`,
+`kagome`, `masu`, `masu_tsunagi`, `senbon`, `goma_gara`, `bishamon_kikkou` or
+`seigaiha`. A reference-size `modern_base.stl` and all eleven
+`modern_shade_<pattern>.stl` files are checked into `stl/`; custom sizes are generated or
+downloaded on demand. The supplied reference STLs used to establish the proportions are
+not copied into the repository.
+The configurator's part table, individual filenames, ZIP name and ZIP contents follow the
+selected style; a Modern download does not include Classic-only parts.
 
 **Seigaiha** (青海波, "blue sea wave") is the odd one among the kumiko: a field of curves
 rather than a straight lattice. Rows of overlapping fans, three concentric arcs apiece,
@@ -97,27 +143,35 @@ so the contours have to be baked in.
 pin (117 mm and 105 mm tall). Use them only if you would rather not print a 210 mm tall
 slender tower, or you are on a 180 mm-Z machine. Print 4 of each *instead of* `post.stl`.
 
-`assembly_preview.stl` is **not for printing** — it is the assembled lamp, for checking
-fit in a viewer.
+`assembly_preview.stl` is **not for printing** — a generator run writes the selected style
+with its print parts placed upright for checking fit in a viewer. The checked-in stock
+preview remains Classic; generate Modern into a separate `--out` directory when you want
+its preview.
 
 ![patterns](preview/patterns.png)
 
 ## Slicer settings (Bambu Studio)
 
+These are a safe starting point for either style; keep the exported orientations listed
+above.
+
 | | |
 |---|---|
 | Nozzle / layer | 0.4 mm / 0.2 mm — use 0.16 mm on the panels for a crisper lattice |
 | Wall loops | **4** — slats are 1.6 mm wide, exactly 4 × 0.4, so they come out fully solid with no infill inside them |
-| Infill | 15 % gyroid (only the frames, posts, base and cap ever see it) |
+| Infill | 15 % gyroid (only solid frames, posts, bases and the Classic cap ever see it) |
 | Supports | **Off** for every part |
 | Brim | 5 mm on the posts and panels; optional elsewhere |
 
-Rough filament: one full set is 1323 cm³ of solid volume (1641 g if it were 100 % dense).
+Rough Classic filament: one full set is 1323 cm³ of solid volume (1641 g if it were
+100 % dense).
 The panels and posts are effectively solid; the base and cap are slabs that infill
 hollows out considerably. At 15 % infill expect very roughly **700–800 g** — your
 slicer's estimate is the one to trust.
 
 ## Assembly
+
+### Classic
 
 1. Press the four **legs** into the blind sockets in the underside of the **base**.
 2. Drop the four **posts** into the corner sockets on top of the base.
@@ -131,7 +185,32 @@ clearances are 0.4 mm on the grooves, 0.3 mm on panel width and 0.35 mm on the l
 tenons. If your printer runs tight and the panels bind, raise `slot_clear` and reprint
 the posts — that is the one part you would need to redo.
 
-## Legs
+### Modern
+
+1. Fit the selected E27/E14 holder and `socket_adapter_ring.stl` to the mounting deck,
+   route its cord through the bottom outlet, and complete the wiring before fitting the
+   shade.
+2. Turn `modern_base.stl` upright after printing; it is exported upside-down only to keep
+   the mounting deck and male thread support-free.
+3. Add an optional paper liner inside the shade, keeping it clear of the bulb and vents.
+4. Lower the shade over the base neck and screw it down through the full 10 mm engagement.
+   Stop when the full engagement is reached; do not force or overtighten the printed thread.
+
+Unscrew the shade to change the bulb. The thread uses a 2 mm pitch, 0.8 mm radial depth and
+45° printable flanks. Its **radial** clearance slider spans 0.10 to 0.80 mm; the default
+0.30 mm is a starting point, not a universal fit:
+
+```bash
+python3 kumiko_lamp.py --style modern --thread-clearance 0.20  # tighter
+python3 kumiko_lamp.py --style modern --thread-clearance 0.30  # default
+python3 kumiko_lamp.py --style modern --thread-clearance 0.60  # looser
+```
+
+Start at 0.30 mm, then tune for the material, layer height and dimensional accuracy of your
+printer. The generator rejects settings that leave unsafe thread walls or mounting-deck
+thickness.
+
+## Classic legs
 
 The legs are separate parts rather than moulded onto the base, and that is deliberate:
 hung off the underside they would turn the whole 190 mm slab into an unsupported ceiling,
@@ -158,7 +237,7 @@ screw cavity. Start at 0.2 mm and tune the **Snap engagement** slider for your p
 material. PETG is preferred for repeated removal; PLA snaps are more brittle. No snap fit
 has been test-printed yet.
 
-## Screwing the cap down
+## Screwing the Classic cap down
 
 The cap is a friction fit and needs nothing else. If you would rather it could not be
 lifted off — a lamp that travels, or one somewhere a cat can reach — each post top can
@@ -189,7 +268,7 @@ within 3 mm of the post axis, so a 4 mm hole leaves a 1 mm wall — and that wal
 the insert's melt wants to bulge, into the groove face. `check_fits` refuses anything past
 two extrusions of wall, but if you want M4, widen the post to 20 mm first.
 
-## Diffuser
+## Classic diffuser
 
 The back of every panel is pocketed 0.6 mm deep, and the pocket runs out through the top
 edge. Slide a sheet of **shoji paper or vellum** down into it before you fit the cap.
@@ -226,9 +305,10 @@ You can still use paper as well; the 0.6 mm rebate is untouched.
 
 ## E27 / E14 holder
 
-The base has a Ø40 mm through-bore, a Ø50 × 4 mm counterbore around it, and a cord tunnel
-out through one side wall. The tunnel is enclosed, not open at the bottom, so the lamp
-sits flat and cannot rock on its own cord.
+Both styles reuse the same holder presets and stable `socket_adapter_ring.stl` filename.
+The Classic base has a Ø40 mm through-bore, a Ø50 × 4 mm counterbore around it, and an
+enclosed cord tunnel through one side wall. The Modern base puts the same bore and
+counterbore in its circular mounting deck and routes the cord through the bottom outlet.
 
 `socket_adapter_ring.stl` seats in the counterbore and is what your holder clamps
 against. The E27 preset keeps the original Ø26.5 mm bore; the E14 preset uses a Ø27 mm
@@ -247,18 +327,24 @@ python3 kumiko_lamp.py --holder e14 --socket-neck 27.5
 ```
 
 It is a 5 g, few-minute print, which is exactly why the fit lives in a separate part
-rather than in the base.
+rather than in either base. Select the same holder preset independently in Classic or
+Modern; a subsequent manual neck adjustment keeps the selected E27/E14 identity.
+The configurator's CLI echo includes `--holder` and also `--socket-neck` when you move the
+neck away from that holder's preset.
 
 ## Heat — please read
 
 **LED bulb only, 9 W maximum.** A filament or halogen bulb will soften and deform this
 lamp. PLA starts to go at around 60 °C.
 
-Ventilation is built in: 1640 mm² of open area through the cap grille and a 16-slot ring
-in the base under the bulb. That is sized for a cool-running LED and nothing more.
+Ventilation is built in. Classic has 1640 mm² of open area through the cap grille and a
+16-slot ring in the base under the bulb; Modern adapts that vent layout to its circular
+mounting deck and vents through the open lattice above. Both are sized for a cool-running
+LED and nothing more.
 
-I would **print the base and top cap in PETG** — they are the parts nearest the bulb, and
-PETG holds up to roughly 80 °C. PLA is fine for the panels and posts. All-PETG is fine too.
+I would **print either base, the Classic top cap and the Modern shade in PETG** — they are
+the parts nearest the bulb, and PETG holds up to roughly 80 °C. PLA is fine for the Classic
+panels and posts. All-PETG is fine too.
 
 Mains wiring is your responsibility. If you are not confident terminating a lamp holder,
 use a ready-made corded E27 or E14 socket rather than making one up.
@@ -269,19 +355,35 @@ Every dimension lives in the `Params` dataclass at the top of `kumiko_lamp.py`. 
 worth reaching for are on the command line:
 
 ```bash
-python3 kumiko_lamp.py --all                    # every pattern + both post styles
-python3 kumiko_lamp.py --pattern kikkou         # one pattern's part set
+python3 kumiko_lamp.py --all                    # Classic: all 14 patterns + both post styles
+python3 kumiko_lamp.py --style classic          # explicit form of the unchanged default
+python3 kumiko_lamp.py --pattern kikkou         # one Classic pattern's part set
 python3 kumiko_lamp.py --grid 20                # finer lattice
 python3 kumiko_lamp.py --size 150 --height 170  # smaller lamp (fits an A1 mini)
 python3 kumiko_lamp.py --slat 2.0               # chunkier slats (keep it a multiple of 0.4)
+python3 kumiko_lamp.py --panel-thickness 5      # thicker Classic panels
 python3 kumiko_lamp.py --edge-chamfer 0         # square off the base and cap edges
 python3 kumiko_lamp.py --diffuser-plate 1.2     # printed diffuser behind each lattice
+
+python3 kumiko_lamp.py --style modern           # Ø100 × 218 shade + 90 mm base
+python3 kumiko_lamp.py --style modern --all     # 11 shades + base/ring + assembly preview
+python3 kumiko_lamp.py --style modern --size 120 --height 240
+python3 kumiko_lamp.py --style modern --panel-thickness 5  # deeper radial lattice
+python3 kumiko_lamp.py --style modern --modern-base-height 100
+python3 kumiko_lamp.py --style modern --thread-clearance 0.35
+python3 kumiko_lamp.py --style modern --holder e14
 ```
 
-The base and cap carry a 2 mm 45° chamfer on all four perimeter edges. It is capped at
-the cord tunnel floor (2 mm by default — raise `cable_floor` for a deeper bevel) and, at
-4.8 mm, by the wall left around the post sockets; `check_fits` refuses anything past
-either.
+For Modern, `--size` is the cylinder diameter and `--height` is the shade height.
+`--panel-thickness` controls Classic panel thickness or Modern radial lattice depth; its
+default is 4 mm in either style. `--grid` and `--slat` keep their pattern-pitch and
+slat-width meanings. `--style` defaults to `classic`, so existing commands and generated
+Classic STLs remain unchanged.
+
+The Classic base and cap carry a 2 mm 45° chamfer on all four perimeter edges. It is
+capped at the cord tunnel floor (2 mm by default — raise `cable_floor` for a deeper bevel)
+and, at 4.8 mm, by the wall left around the post sockets; `check_fits` refuses anything
+past either.
 
 Adding a pattern means writing one `f(w, h, s) -> [segments]` function and registering it
 in `PATTERNS`. Two rules, both learned the hard way:
@@ -306,21 +408,25 @@ winding-rule slab decomposition, with T-junctions welded afterwards. The result:
 
 | Part | From the browser |
 |---|---|
-| `base`, `post`, `leg`, `socket_adapter_ring` | Single **watertight** shell, volume identical to the Python part |
-| `panel_*`, `top_cap` | One closed solid per slat, overlapping where slats cross |
+| `base`, `post`, `leg`, `socket_adapter_ring`, `modern_base` | Single **watertight** shell, volume matched to the Python part |
+| Downloaded `modern_shade_*` | Single **watertight** periodic cell-complex shell, including the female thread |
+| `panel_*`, `top_cap` and the lightweight live Modern preview | Closed lattice solids, overlapping where slats cross |
 
-There are **no open edges** in any of it — every edge is shared by an even number of
-faces. But in the lattices the shared ones sit on four faces rather than two, so a strict
-manifold check calls them non-manifold and your slicer may offer to repair them. Every
-slicer unions overlapping closed solids correctly, so they print as drawn.
+There are **no open edges** in the lightweight lattices — every edge is shared by an even
+number of faces. But at their crossings the shared ones sit on four faces rather than two,
+so a strict manifold check calls them non-manifold and your slicer may offer to repair
+them. Every slicer unions overlapping closed solids correctly, so Classic parts print as
+drawn.
 
-That is a deliberate trade. Decomposing the crossings into a single shell is exact, but
-costs eighteen times the triangles and takes seconds per change — measured, not guessed —
-which is no way to drive a slider. `kumiko_lamp.py` is the strictly-manifold path.
+That is a deliberate live-preview trade. Decomposing every Classic crossing into a single
+shell costs eighteen times the triangles and takes seconds per change — measured, not
+guessed — which is no way to drive a slider. Modern downloads instead use a cached periodic
+cell-complex boundary: it keeps the preview responsive while producing one face-connected
+Float32 STL body. `kumiko_lamp.py` remains the real-CSG path for every part.
 
-One consequence worth knowing: the volume the configurator reports for the panel and cap
-counts overlapping slats twice, so it reads a few percent high. The other three parts are
-exact.
+One consequence worth knowing: the volume shown for a live lattice preview counts
+overlapping slats twice, so it reads a few percent high. The downloaded Modern shade's
+strict mesh is checked separately against the Python volume.
 
 ## How this was checked
 
@@ -329,7 +435,8 @@ exact.
 - **Parameters**, before any geometry: panel width actually matches the post groove span,
   groove clearances come out as intended, slat width is a whole multiple of the nozzle,
   the cord tunnel does not break into the groove above it, post sockets do not burst out
-  of the side of the base.
+  of the side of the Classic base. Modern additionally checks its thread walls, clearance,
+  engagement, mounting deck, holder spacing and circular bed footprint.
 - **Every exported part, reloaded from its STL** — not the mesh in memory. Watertight,
   consistent winding, a single connected body, and inside the build volume. The round-trip
   through float32 with no shared-vertex index is exactly where defects show up.
@@ -339,16 +446,18 @@ exact.
 The configurator is checked the same way, headlessly: its geometry core runs in Node and
 is compared against the Python generator's measured volumes (`base` and `leg` match to
 0.00%, `post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat,
-across all thirteen segment patterns. The page
+across all thirteen segment patterns. Modern adds wrapped-seam, thread, volume and
+placement comparisons across its eleven supported Kumiko patterns. The page
 itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
-a deliberately unassemblable configuration to confirm it blocks rather than exports, and a
-real download whose bytes are loaded back as a mesh. The core is extracted from the
-shipped HTML for those tests, so what is verified is what ships.
+a deliberately unassemblable configuration to confirm it blocks rather than exports,
+Classic/Modern state switching, English/Thai labels, and a real download whose bytes are
+loaded back as a mesh. The core is extracted from the shipped HTML for those tests, so what
+is verified is what ships.
 
 What that does **not** cover is a test print — I have not run one. Shrinkage and your
 printer's dimensional accuracy are the remaining unknowns, and the joints are where they
-would show. If something binds, `slot_clear` / `panel_clear` / `socket_clear` are the
-three numbers to adjust — the configurator exposes all three.
+would show. For Classic, adjust `slot_clear` / `panel_clear` / `socket_clear`; for Modern,
+start with `modern_thread_clear` / `--thread-clearance`. The configurator exposes all four.
 
 ## Licence
 

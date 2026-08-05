@@ -27,6 +27,51 @@ function closure(tris) {
   return { closed: res < 1e-9, res };
 }
 
+/* Re-read the actual binary STL representation and pair edges by exact
+   float32 bit patterns.  This catches axis/seam coordinates which are equal in
+   intent but differ by a few machine epsilons before serialization. */
+function stlTopology(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = dv.getUint32(80, true), edges = new Map();
+  let degenerate = 0, signedVolume = 0;
+  const parent = Array.from({ length: count }, (_, i) => i);
+  const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
+  const join = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[b] = a; };
+  const vertex = o => dv.getUint32(o, true).toString(16) + ',' +
+                        dv.getUint32(o + 4, true).toString(16) + ',' +
+                        dv.getUint32(o + 8, true).toString(16);
+  const xyz = o => [dv.getFloat32(o, true), dv.getFloat32(o + 4, true),
+                    dv.getFloat32(o + 8, true)];
+  for (let i = 0; i < count; i++) {
+    const o = 84 + i * 50;
+    const v = [vertex(o + 12), vertex(o + 24), vertex(o + 36)];
+    const p = xyz(o + 12), q = xyz(o + 24), r = xyz(o + 36);
+    const ux = q[0] - p[0], uy = q[1] - p[1], uz = q[2] - p[2];
+    const vx = r[0] - p[0], vy = r[1] - p[1], vz = r[2] - p[2];
+    const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz,
+          cz = ux * vy - uy * vx;
+    if (cx * cx + cy * cy + cz * cz < 1e-18) degenerate++;
+    signedVolume += p[0] * (q[1] * r[2] - q[2] * r[1]) -
+                    p[1] * (q[0] * r[2] - q[2] * r[0]) +
+                    p[2] * (q[0] * r[1] - q[1] * r[0]);
+    for (let j = 0; j < 3; j++) {
+      const a = v[j], b = v[(j + 1) % 3];
+      const key = a < b ? a + '|' + b : b + '|' + a;
+      if (!edges.has(key)) edges.set(key, []);
+      edges.get(key).push({ face: i, a, b });
+    }
+  }
+  let nonTwo = 0, sameDirection = 0;
+  for (const uses of edges.values()) {
+    if (uses.length !== 2) { nonTwo++; continue; }
+    join(uses[0].face, uses[1].face);
+    if (uses[0].a !== uses[1].b || uses[0].b !== uses[1].a)
+      sameDirection++;
+  }
+  return { nonTwo, sameDirection, degenerate, signedVolume: signedVolume / 6,
+           components: new Set(parent.map((_, i) => find(i))).size };
+}
+
 // ---------------------------------------------------------------- run
 console.log('parameters');
 const P = K.derive({});
@@ -114,6 +159,89 @@ check(K.checkFits(K.derive({ snapEngagement: -0.05 })).length > 0,
       'negative snap engagement rejected');
 check(K.checkFits(K.derive({ snapEngagement: 0.2, legTenon: 4 })).length > 0,
       'snap tenon without a printable flexure opening rejected');
+
+console.log('\nmodern parameters and guards');
+const MODERN = K.derive({ lanternStyle: 'modern', size: 100, height: 218 });
+check(MODERN.lanternStyle === 'modern' && MODERN.totalHeight === 298,
+      'Modern preset assembles to 100 x 298 mm');
+check(Math.abs(MODERN.modernOpenW - Math.PI * 100) < 1e-9 &&
+      MODERN.modernOpenH === 198,
+      'Modern field develops over the 100 mm circumference and between 10 mm rings');
+check(Math.abs(MODERN.modernThreadCoreR - 45.2) < 1e-9 &&
+      Math.abs(MODERN.modernThreadCrestR - 46) < 1e-9 &&
+      Math.abs(MODERN.modernFemaleThreadR - 45.5) < 1e-9 &&
+      Math.abs(MODERN.modernThreadWall - 3.7) < 1e-9,
+      'Modern male and female thread radii carry 0.30 mm radial clearance');
+check(Math.abs(MODERN.modernShoulderH - 4.8) < 1e-9 &&
+      Math.abs(MODERN.modernShoulderZ - 75.2) < 1e-9 &&
+      Math.abs(MODERN.modernShoulderH -
+               (MODERN.modernOuterR - MODERN.modernThreadCoreR)) < 1e-9,
+      'Modern base contracts to its thread root on a 45-degree shoulder');
+const modernCableEdgeY = -Math.sqrt(
+  MODERN.modernCavityR ** 2 - (MODERN.cableW / 2) ** 2);
+check(Math.abs(MODERN.modernCavityR - 45) < 1e-9 &&
+      Math.abs(MODERN.modernCableInnerY + 36) < 1e-9 &&
+      MODERN.modernCableInnerY > modernCableEdgeY,
+      'Modern cord outlet carries its full width into the hollow base');
+check(K.checkFits(MODERN).length === 0, 'Modern nominal parameters pass checkFits');
+for (const clear of [0.2, 0.3, 0.6])
+  check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                               modernThreadClear: clear })).length === 0,
+        `Modern ${clear.toFixed(2)} mm thread clearance passes`);
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             modernThreadClear: 0.05 })).length > 0,
+      'Modern thread clearance under 0.10 mm rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             modernThreadClear: 3.3 })).length > 0,
+      'Modern thread clearance that leaves a thin shade wall rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             pattern: 'kranok_kan_khot' })).length > 0,
+      'Modern mode rejects Lai Thai instead of substituting a pattern');
+check((() => { try { K.buildModernShade(MODERN, 'thai_rosette'); return false; }
+                 catch (_) { return true; } })(),
+      'Modern shade builder rejects a Lai Thai region directly');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 80, height: 218 })).length > 0,
+      'Modern diameter that collides with vents and thread rejected');
+const ventCorner = K.derive({ lanternStyle: 'modern', size: 85.4, height: 218 });
+check(Math.abs(ventCorner.modernVentCornerR - 37.20368763798631) < 1e-9,
+      'Modern vent guard derives the tangential slot corner radius');
+check(K.checkFits(ventCorner).some(m => /ventilation slots run into/.test(m)),
+      'Modern size 85.4 rejects the vent corner that reaches the neck wall');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 85.8,
+                             height: 218 })).length === 0,
+      'Modern size 85.8 clears the complete vent corner');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             baseVentR0: 38, baseVentR1: 37 })).length > 0,
+      'Modern inverted ventilation radii rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             nozzle: 0 })).some(m => /Nozzle diameter/.test(m)),
+      'non-positive nozzle rejected before geometry');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             arc: 23 })).some(m => /Circle resolution/.test(m)),
+      'circular resolution below 24 segments rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 22 })).length > 0,
+      'Modern shade too short for its rings rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             modernBaseH: 26 })).length > 0,
+      'Modern base too short for its deck and thread rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             modernBaseH: 14, baseT: 1 }))
+        .some(m => /too short for its 45-degree shoulder/.test(m)),
+      'Modern base without room for its 45-degree shoulder rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             modernBaseH: 20, baseT: 5, panelT: 7 }))
+        .some(m => /shoulder reaches the cable outlet/.test(m)),
+      'Modern shoulder is kept clear of the cable outlet');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             baseT: 5 }))
+        .some(m => /shoulder leaves under two walls/.test(m)),
+      'Modern shoulder with a thin wall above the hollow body rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             panelT: 0.4 })).length > 0,
+      'Modern lattice under two extrusions rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             socketNeck: 49 })).length > 0,
+      'Modern holder bore with a thin adapter wall rejected');
 
 console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
@@ -279,6 +407,136 @@ for (const [name, want] of Object.entries(SNAP_PY)) {
   const ok = name === 'top_cap' ? (err > -0.5 && err < 5) : Math.abs(err) < 1.5;
   check(ok, `snapped ${name} volume ${got.toFixed(1)} cm3`,
         `python ${want} (${err > 0 ? '+' : ''}${err.toFixed(2)}%)`);
+}
+
+console.log('\nmodern parts and assembly');
+const modern = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218 });
+check(modern.problems.length === 0 && modern.parts.length === 3,
+      'Modern build produces shade, base, and adapter');
+check(modern.parts.map(p => p.id).join(',') ===
+      'modern_shade_asanoha,modern_base,socket_adapter_ring',
+      'Modern printable filenames are stable', modern.parts.map(p => p.id).join(','));
+check(modern.parts.every(p => p.fits), 'all nominal Modern parts fit the 256 mm bed');
+check(modern.parts[0].bbox.size.every((v, i) =>
+        Math.abs(v - [100, 100, 218][i]) < 1e-6),
+      'Modern shade bbox is 100 x 100 x 218 mm',
+      modern.parts[0].bbox.size.map(v => v.toFixed(1)).join(' x '));
+check(modern.parts[1].bbox.size.every((v, i) =>
+        Math.abs(v - [100, 100, 90][i]) < 1e-6),
+      'Modern base bbox is 100 x 100 x 90 mm',
+      modern.parts[1].bbox.size.map(v => v.toFixed(1)).join(' x '));
+for (const p of modern.parts) {
+  const c = closure(p.mesh.tris);
+  check(c.closed, `Modern ${p.id} surface closed`, `normal residual ${c.res.toExponential(1)}`);
+}
+const MODERN_PY = { modern_shade_asanoha: 117.64, modern_base: 179.92,
+                    socket_adapter_ring: 5.52 };
+for (const p of modern.parts) {
+  const got = p.vol / 1000, want = MODERN_PY[p.id], err = (got - want) / want * 100;
+  /* Browser slats remain overlapping closed prisms, so only the shade is an
+     intentional upper bound; the two strictly modelled solids match closely. */
+  const ok = p.id.indexOf('modern_shade_') === 0
+    ? err > 0 && err < 20 : Math.abs(err) < 1.5;
+  check(ok, `Modern ${p.id} volume ${got.toFixed(1)} cm3`,
+        `python ${want.toFixed(1)} (${err > 0 ? '+' : ''}${err.toFixed(2)}%` +
+        (p.id.indexOf('modern_shade_') === 0 ? ', lattice bound' : '') + ')');
+}
+
+console.log('\nstrict Modern shade downloads');
+const STRICT_MODERN_PY = {
+  asanoha: 117.61, mitsukude: 72.03, kikkou: 55.91,
+  kawari_asanoha: 103.79, kagome: 69.60, masu: 52.14,
+  masu_tsunagi: 90.65, senbon: 77.37, goma_gara: 111.33,
+  bishamon_kikkou: 69.76, seigaiha: 98.80
+};
+for (const [name, want] of Object.entries(STRICT_MODERN_PY)) {
+  const started = Date.now();
+  const SP = K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                        pattern: name });
+  const strict = K.buildStrictModernShade(SP, name);
+  const strictBox = K.bbox(strict.tris);
+  const strictBytes = K.stlBinary(strict.tris);
+  const topology = stlTopology(strictBytes);
+  const got = topology.signedVolume / 1000;
+  const err = (got - want) / want * 100;
+  check(strict.manifold && topology.nonTwo === 0 &&
+        topology.sameDirection === 0 && topology.degenerate === 0 &&
+        topology.components === 1 && topology.signedVolume > 0,
+        `strict ${name} is one positive float32-watertight body`,
+        `${strict.tris.length/9} tris, ${Date.now() - started} ms`);
+  check(strictBox.size.every((v, i) =>
+          Math.abs(v - [100, 100, 218][i]) < 1e-5),
+        `strict ${name} bbox is exactly nominal`,
+        strictBox.size.map(v => v.toFixed(5)).join(' x '));
+  check(strict.raster.nu % 4 === 0 &&
+        strict.raster.chordError <= 0.1 + 1e-12,
+        `strict ${name} wrap respects chord error`,
+        `${strict.raster.nu} columns, ${strict.raster.chordError.toFixed(5)} mm`);
+  check(Math.abs(err) < 4,
+        `strict ${name} volume ${got.toFixed(2)} cm3`,
+        `python ${want.toFixed(2)} (${err > 0 ? '+' : ''}${err.toFixed(2)}%)`);
+}
+
+for (const variant of [
+  { pattern: 'masu', modernThreadClear: 0.2, label: '0.20 mm clearance' },
+  { pattern: 'masu', modernThreadClear: 0.6, label: '0.60 mm clearance' },
+  { pattern: 'kikkou', slatW: 0.8, label: '0.8 mm slat' }
+]) {
+  const VP = K.derive(Object.assign({ lanternStyle: 'modern', size: 100,
+                                      height: 218 }, variant));
+  const vm = K.buildStrictModernShade(VP, variant.pattern);
+  const vt = stlTopology(K.stlBinary(vm.tris));
+  check(K.checkFits(VP).length === 0 && vt.nonTwo === 0 &&
+        vt.sameDirection === 0 && vt.degenerate === 0 &&
+        vt.components === 1 && vt.signedVolume > 0,
+        `strict Modern export supports ${variant.label}`,
+        `${vm.tris.length/9} tris`);
+}
+const modernBaseTopology = stlTopology(K.stlBinary(modern.parts[1].mesh.tris));
+check(modernBaseTopology.nonTwo === 0 &&
+      modernBaseTopology.sameDirection === 0 &&
+      modernBaseTopology.components === 1,
+      'Modern base STL is one consistently wound float32 shell',
+      JSON.stringify(modernBaseTopology));
+for (const depth of [4.4, 7]) {
+  const deepP = K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                           panelT: depth });
+  const deepBase = K.buildModernBase(deepP);
+  const deepTopology = stlTopology(K.stlBinary(deepBase.tris));
+  check(K.checkFits(deepP).length === 0 && K.volume(deepBase.tris) > 0 &&
+        deepTopology.nonTwo === 0 && deepTopology.sameDirection === 0 &&
+        deepTopology.components === 1,
+        `Modern ${depth.toFixed(1)} mm lattice keeps a positive one-shell base`,
+        JSON.stringify(deepTopology));
+}
+const modernBaseAsm = modern.assembly.find(p => p.name === 'modern_base');
+const modernShadeAsm = modern.assembly.find(p => p.name === 'modern_shade');
+const modernAdapterAsm = modern.assembly.find(p => p.name === 'adapter');
+check(Math.abs(K.bbox(modernBaseAsm.tris).lo[2]) < 1e-9 &&
+      Math.abs(K.bbox(modernBaseAsm.tris).hi[2] - 90) < 1e-9,
+      'Modern base displays upright in assembly');
+check(Math.abs(K.bbox(modernShadeAsm.tris).lo[2] - 80) < 1e-9 &&
+      Math.abs(K.bbox(modernShadeAsm.tris).hi[2] - 298) < 1e-9,
+      'Modern shade overlaps its base thread by 10 mm');
+check(Math.abs(K.bbox(modernAdapterAsm.tris).lo[2] - 86) < 1e-9 &&
+      Math.abs(K.bbox(modernAdapterAsm.tris).hi[2] - 90) < 1e-9,
+      'Modern holder adapter seats flush in the top counterbore');
+const modernE14 = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
+                               holderType: 'e14' });
+check(modernE14.parts[2].label === 'E14 adapter ring' &&
+      modernE14.P.socketNeck === 27,
+      'Modern E14 uses the 27 mm sleeve preset and stable adapter part');
+check(K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
+                   bedZ: 200 }).parts === null,
+      'Modern export blocks when the shade exceeds build height');
+const modernCounts = { asanoha:982, mitsukude:348, kikkou:221,
+  kawari_asanoha:774, kagome:600, masu:18, masu_tsunagi:706, senbon:40,
+  goma_gara:422, bishamon_kikkou:512, seigaiha:2416 };
+for (const [name, count] of Object.entries(modernCounts)) {
+  const r = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
+                         pattern: name });
+  check(r.problems.length === 0 && r.slats === count,
+        `Modern wraps ${name}: ${r.slats} slats`, `expected ${count}`);
 }
 
 console.log('\nvariations');

@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A parametric generator for a 3D-printable kumiko lantern. It ships **two independent
-implementations of the same solid geometry** plus the STLs they produce. The repo root is
-`kumiko-lamp/` (the git repo), not the parent directory.
+A parametric generator for a 3D-printable kumiko lantern with two styles: the original
+square **Classic** and a threaded two-part cylindrical **Modern**. It ships **two
+independent implementations of the same solid geometry** plus the STLs they produce. The
+repo root is `kumiko-lamp/` (the git repo), not the parent directory.
 
 ## Commands
 
@@ -14,14 +15,21 @@ implementations of the same solid geometry** plus the STLs they produce. The rep
 pip install -r requirements.txt
 
 # Generator. Also the Python test suite: it validates every part and exits 1 on any problem.
-python3 kumiko_lamp.py --all              # every pattern, both post styles, all previews
+python3 kumiko_lamp.py --all              # Classic: every pattern, both post styles, previews
 python3 kumiko_lamp.py --pattern kikkou   # one pattern's part set
 python3 kumiko_lamp.py --size 150 --height 170 --grid 20 --slat 2.0 --socket-neck 23.5
+python3 kumiko_lamp.py --panel-thickness 5      # Classic panel / Modern radial depth
 python3 kumiko_lamp.py --diffuser-plate 1.2 --edge-chamfer 1.5
 python3 kumiko_lamp.py --post-insert 4.0        # M3 inserts, screws, finials
 python3 kumiko_lamp.py --holder e14             # 27 mm E14 sleeve preset
 python3 kumiko_lamp.py --snap-lock              # 0.2 mm foot + finial detents
+python3 kumiko_lamp.py --style modern            # reference cylindrical lamp
+python3 kumiko_lamp.py --style modern --all      # 11 shades + base/ring + assembly preview
+python3 kumiko_lamp.py --style modern --size 120 --height 240 --modern-base-height 100
+python3 kumiko_lamp.py --style modern --holder e14 --thread-clearance 0.35
 python3 render_preview.py                 # optional PNG previews, needs matplotlib
+python3 -m py_compile kumiko_lamp.py
+git diff --check
 
 # Configurator tests (from web/)
 node extract.js && node core.test.js ./extracted.js      # geometry core vs Python's numbers
@@ -30,7 +38,7 @@ npm install --no-save playwright && node page.test.js    # the real page in head
 
 There is no test framework and no single-test selector — each script is one all-or-nothing
 run that prints `OK`/`FAIL` lines and exits non-zero on failure. To narrow a Python run, use
-`--pattern` instead of `--all`.
+`--pattern` instead of `--all`; add `--style modern` to exercise the cylindrical path.
 
 Docs say `python3` (correct for Linux/macOS, and what the shebangs use). **On Windows the
 interpreter is `python`** — `python3` resolves to the Microsoft Store shim and fails.
@@ -45,7 +53,7 @@ platforms.
 | | [kumiko_lamp.py](kumiko_lamp.py) | [web/index.html](web/index.html) |
 |---|---|---|
 | Geometry | Real CSG (`trimesh` + `manifold3d`) | Winding-rule horizontal-slab decomposition, T-junctions welded after |
-| Output | Strictly manifold single shells | Watertight for base/post/ring; lattices are overlapping closed solids |
+| Output | Strictly manifold single shells | Watertight structural parts and strict Modern shade downloads; Classic/live-preview lattices are overlapping closed solids |
 | Params | `Params` dataclass | `DEFAULTS` + `derive()` |
 | Validation | `check_fits()` | `checkFits()` — a direct port, same messages |
 
@@ -55,10 +63,59 @@ enforces it: it hardcodes the Python generator's measured volumes and per-patter
 intentionally change Python geometry, re-run `kumiko_lamp.py` and update those constants —
 they are the contract between the two paths, not incidental fixtures.
 
-The four sides are only *placements*, in both implementations (`place_parts`, the
-browser's `assemble`). All four are identical, so per-side variation is not expressible
-and adding it would fork `slot_w` per side and make the four posts non-identical — each
-post serves two adjacent sides.
+## Classic and Modern styles
+
+`lantern_style` / `lanternStyle` selects the geometry and defaults to `classic`. Keep the
+entire Classic path conditional and byte-identical: selecting Modern must not change any
+Classic default, part, filename or checked-in artifact. In the configurator the two style
+tabs keep separate in-session settings; switching styles hides irrelevant groups without
+discarding their values. Every tab, group, part label, note and validation message needs
+both English and Thai text.
+
+Modern reuses `size` as cylinder diameter, `height` as shade height and `panel_t` /
+`panelT` as radial lattice depth. `--panel-thickness` controls that shared value: Classic
+panel thickness in Classic mode and radial lattice depth in Modern mode. The browser
+relabels the same `panelT` slider for the active style and its CLI echo must emit
+`--panel-thickness` for any non-default value. Its additional public parameters are
+`modern_base_h` /
+`modernBaseH` (90 mm) and `modern_thread_clear` / `modernThreadClear` (0.30 mm), exposed as
+`--modern-base-height` and `--thread-clearance`. `--style {classic,modern}` is the only
+style selector. `--style modern --all` emits one Modern base, the stable adapter ring, all
+eleven Kumiko shades and the non-printable assembly preview; Classic `--all` continues to
+emit all fourteen patterns and both post styles.
+
+The reference Modern geometry is a Ø100 × 218 mm shade over a 90 mm hollow base. The base
+has a 5 mm wall, circularly adapted ventilation, the existing Ø40/50 mm holder bore and
+counterbore, and a bottom cable outlet. The shade has 10 mm upper and lower rings and wraps
+the selected periodic line pattern around the circumference. Subdivide mapped segments as
+needed to keep the cylindrical chord error at or below 0.1 mm, split at the angular seam
+and weld the seam vertices. Only patterns whose family is `kumiko` are valid: the three
+panel-sized Lai Thai compositions
+must produce a validation error, never a fallback pattern.
+
+The base's full-radius body ends at `modern_shoulder_z`; from there it contracts at 45
+degrees to `modern_thread_root_r` at the bottom of the 10 mm threaded neck. Derive
+`modern_shoulder_h` as `modern_outer_r - modern_thread_root_r`, so the inverted print grows
+from the neck to the body without a horizontal cantilever. Validate both positive shoulder
+height and at least two nozzle-width walls wherever the hollow cavity reaches the taper.
+
+The removable joint is a 10 mm-long printed thread with 2 mm pitch, 0.8 mm radial depth,
+45° flanks and the configurable radial clearance. It places the shade 10 mm over the base
+neck, making the reference assembly 298 mm high. Keep the base model upright in assembly
+space but export `modern_base.stl` inverted for support-free printing. Modern outputs are
+`modern_base.stl` and `modern_shade_<pattern>.stl`; the reference base and all eleven
+reference shades are checked in, but the source comparison STLs are not.
+
+Both implementations must reject unsafe thread walls/clearance/engagement, a thin mounting
+deck, holder conflicts, bad wrapped seams and bed overflow before export. Test the thread at
+0.20, 0.30 and 0.60 mm, E27 and E14, single-pattern and `--all` generation, assembled and
+exploded placement, and STL round-trips. Hash all existing Classic artifacts before and
+after regeneration: adding the style switch is not permission to rewrite them.
+
+The Classic lamp's four sides are only *placements*, in both implementations
+(`place_parts`, the browser's `assemble`). All four are identical, so per-side variation
+is not expressible and adding it would fork `slot_w` per side and make the four posts
+non-identical — each post serves two adjacent sides.
 
 **`slot_w` is capped by the post, not by the panel.** The post carries its two grooves as
 notches reaching in to `post/2 - groove_d`; once a notch is half as wide as the material
@@ -119,9 +176,10 @@ A new **part id** is two more places than you expect: `partLabels` and `partNote
 `renderParts` are keyed by it, and a miss renders `undefined.stl · undefined` in Thai. A
 new **slider group** is a third: its name and every label need a `TH` entry.
 
-The browser's panel and cap volumes read a few percent **high** by design (overlapping slats
-are double-counted by the divergence theorem), so `core.test.js` bounds them rather than
-matching them, and the panel is not volume-compared at all.
+The browser's panel, cap and live Modern-preview volumes read a few percent **high** by
+design (overlapping slats are double-counted by the divergence theorem), so
+`core.test.js` bounds them rather than matching them. The strict Modern download mesh has
+its own Float32 topology and Python-volume checks.
 
 ## index.html structure
 
@@ -136,21 +194,25 @@ One self-contained file, no build step, no network. Two scripts:
 test break.
 
 Adding a parameter means three places: `Params` in Python, `DEFAULTS`/`derive()` in the core,
-and the `GROUPS` slider table in the app ([index.html:1378](web/index.html#L1378)).
+and the `GROUPS` slider table in the app ([index.html:1378](web/index.html#L1378)). Style
+visibility, CLI echo, dimensions, preview assembly, part downloads and ZIP contents also
+branch on `lanternStyle`; cover each branch when adding a style-specific parameter.
 
 `derive()` coerces every key with unary `+`, and the app copies `DEFAULTS` into `state`
-key by key. **A non-numeric parameter needs an explicit escape hatch** next to the one
-`pattern` and `holderType` already have, and an array default would alias `DEFAULTS` into `state` and be
-mutated in place.
+key by key. **A non-numeric parameter needs an explicit escape hatch** next to the ones
+`pattern`, `holderType` and `lanternStyle` have, and an array default would alias `DEFAULTS`
+into `state` and be mutated in place.
 
 `holderType` is metadata plus a starting point, not a claim that Edison screw size fixes
-the mounting neck. `HOLDER_PRESETS` changes only `socket_neck` / `socketNeck`; the base
-bore and counterbore stay common, and the manual neck override always wins.
+the mounting neck. `HOLDER_PRESETS` changes only `socket_neck` / `socketNeck`; the Classic
+and Modern bases share the bore, counterbore and stable adapter-ring filename, and the
+manual neck override always wins.
 
 `GROUPS` items are positional 6-tuples rendered as `input[type=range]` — the **only**
 control type in the file. Anything else is a one-off flag on the group (`style:` for the
-pattern picker) handled by its own block in `buildRail`. A slider whose `0` means *off*
-is how an on/off parameter is expressed without inventing a control — see `plateT`.
+pattern picker, plus the Lantern style tabs) handled by its own block in `buildRail`. A
+slider whose `0` means *off* is how an on/off parameter is expressed without inventing a
+control — see `plateT`.
 
 ## Adding a pattern
 
@@ -177,6 +239,13 @@ the tab strip in the rail, which is generated, so a new family needs no UI code)
 `PATTERN_CAP_SAFE`, built from the `CAP_UNSAFE` list. The cap clips its field to a disc and
 `check_part` requires one body; a lattice always survives that, a curve need not. Name a
 pattern in `CAP_UNSAFE` and `cap_pattern()` / `capPattern()` swaps in `CAP_FALLBACK`.
+
+`PATTERN_FAMILY` also gates Modern: only `kumiko` segment patterns can wrap around the
+cylinder. A `laithai` selection in Modern is an invalid configuration, not a request to
+use `CAP_FALLBACK`. A new Kumiko pattern must therefore pass both the flat Classic panel
+and cylindrical seam tests. Subdivide the circumferential mapping for 0.1 mm maximum chord
+error, clip/split at the seam and weld after tessellation so the exported shade has no open
+edge there.
 
 **A curve pattern can still be a tile.** `seigaiha` is the first: a periodic field of arcs
 rather than a lattice, so it overshoots and clips like any tile, and it is cap-safe. What
@@ -242,7 +311,12 @@ Non-obvious, and worth knowing before optimising the wrong thing:
   1.7 M triangles, 49 s). It builds the frame, base and cap plate only.
 
 So a curved pattern is cheap in a panel and would be ruinous if anyone routed it through the
-slab extruder. Benchmark the path the part actually takes.
+slab extruder. Keep the Modern live preview on its dedicated wrapped-slat path. Its STL/ZIP
+export uses a separate cached periodic theta/Z cell complex: slats are rasterized at no
+more than half their width (0.8 mm at the reference settings), diagonal-only cell
+contacts are conservatively filled, and only the boundary of the connected radial shell is
+emitted. The circumferential grid must also satisfy the 0.1 mm chord-error limit and reuse
+the same cached vertices across its periodic seam.
 
 ## Tapered walls in `extrudeStack`
 
@@ -279,14 +353,23 @@ the mitred corner.
 - The cap is modelled joinery-up but **exported flipped** (`_rotx(180)`), because it must
   print the other way up to avoid supports. The browser mirrors this via
   `capPrintTransform()`.
-- The browser's non-manifold lattices are a **measured trade**, not a bug: a single-shell
-  decomposition of the crossings costs ~18x the triangles and seconds per slider move. Do not
-  "fix" it — `kumiko_lamp.py` is the strictly-manifold path.
+- The Modern base follows the same separation of concerns: model and assemble it upright,
+  then apply its print transform only when exporting so the mounting deck and male thread
+  print support-free. Never reuse the print transform in assembled clearance checks.
+- The browser's non-manifold Classic/live-preview lattices are a **measured trade**, not a
+  bug: a slab decomposition of the crossings costs ~18x the triangles and seconds per
+  slider move. Modern downloads solve that separately with the periodic cell-complex
+  exporter; `kumiko_lamp.py` remains the exact CSG path.
 
 ## Generated artifacts
 
-`stl/` and `preview/` are checked in and are outputs of `python3 kumiko_lamp.py --all`. Do not
-hand-edit them; regenerate.
+`stl/` and `preview/` are checked in generated outputs. Classic artifacts come from
+`python3 kumiko_lamp.py --all`. Regenerate Modern with `--style modern --all --out` pointed
+at a temporary directory, then bring back **only** `modern_base.stl` and the eleven
+`modern_shade_<pattern>.stl` files. Its stable adapter ring should match the existing file,
+and its style-specific `assembly_preview.stl` is for inspection, not for replacing the
+checked-in Classic preview. Do not hand-edit generated files. Verify all stock Classic
+hashes are unchanged and the twelve checked-in Modern STLs byte-match fresh output.
 
 ## Git Rules (Important — Follow every time)
 
