@@ -3,3 +3,5 @@ __pycache__/
 extracted.js
 node_modules/
 debug.log
+dist/
+.wrangler/

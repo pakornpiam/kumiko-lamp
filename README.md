@@ -496,6 +496,21 @@ printer's dimensional accuracy are the remaining unknowns, and the joints are wh
 would show. For Classic, adjust `slot_clear` / `panel_clear` / `socket_clear`; for Modern,
 start with `modern_thread_clear` / `--thread-clearance`. The configurator exposes all four.
 
+## Hosting it
+
+The configurator is one self-contained file, so hosting it is copying that file:
+
+```bash
+mkdir -p dist && cp web/index.html dist/
+```
+
+That is the entire build. It assembles `dist/` rather than publishing `web/`, which also
+carries `extract.js` and the two test scripts. This repo deploys to Cloudflare Pages from
+`main`; `wrangler.toml` names the output directory.
+
+The page makes **no network request at all** — no CDN, no webfont, no external image, and
+a `data:` URI favicon — so it works equally from `file://`, a static host, or a USB stick.
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE). Print it, sell prints of it, fork it, change it.

@@ -1,0 +1,13 @@
+# Cloudflare Pages. The site is one self-contained file -- web/index.html makes
+# no external request at all -- so the build is a copy, set as the project's
+# build command in the dashboard:
+#
+#     mkdir -p dist && cp web/index.html dist/
+#
+# It has to assemble dist/ rather than publish web/ directly: web/ also holds
+# extract.js and the two test scripts, which have no business being served.
+#
+# Only the output directory lives here; Pages takes the build command from the
+# dashboard, not from this file.
+name = "kumiko-lamp"
+pages_build_output_dir = "dist"

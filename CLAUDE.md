@@ -35,6 +35,9 @@ git diff --check
 # Configurator tests (from web/)
 node extract.js && node core.test.js ./extracted.js      # geometry core vs Python's numbers
 npm install --no-save playwright && node page.test.js    # the real page in headless Chromium
+
+# Deploy (Cloudflare Pages, project kumiko-lamp, built from GitHub on push to main)
+mkdir -p dist && cp web/index.html dist/                 # the entire build
 ```
 
 There is no test framework and no single-test selector — each script is one all-or-nothing
@@ -43,6 +46,24 @@ run that prints `OK`/`FAIL` lines and exits non-zero on failure. To narrow a Pyt
 
 Docs say `python3` (correct for Linux/macOS, and what the shebangs use). **On Windows the
 interpreter is `python`** — `python3` resolves to the Microsoft Store shim and fails.
+
+## Deploying
+
+Cloudflare Pages project `kumiko-lamp`, connected to this GitHub repo: a push to `main`
+deploys. `wrangler.toml` holds only `pages_build_output_dir`; the build command lives in
+the dashboard. The build **must** assemble `dist/` rather than publish `web/`, which also
+carries `extract.js` and the two test scripts.
+
+`web/index.html` is the whole site and makes **no network request at all** — verified by
+serving it and watching the request log, where the only entry is the document itself. Keep
+it that way: no CDN, no webfont, no external image. The favicon is a `data:` URI for
+exactly this reason.
+
+**There is no doctype, on purpose.** The page renders in quirks mode (`document.compatMode`
+is `BackCompat`) and the entire stylesheet was written and measured there; adding one flips
+it to standards mode and moves the layout. The `<head>` does carry `charset` and `viewport`
+— without the first the Thai UI depends on the server sending a charset, and without the
+second a phone lays out at ~980px and none of the responsive CSS below 940px ever runs.
 
 `node page.test.js` takes the browser binary from `PW_CHROMIUM` if that is set, and
 otherwise uses whatever `playwright install chromium` downloaded
