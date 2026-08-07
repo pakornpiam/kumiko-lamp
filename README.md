@@ -505,12 +505,34 @@ mkdir -p dist && cp web/index.html dist/
 ```
 
 That is the entire build. It assembles `dist/` rather than publishing `web/`, which also
-carries `extract.js` and the two test scripts. This repo deploys to a Cloudflare Worker
+carries `extract.js` and the test scripts. This repo deploys to a Cloudflare Worker
 with static assets on every push to `main`; `wrangler.toml` points at `dist/`.
 
-The page makes **no network request at all** — no CDN, no webfont, no external image, and
-a `data:` URI favicon — so it works equally from `file://`, a static host, or a USB stick.
+The page loads with **no network request but its own document** — no CDN, no webfont, no
+external image, and a `data:` URI favicon. Opened from `file://` it previews, validates and
+prices the whole lamp; only downloading needs the server.
+
+## Downloads
+
+Preview, validation and the print list are free. **Downloads are built server-side by
+`kumiko_lamp.py` and need a subscription.**
+
+That is not a padlock on the browser's own output — it is a different artifact. The
+browser's Classic lattices are non-manifold overlapping solids, a deliberate trade so the
+sliders stay live (see [Manifold-ness](#manifold-ness)). The download is the real CSG
+path: strictly manifold shells, reloaded from the STL and checked before they are sent.
+If a configuration builds a part that is not watertight, the server refuses it and says
+which part rather than shipping something that will not slice.
+
+Three pieces, all in this repo: `container/` runs the generator, `worker/` owns sign-in
+and entitlement, and `web/index.html` is the app. The container is never routed publicly.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Print it, sell prints of it, fork it, change it.
+**Proprietary from commit `5ea4957`** — see [LICENSE](LICENSE).
+
+**Commit `3b8d8d5` and everything before it stays MIT, permanently.** A licence
+already granted cannot be withdrawn, so any copy or fork taken at or before that point
+keeps full MIT rights forever, for any purpose including commercial — that covers the
+browser-side generator in `web/index.html`, all of `kumiko_lamp.py`, and the 36 STLs in
+`stl/`. The change binds future versions only.

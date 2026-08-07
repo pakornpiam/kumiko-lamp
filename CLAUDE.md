@@ -34,7 +34,13 @@ git diff --check
 
 # Configurator tests (from web/)
 node extract.js && node core.test.js ./extracted.js      # geometry core vs Python's numbers
-npm install --no-save playwright && node page.test.js    # the real page in headless Chromium
+npm install --no-save playwright && node page.test.js    # the real page, over http, stubbed API
+
+# Paid export path (needs both halves up; export.test.js skips loudly if not)
+python container/server.py                               # PORT=8901
+npx wrangler dev --local --port 8913 --var EXPORT_ORIGIN:http://127.0.0.1:8901 \
+  --var DEV_ECHO_MAGIC_LINK:1 --var STRIPE_WEBHOOK_SECRET:whsec_test123
+node export.test.js                                      # byte-level guarantees
 
 # Deploy (Cloudflare Worker kumiko-lamp, built from GitHub on push to main)
 mkdir -p dist && cp web/index.html dist/                 # the entire build
@@ -47,6 +53,49 @@ run that prints `OK`/`FAIL` lines and exits non-zero on failure. To narrow a Pyt
 
 Docs say `python3` (correct for Linux/macOS, and what the shebangs use). **On Windows the
 interpreter is `python`** — `python3` resolves to the Microsoft Store shim and fails.
+
+## The paid export path
+
+**The browser no longer produces STLs.** Export posts the slider set to `/api/export`; the
+CSG generator builds it and the server refuses anything `check_part` rejects. That refusal
+is the product: the page's own Classic lattices are non-manifold by design, so they were
+never what anyone should print.
+
+Three surfaces, and the split is load-bearing. `container/` knows geometry and nothing
+about payment; `worker/` knows entitlement and nothing about geometry; the container is
+never routed publicly, so the Worker is the only way to reach it.
+
+- **The container shells out to `kumiko_lamp.py`** rather than importing it, so the whole
+  tested sequence — `check_fits`, `emit`, `check_part`, the clearance pass, the exit code —
+  is the one a local CLI run takes. Verified: every part comes back hash-identical to
+  running the generator locally. **`--params-json` exists because the CLI's sixteen flags
+  cannot express the app's thirty sliders**, so without it a customer's actual
+  configuration is unbuildable.
+- **The offered pattern list is probed at startup, not hardcoded.** `LAITHAI_ENABLED` hides
+  a family and Modern takes kumiko only, so a stale copy would refuse a pattern the app
+  offers, or accept one argparse rejects **on stderr with exit 2** — a usage error that
+  would reach a customer as "cannot be built" with no reason.
+- **Entitlement is written only by the Stripe webhook.** A success redirect proves someone
+  came back from a Stripe page, not that a payment settled, and anyone can type that URL.
+  Verify over the **raw** body — `json()` then stringify reorders keys — and keep the
+  timestamp tolerance, or a captured request can be replayed to restore a cancelled
+  subscription.
+- **Magic tokens are random and stored in KV**, not signed and self-describing. A signed
+  token validates without a lookup but cannot be made single-use, and these links end up in
+  mail logs and forwarded threads.
+- **Cloudflare `send_email` only delivers to addresses already verified in the account**,
+  which is useless for signing up strangers. `sendMagicLink` is a seam for that reason, and
+  returns false rather than reporting success when nothing is configured.
+
+**Reachable configurations still fail.** `asanoha` at `grid 12` — the minimum slider stop —
+builds a panel and cap that are not watertight, and `post 22` with `groove_d 7` hits the
+pre-existing post-by-groove case. Roughly 1 in 18 sampled combinations. The server gate is
+what stops those being sold, so never bypass `check_part` to make a build "succeed".
+
+`page.test.js` **serves the page over http from a stub**: Chromium refuses
+`fetch('/api/…')` from a `file://` page before it is a request at all, so from disk there is
+nothing to intercept. It proves the page asks for the right thing; `export.test.js` proves
+the bytes, against a running stack, and skips loudly when nothing is listening.
 
 ## Deploying
 
@@ -68,10 +117,9 @@ needs no Python at all. Harmless but wasteful, and it couples the deploy to thos
 still building; pointing the project's root directory at `web/` would end it, at the cost
 of moving `wrangler.toml` there too.
 
-`web/index.html` is the whole site and makes **no network request at all** — verified by
-serving it and watching the request log, where the only entry is the document itself. Keep
-it that way: no CDN, no webfont, no external image. The favicon is a `data:` URI for
-exactly this reason.
+`web/index.html` loads with **no network request but its own document** — no CDN, no
+webfont, no external image, and a `data:` URI favicon. Keep it that way. The one call it
+ever makes is to its own `/api/`, and only on a download.
 
 **There is no doctype, on purpose.** The page renders in quirks mode (`document.compatMode`
 is `BackCompat`) and the entire stylesheet was written and measured there; adding one flips
