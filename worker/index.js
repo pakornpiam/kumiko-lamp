@@ -90,7 +90,18 @@ async function handleExport(request, env, url) {
   const pattern = typeof body.pattern === 'string' ? body.pattern : 'asanoha';
   if (!/^[a-z0-9_]{1,40}$/.test(pattern)) return json({ error: 'unknown pattern' }, 400);
 
-  const upstream = await callExportService(env, { pattern, style, params });
+  /* Optional: one STL rather than the whole set, so the per-part buttons in the
+     print list keep working. The build is the same either way -- the generator
+     makes every part regardless -- so this is a filter, not a cheaper request. */
+  let part = null;
+  if (body.part !== undefined && body.part !== null) {
+    if (typeof body.part !== 'string' || !/^[a-z0-9_]{1,40}$/.test(body.part)) {
+      return json({ error: 'unknown part' }, 400);
+    }
+    part = body.part;
+  }
+
+  const upstream = await callExportService(env, { pattern, style, params, part });
   if (!upstream) return json({ error: 'the export service is not configured' }, 503);
 
   /* Pass the service's own status and reasons through untouched. It reports the
@@ -106,8 +117,10 @@ async function handleExport(request, env, url) {
   return new Response(upstream.body, {
     status: 200,
     headers: {
-      'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="kumiko-lamp-${style}-${pattern}.zip"`,
+      'Content-Type': part ? 'model/stl' : 'application/zip',
+      'Content-Disposition': part
+        ? `attachment; filename="${part}.stl"`
+        : `attachment; filename="kumiko-lamp-${style}-${pattern}.zip"`,
       /* Deterministic for a given parameter set, but it is the paid artifact --
          never let a shared cache hold a copy. */
       'Cache-Control': 'private, no-store'

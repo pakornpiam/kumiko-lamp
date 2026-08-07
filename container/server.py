@@ -85,8 +85,12 @@ class BuildError(Exception):
         self.detail = detail or []
 
 
-def build(params, pattern, style):
-    """Run the generator in a scratch directory and return (zip_bytes, manifest)."""
+def build(params, pattern, style, part=None):
+    """Run the generator in a scratch dir; return (bytes, manifest).
+
+    `part` narrows the result to one STL; without it the whole set comes back
+    as a ZIP.
+    """
     if not PATTERN_RE.match(pattern):
         raise BuildError(400, "unknown pattern")
     if style not in ("classic", "modern"):
@@ -125,6 +129,18 @@ def build(params, pattern, style):
                        if p.stem not in SKIP_PARTS)
         if not parts:
             raise BuildError(500, "the build produced no parts")
+
+        if part is not None:
+            # The generator builds the whole set regardless, so a single part is
+            # a filter on the result rather than a cheaper build.  Matched
+            # against what was actually produced, so a name cannot escape the
+            # directory however it is spelled.
+            wanted = {p.stem: p for p in parts}
+            if part not in wanted:
+                raise BuildError(404, f"this lamp has no part named {part!r}",
+                                 [f"parts: {', '.join(sorted(wanted))}"])
+            p = wanted[part]
+            return p.read_bytes(), [{"name": p.name, "bytes": p.stat().st_size}]
 
         buf = _zip(parts)
         manifest = [{"name": p.name, "bytes": p.stat().st_size} for p in parts]
@@ -215,9 +231,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(503, {"error": "busy, retry shortly"},
                               extra={"Retry-After": "5"})
         try:
+            part = req.get("part")
+            if part is not None:
+                part = str(part)
+                if not PATTERN_RE.match(part):
+                    raise BuildError(400, "unknown part")
             body, manifest = build(params,
                                    str(req.get("pattern") or "asanoha"),
-                                   str(req.get("style") or "classic"))
+                                   str(req.get("style") or "classic"), part)
         except BuildError as e:
             return self._send(e.status, {"error": e.message, "reasons": e.detail})
         except Exception as e:                       # noqa: BLE001
@@ -227,10 +248,12 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             _slots.release()
 
-        self._send(200, body, "application/zip", {
-            "X-Kumiko-Parts": str(len(manifest)),
-            "Content-Disposition": 'attachment; filename="kumiko-lamp.zip"',
-        })
+        single = len(manifest) == 1 and manifest[0]["name"].endswith(".stl") and part
+        self._send(200, body,
+                   "model/stl" if single else "application/zip",
+                   {"X-Kumiko-Parts": str(len(manifest)),
+                    "Content-Disposition": 'attachment; filename="%s"'
+                                           % (manifest[0]["name"] if single else "kumiko-lamp.zip")})
 
     def log_message(self, fmt, *a):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % a))
