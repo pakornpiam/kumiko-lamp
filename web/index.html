@@ -97,6 +97,26 @@ a { color: var(--ai); }
 
 .rail { display: flex; flex-direction: column; gap: 10px; }
 
+/* One column of bench means the rail spans the whole page, and a flex column
+   stretches every card to that width: on an 820px tablet the rail came out
+   772px with a 742px slider under a label pinned to the far left and a value to
+   the far right.  Tile instead, so the width is used rather than padded out.
+
+   auto-fill with a 280px floor takes the column count from the width, so there
+   is no second breakpoint to keep in step: 1 column on a phone, 2 on a tablet,
+   3 around 911px -- which is where a maximised 1366 window lands at 150%
+   Windows scaling, and is why this looked like a desktop bug.
+
+   align-items:start or a grid item stretches to its row, and one expanded group
+   would pad out every card beside it -- the trap .view hit going square. */
+@media (max-width: 940px) {
+  .rail {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    align-items: start;
+  }
+}
+
 /* The rail runs ~1120px at rest and ~3240px with every group open, against a
    ~470px stage, so reaching a lower slider used to scroll the viewer off the
    screen.  Cap it to the viewport and let it scroll inside itself instead.

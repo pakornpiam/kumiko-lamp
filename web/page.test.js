@@ -706,11 +706,33 @@ function zipEntry(buf, wanted) {
   await page.click('button[data-lantern-style="classic"]');
   await page.waitForTimeout(1000);
 
+  /* Below 940px the bench is one column and the rail spans the page.  As a flex
+     column that stretched every card to full width -- an 820px tablet gave a
+     772px card with a 742px slider, a label at the far left and its value at the
+     far right.  It tiles now. */
+  const railGrid = () => page.evaluate(() => {
+    const rail = document.getElementById('rail');
+    const cards = [...rail.querySelectorAll('details.grp')].map(d => d.getBoundingClientRect());
+    return { rail: Math.round(rail.getBoundingClientRect().width),
+             card: Math.round(cards[0].width),
+             cols: new Set(cards.map(c => Math.round(c.left))).size };
+  });
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.waitForTimeout(500);
+  let rg = await railGrid();
+  check(rg.cols > 1, 'the rail tiles into columns when it goes full width',
+        `${rg.cols} columns of ${rg.card}px in ${rg.rail}px`);
+  check(rg.card <= rg.rail * 0.6, 'a tiled card is not a full-width bar',
+        `${rg.card} of ${rg.rail}`);
+
   // narrow viewport must not scroll sideways
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
   await page.setViewportSize({ width: 420, height: 900 });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(400);
+  rg = await railGrid();
+  check(rg.cols === 1, 'a phone still gets a single column',
+        `${rg.cols} columns of ${rg.card}px in ${rg.rail}px`);
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check(overflow <= 1, 'no horizontal overflow at 420px', `${overflow}px`);
