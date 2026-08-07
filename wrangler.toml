@@ -29,3 +29,19 @@ compatibility_date = "2026-08-07"
 [assets]
 directory = "./dist"
 binding = "ASSETS"
+
+# Sessions, magic-link tokens and Stripe entitlement.  KV rather than D1
+# because the account token carries workers_kv but no d1 scope, and nothing
+# here needs a join.  Eventually consistent, so a just-cancelled subscription
+# can survive a short window -- acceptable for this, and why stripe.js also
+# checks the period end rather than trusting the key's presence alone.
+#
+#   npx wrangler kv namespace create KUMIKO      <- then paste the id below
+[[kv_namespaces]]
+binding = "KUMIKO"
+id = "PLACEHOLDER_RUN_WRANGLER_KV_NAMESPACE_CREATE"
+
+# Set with `npx wrangler secret put <NAME>`, never in this file:
+#   STRIPE_SECRET_KEY     STRIPE_WEBHOOK_SECRET     RESEND_API_KEY
+# Plain vars (safe to commit) go in [vars]:
+#   STRIPE_PRICE_ID   MAIL_FROM   EXPORT_ORIGIN

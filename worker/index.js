@@ -12,11 +12,22 @@
  * deploying.
  */
 
+import {
+  normaliseEmail, createMagicLink, redeemMagicLink, sendMagicLink,
+  sessionCookie, clearCookie, currentEmail, signOut
+} from './auth.js';
+import { createCheckout, createPortal, verifyWebhook, applyEvent, isSubscribed } from './stripe.js';
+
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
 
-function json(body, status) {
-  return new Response(JSON.stringify(body), { status: status || 200, headers: JSON_HEADERS });
+function json(body, status, extra) {
+  return new Response(JSON.stringify(body), {
+    status: status || 200,
+    headers: { ...JSON_HEADERS, ...(extra || {}) }
+  });
 }
+
+const isSecure = (url) => url.protocol === 'https:';
 
 /* The browser sends its whole slider set. Numbers only, and a fixed ceiling on
    how many: the generator rejects unknown names itself, but that costs a
@@ -36,22 +47,31 @@ function cleanParams(raw) {
 }
 
 async function callExportService(env, payload) {
-  const req = new Request('http://export/generate', {
-    method: 'POST',
-    headers: JSON_HEADERS,
-    body: JSON.stringify(payload)
-  });
-  if (env.EXPORT_SERVICE) return env.EXPORT_SERVICE.fetch(req);
+  const body = JSON.stringify(payload);
+  if (env.EXPORT_SERVICE) {
+    return env.EXPORT_SERVICE.fetch(new Request('http://export/generate', {
+      method: 'POST', headers: JSON_HEADERS, body
+    }));
+  }
   if (env.EXPORT_ORIGIN) {
     return fetch(new URL('/generate', env.EXPORT_ORIGIN).toString(), {
-      method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(payload)
+      method: 'POST', headers: JSON_HEADERS, body
     });
   }
   return null;
 }
 
-async function handleExport(request, env) {
+async function handleExport(request, env, url) {
   if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+
+  /* Entitlement first, before parsing or spending a CSG process on someone who
+     cannot have the result either way. 401 and 402 are distinguished so the page
+     can say "sign in" or "subscribe" rather than one vague refusal. */
+  const email = await currentEmail(request, env);
+  if (!email) return json({ error: 'sign in to export', reason: 'signed_out' }, 401);
+  if (!(await isSubscribed(env, email))) {
+    return json({ error: 'a subscription is required to export', reason: 'not_subscribed' }, 402);
+  }
 
   let body;
   try {
@@ -71,9 +91,7 @@ async function handleExport(request, env) {
   if (!/^[a-z0-9_]{1,40}$/.test(pattern)) return json({ error: 'unknown pattern' }, 400);
 
   const upstream = await callExportService(env, { pattern, style, params });
-  if (!upstream) {
-    return json({ error: 'the export service is not configured' }, 503);
-  }
+  if (!upstream) return json({ error: 'the export service is not configured' }, 503);
 
   /* Pass the service's own status and reasons through untouched. It reports the
      generator's wording, which is the same wording checkFits shows in the page,
@@ -85,28 +103,125 @@ async function handleExport(request, env) {
     return json(detail, upstream.status);
   }
 
-  const filename = `kumiko-lamp-${style}-${pattern}.zip`;
   return new Response(upstream.body, {
     status: 200,
     headers: {
       'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-      /* A build is deterministic for a given parameter set, but it is also the
-         paid artifact -- never let a shared cache hold a copy. */
+      'Content-Disposition': `attachment; filename="kumiko-lamp-${style}-${pattern}.zip"`,
+      /* Deterministic for a given parameter set, but it is the paid artifact --
+         never let a shared cache hold a copy. */
       'Cache-Control': 'private, no-store'
     }
   });
 }
 
+async function handleAuthRequest(request, env, url) {
+  if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'body must be JSON' }, 400); }
+
+  const email = normaliseEmail(body && body.email);
+  /* Answer identically whether or not the address is known or deliverable.
+     Anything else turns this endpoint into a way to test which emails have
+     accounts. The one exception is a misconfigured mailer, which is our fault
+     and must not be reported as success. */
+  if (!email) return json({ ok: true });
+
+  const link = await createMagicLink(env, email, url.origin);
+  if (env.DEV_ECHO_MAGIC_LINK === '1') return json({ ok: true, devLink: link });
+
+  const sent = await sendMagicLink(env, email, link);
+  if (!sent) return json({ error: 'sign-in email could not be sent' }, 500);
+  return json({ ok: true });
+}
+
+async function handleAuthCallback(request, env, url) {
+  const out = await redeemMagicLink(env, url.searchParams.get('token'));
+  if (!out) {
+    return Response.redirect(`${url.origin}/?signin=expired`, 302);
+  }
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: `${url.origin}/?signin=ok`,
+      'Set-Cookie': sessionCookie(out.sid, isSecure(url))
+    }
+  });
+}
+
+async function handleWebhook(request, env) {
+  if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+  /* Raw text, not request.json(): the signature covers the exact bytes Stripe
+     sent, and a parse/re-stringify round trip changes them. */
+  const raw = await request.text();
+  const event = await verifyWebhook(env, raw, request.headers.get('Stripe-Signature'));
+  if (!event) return json({ error: 'bad signature' }, 400);
+  const outcome = await applyEvent(env, event);
+  return json({ received: true, outcome });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const p = url.pathname;
 
-    if (url.pathname === '/api/export') return handleExport(request, env);
-    if (url.pathname === '/api/health') {
-      return json({ ok: true, exportConfigured: !!(env.EXPORT_SERVICE || env.EXPORT_ORIGIN) });
+    if (p === '/api/export') return handleExport(request, env, url);
+    if (p === '/api/auth/request') return handleAuthRequest(request, env, url);
+    if (p === '/api/auth/callback') return handleAuthCallback(request, env, url);
+    if (p === '/api/stripe-webhook') return handleWebhook(request, env);
+
+    if (p === '/api/me') {
+      const email = await currentEmail(request, env);
+      return json({
+        signedIn: !!email,
+        email: email || null,
+        subscribed: await isSubscribed(env, email),
+        priceConfigured: !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID)
+      }, 200, { 'Cache-Control': 'private, no-store' });
     }
-    if (url.pathname.startsWith('/api/')) return json({ error: 'not found' }, 404);
+
+    if (p === '/api/auth/signout') {
+      if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+      await signOut(request, env);
+      return json({ ok: true }, 200, { 'Set-Cookie': clearCookie(isSecure(url)) });
+    }
+
+    if (p === '/api/checkout') {
+      if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+      const email = await currentEmail(request, env);
+      if (!email) return json({ error: 'sign in first', reason: 'signed_out' }, 401);
+      if (!env.STRIPE_SECRET_KEY || !env.STRIPE_PRICE_ID) {
+        return json({ error: 'billing is not configured' }, 503);
+      }
+      try {
+        return json({ url: await createCheckout(env, email, url.origin) });
+      } catch {
+        return json({ error: 'could not start checkout' }, 502);
+      }
+    }
+
+    if (p === '/api/portal') {
+      if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+      const email = await currentEmail(request, env);
+      if (!email) return json({ error: 'sign in first', reason: 'signed_out' }, 401);
+      try {
+        const portal = await createPortal(env, email, url.origin);
+        return portal ? json({ url: portal }) : json({ error: 'no billing account yet' }, 404);
+      } catch {
+        return json({ error: 'could not open the billing portal' }, 502);
+      }
+    }
+
+    if (p === '/api/health') {
+      return json({
+        ok: true,
+        exportConfigured: !!(env.EXPORT_SERVICE || env.EXPORT_ORIGIN),
+        billingConfigured: !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID),
+        mailConfigured: !!(env.RESEND_API_KEY || env.SEND_EMAIL) || env.DEV_ECHO_MAGIC_LINK === '1'
+      });
+    }
+
+    if (p.startsWith('/api/')) return json({ error: 'not found' }, 404);
 
     /* Everything else is the app itself. With `main` set this Worker sees every
        request, so the assets binding has to be called explicitly -- without this
