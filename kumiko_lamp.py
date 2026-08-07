@@ -18,10 +18,11 @@ so slicers receive clean solids that need no auto-repair.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields as dataclass_fields, replace
 from pathlib import Path
 
 import numpy as np
@@ -2611,6 +2612,10 @@ def main(argv=None):
     ap.add_argument("--all", action="store_true",
                     help="export all patterns and previews available for the selected style")
     ap.add_argument("--out", default=str(Path(__file__).parent))
+    ap.add_argument("--params-json",
+                    help="JSON file of Params fields, for callers that need more "
+                         "than the flags above expose (the configurator's export "
+                         "service sends the whole slider set this way)")
     args = ap.parse_args(argv)
 
     # trimesh divides by volume when it inspects an empty boolean result, which
@@ -2628,6 +2633,44 @@ def main(argv=None):
     if args.holder is not None:
         P.holder_type = args.holder
         P.socket_neck = HOLDER_PRESETS[args.holder]
+    if args.params_json:
+        # Applied after the style and holder presets and before the explicit
+        # flags below, so precedence still reads preset < file < flag.  Only
+        # declared fields are settable and each is coerced to its annotated
+        # type: this input arrives from a network service, and setattr on an
+        # arbitrary name would let a caller invent attributes that shadow the
+        # derived properties the whole build trusts.
+        fields = {f.name: f for f in dataclass_fields(Params)}
+        try:
+            supplied = json.loads(Path(args.params_json).read_text("utf-8"))
+        except (OSError, ValueError) as exc:
+            print(f"--params-json could not be read: {exc}")
+            return 1
+        if not isinstance(supplied, dict):
+            print("--params-json must contain a JSON object")
+            return 1
+        for key, val in supplied.items():
+            f = fields.get(key)
+            if f is None:
+                print(f"--params-json: unknown parameter {key!r}")
+                return 1
+            try:
+                if key == "bed":
+                    val = tuple(float(x) for x in val)
+                    if len(val) != 3:
+                        raise ValueError("bed needs three numbers")
+                elif key == "modern_base_d":
+                    val = None if val is None else float(val)
+                elif f.type is int or f.type == "int":
+                    val = int(val)
+                elif f.type is str or f.type == "str":
+                    val = str(val)
+                else:
+                    val = float(val)
+            except (TypeError, ValueError) as exc:
+                print(f"--params-json: bad value for {key!r}: {exc}")
+                return 1
+            setattr(P, key, val)
     for attr, val in (("size", args.size), ("height", args.height),
                       ("slat_w", args.slat),
                       ("panel_t", args.panel_thickness), ("grid", args.grid),
