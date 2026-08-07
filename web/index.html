@@ -1394,11 +1394,24 @@ var Kumiko = (function () {
     thai_rosette: 'A four-way floral rosette — harmony, balance, and beauty radiating from a shared centre.'
   };
   var LAITHAI = ['kranok_kan_khot', 'dok_phut_tan', 'thai_rosette'];
-  function patternNames() {
+  /* The Lai Thai family is built and validated but not offered: it drops out of
+     the picker and out of the CLI the app echoes.  Everything else stays, so
+     flipping this back to true is the whole re-enable.  Must match
+     LAITHAI_ENABLED in kumiko_lamp.py. */
+  var LAITHAI_ENABLED = false;
+  /* Every registered pattern, offered or not.  Metadata is built from this, so
+     PATTERN_FAMILY still answers 'laithai' for a hidden pattern rather than
+     undefined -- otherwise the Modern guards would pass for the wrong reason. */
+  function allPatternNames() {
     return Object.keys(PATTERNS).concat(Object.keys(PATTERN_REGIONS));
   }
+  function patternNames() {
+    return allPatternNames().filter(function (n) {
+      return LAITHAI_ENABLED || LAITHAI.indexOf(n) < 0;
+    });
+  }
   var PATTERN_FAMILY = {};
-  patternNames().forEach(function (n) {
+  allPatternNames().forEach(function (n) {
     PATTERN_FAMILY[n] = LAITHAI.indexOf(n) >= 0 ? 'laithai' : 'kumiko';
   });
   var FAMILY_LABEL = { kumiko: 'Kumiko', laithai: 'Lai Thai' };
@@ -1409,7 +1422,7 @@ var Kumiko = (function () {
   var CAP_FALLBACK = 'kikkou';
   var CAP_UNSAFE = ['kranok_kan_khot', 'dok_phut_tan', 'thai_rosette'];
   var PATTERN_CAP_SAFE = {};
-  patternNames().forEach(function (n) {
+  allPatternNames().forEach(function (n) {
     PATTERN_CAP_SAFE[n] = CAP_UNSAFE.indexOf(n) < 0;
   });
   function capPattern(p) {
@@ -3084,7 +3097,8 @@ var Kumiko = (function () {
     DEFAULTS: DEFAULTS, HOLDER_PRESETS: HOLDER_PRESETS,
     PATTERNS: PATTERNS, PATTERN_LABEL: PATTERN_LABEL,
     PATTERN_REGIONS: PATTERN_REGIONS, isRegion: isRegion,
-    patternNames: patternNames,
+    patternNames: patternNames, allPatternNames: allPatternNames,
+    LAITHAI_ENABLED: LAITHAI_ENABLED,
     PATTERN_FAMILY: PATTERN_FAMILY, FAMILY_LABEL: FAMILY_LABEL,
     PATTERN_MEANING: PATTERN_MEANING,
     PATTERN_CAP_SAFE: PATTERN_CAP_SAFE, capPattern: capPattern,

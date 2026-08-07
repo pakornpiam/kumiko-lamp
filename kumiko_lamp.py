@@ -1357,10 +1357,25 @@ LAITHAI = {"kranok_kan_khot", "dok_phut_tan", "thai_rosette"}
 PATTERN_FAMILY = {name: "laithai" if name in LAITHAI else "kumiko"
                   for name in list(PATTERNS) + list(PATTERN_REGIONS)}
 
+# The Lai Thai family is built and validated but not offered: it drops out of
+# --pattern, out of --all, and out of the configurator.  Everything else stays
+# -- the generators, the baked contour table, tools/svg2pattern.py and the three
+# checked-in STLs -- so flipping this back to True is the whole re-enable.
+# thai_rosette is the only region pattern, which is why this is a switch rather
+# than a deletion: removing it would take PATTERN_REGIONS, extrude_region and
+# the imported-artwork extension point with it.
+LAITHAI_ENABLED = False
+
+
+def all_pattern_names():
+    """Every registered pattern, offered or not.  Metadata is built from this."""
+    return sorted(list(PATTERNS) + list(PATTERN_REGIONS))
+
 
 def pattern_names():
-    """Every selectable pattern id, segment and region alike."""
-    return sorted(list(PATTERNS) + list(PATTERN_REGIONS))
+    """The patterns actually on offer, segment and region alike."""
+    return [n for n in all_pattern_names()
+            if LAITHAI_ENABLED or n not in LAITHAI]
 
 
 def kumiko_pattern_names():

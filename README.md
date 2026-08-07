@@ -36,8 +36,9 @@ parts. Classic's live-built lattices use a lighter representation — see
 ## Lantern styles
 
 **Classic** is the existing square lamp: four interchangeable panels slide between four
-posts, with separate feet, a grooved base and a removable top cap. It supports all fourteen
-patterns, optional diffusers, two-piece posts, cap screws, finials and reusable snap locks.
+posts, with separate feet, a grooved base and a removable top cap. It supports all eleven
+offered patterns, optional diffusers, two-piece posts, cap screws, finials and reusable
+snap locks.
 
 **Modern** is a hollow cylindrical base and a removable cylindrical shade. The reference
 preset uses a 100 mm shade diameter, a 100 mm base diameter, a 218 mm shade and a 90 mm
@@ -79,10 +80,9 @@ inside the shade if you want softer light.
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
 `panel_kagome.stl`, `panel_masu.stl`, `panel_masu_tsunagi.stl`, `panel_senbon.stl`,
 `panel_goma_gara.stl`,
-`panel_bishamon_kikkou.stl`, `panel_seigaiha.stl`, `panel_kranok_kan_khot.stl` or
-`panel_dok_phut_tan.stl` or `panel_thai_rosette.stl` for a different motif — all
-fourteen Classic panels are dimensionally identical
-and interchangeable. Roughly in order of open area: masu, kikkou and kranok are
+`panel_bishamon_kikkou.stl` or `panel_seigaiha.stl` for a different motif — all
+eleven Classic panels are dimensionally identical
+and interchangeable. Roughly in order of open area: masu and kikkou are
 the airiest, asanoha and goma-gara the densest.
 
 ### Modern
@@ -117,9 +117,28 @@ chords: finer is not better here (see CLAUDE.md).
 close-set vertical bars crossed by a rail every third bar. Senbon's bars run at a third of
 the pattern pitch, so the stock 28 mm gives a 9.3 mm spacing — fine enough to earn the
 "thousand sticks" of its name. At 12 and 22 slats they are the two cheapest panels to
-print, and Masu is the most open of the fourteen.
+print, and Masu is the most open of the eleven.
 
-Eleven are Japanese kumiko. The other three are Thai compositions. **Kranok Kan Khot**
+## The Lai Thai family is currently disabled
+
+Three Thai compositions — **Kranok Kan Khot**, **Dok Phut Tan** and **Thai Rosette** — are
+still in the repo and still build, but are **not offered**: they are absent from the
+configurator's pattern picker, from `--pattern`, and from `--all`. Their three
+`panel_*.stl` files and preview SVGs remain checked in, and stop being regenerated.
+
+To bring them back, set **both** flags to true and regenerate:
+
+```
+kumiko_lamp.py   LAITHAI_ENABLED = True
+web/index.html   var LAITHAI_ENABLED = true;
+```
+
+They are switched off rather than deleted because `thai_rosette` is the only *region*
+pattern, so removing the family would take `PATTERN_REGIONS`, `extrude_region` and the
+whole imported-artwork extension point with it. The descriptions below are kept for that
+reason.
+
+**Kranok Kan Khot**
 (กระหนกก้านขด) is a different kind of thing: not a repeating lattice but **one composition filling the
 whole panel** — a diamond medallion of Thai flame work, with a column of nested pointed
 lenses on the axis, a spike to the apex, and volutes at the waist throwing flames out along
@@ -368,7 +387,7 @@ Every dimension lives in the `Params` dataclass at the top of `kumiko_lamp.py`. 
 worth reaching for are on the command line:
 
 ```bash
-python3 kumiko_lamp.py --all                    # Classic: all 14 patterns + both post styles
+python3 kumiko_lamp.py --all                    # Classic: all 11 offered patterns + both post styles
 python3 kumiko_lamp.py --style classic          # explicit form of the unchanged default
 python3 kumiko_lamp.py --pattern kikkou         # one Classic pattern's part set
 python3 kumiko_lamp.py --grid 20                # finer lattice
@@ -463,7 +482,7 @@ strict mesh is checked separately against the Python volume.
 The configurator is checked the same way, headlessly: its geometry core runs in Node and
 is compared against the Python generator's measured volumes (`base` and `leg` match to
 0.00%, `post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat,
-across all thirteen segment patterns. Modern adds wrapped-seam, thread, volume and
+across all eleven offered segment patterns. Modern adds wrapped-seam, thread, volume and
 placement comparisons across its eleven supported Kumiko patterns. The page
 itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
 a deliberately unassemblable configuration to confirm it blocks rather than exports,

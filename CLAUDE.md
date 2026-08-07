@@ -84,7 +84,7 @@ relabels the same `panelT` slider for the active style and its CLI echo must emi
 `--style {classic,modern}` is the only
 style selector. `--style modern --all` emits one Modern base, the stable adapter ring, all
 eleven Kumiko shades and the non-printable assembly preview; Classic `--all` continues to
-emit all fourteen patterns and both post styles.
+emit all eleven offered patterns and both post styles.
 
 The reference Modern geometry is a Ø100 × 218 mm shade over a Ø100 × 90 mm hollow base.
 Shade and base radii are separate derived values: the rings, lattice and both halves of the
@@ -253,6 +253,19 @@ Write `f(w, h, s) -> [((x0,y0),(x1,y1)), ...]` centred on the origin and registe
   Faceting stops mattering long before that limit — at 14 chords the sagitta is already
   under 0.1 mm, a quarter of a nozzle — so nothing is lost by staying coarse. `_stroke`
   cannot see this; it is a property of the sampling.
+
+**The Lai Thai family is currently disabled** by `LAITHAI_ENABLED` — `kumiko_lamp.py`
+beside `LAITHAI`, and the same flag in the core. Set both to true to re-enable; they must
+agree. It is a switch rather than a deletion because `thai_rosette` is the only *region*
+pattern, so removing the family would take `PATTERN_REGIONS`, `extrude_region` and the
+imported-artwork extension point with it.
+
+**Metadata is built from `all_pattern_names()` / `allPatternNames()`, selection from
+`pattern_names()` / `patternNames()`** — and that split is load-bearing. Point
+`PATTERN_FAMILY` or `PATTERN_CAP_SAFE` at the filtered list and a hidden pattern resolves
+to `undefined`, which makes every `PATTERN_FAMILY[p] !== 'kumiko'` guard pass for the wrong
+reason and `capPattern` stop falling back. Python already builds both maps from
+`PATTERNS + PATTERN_REGIONS` directly, so only the browser needed the split.
 
 Patterns also carry metadata in both files: `PATTERN_FAMILY` (`kumiko` | `laithai` — drives
 the tab strip in the rail, which is generated, so a new family needs no UI code) and

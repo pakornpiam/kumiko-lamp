@@ -308,8 +308,20 @@ console.log('');
 console.log('region patterns');
 check(K.isRegion('thai_rosette'), 'thai_rosette is a region pattern');
 check(!K.isRegion('asanoha'), 'asanoha is not a region pattern');
-check(K.patternNames().length === 14, `14 selectable patterns`,
+/* Lai Thai is registered and still buildable, just not offered.  The metadata
+   must keep answering for it, or the Modern guards start passing because
+   PATTERN_FAMILY returns undefined rather than because it returns 'laithai'. */
+check(K.patternNames().length === 11, `11 selectable patterns`,
       String(K.patternNames().length));
+check(K.allPatternNames().length === 14, `14 registered patterns`,
+      String(K.allPatternNames().length));
+check(K.patternNames().every(n => K.PATTERN_FAMILY[n] === 'kumiko'),
+      'nothing Lai Thai is on offer');
+check(K.PATTERN_FAMILY.kranok_kan_khot === 'laithai' &&
+      K.PATTERN_FAMILY.thai_rosette === 'laithai',
+      'a hidden pattern still resolves its family');
+check(K.buildPanel(P, 'thai_rosette').region === true,
+      'a hidden pattern still builds when asked directly');
 {
   const cont = K.PATTERN_REGIONS.thai_rosette(P.openW, P.openH);
   check(cont.length === 26, `rosette contours ${cont.length}`, 'python 26');

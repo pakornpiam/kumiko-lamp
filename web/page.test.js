@@ -166,25 +166,16 @@ function zipEntry(buf, wanted) {
   const meaning = await page.textContent('#sw-meaning');
   check(meaning.includes('Tortoiseshell'), 'pattern switch updates meaning', meaning.trim());
 
-  // family tabs: Lai Thai is a separate tab, and its patterns are hidden until picked
-  check(await page.$('button[data-pattern="kranok_kan_khot"]') === null,
-        'Lai Thai patterns hidden while the Kumiko tab is active');
-  const fams = await page.$$eval('.famtabs button', b => b.map(x => x.textContent));
-  check(fams.join(',') === 'Kumiko,Lai Thai', 'both family tabs present', fams.join(','));
-  await page.click('.famtabs button[data-family="laithai"]');
-  await page.waitForTimeout(200);
-  check(await page.$('button[data-pattern="dok_phut_tan"]') !== null,
-        'Dok Phut Tan appears in the Lai Thai family');
-  await page.click('button[data-pattern="kranok_kan_khot"]');
-  await page.waitForTimeout(900);
-  const thai = await page.textContent('#sw-name');
-  check(thai.trim() === 'Kranok Kan Khot', 'Lai Thai tab selects the vine', thai.trim());
-  const meta = await page.textContent('#sw-meta');
-  check(/^550 slats/.test(meta.trim()), 'kranok slat count matches Python', meta.trim());
-  // the cap must still build (off the kikkou fallback) rather than block export
-  check(!(await page.isDisabled('#dl-all')), 'kranok still exports');
-  await page.click('.famtabs button[data-family="kumiko"]');
-  await page.waitForTimeout(200);
+  // Lai Thai is disabled: one family tab, and none of its three ids on offer
+  const fams = await page.$$eval('.famtabs button', b => b.map(x => x.textContent.trim()));
+  check(fams.join(',') === 'Kumiko', 'only the Kumiko family tab is offered', fams.join(','));
+  check(await page.$('button[data-family="laithai"]') === null,
+        'no Lai Thai family tab exists');
+  const hidden = await Promise.all(['kranok_kan_khot', 'dok_phut_tan', 'thai_rosette']
+    .map(id => page.$(`button[data-pattern="${id}"]`)));
+  check(hidden.every(h => h === null), 'no Lai Thai pattern button exists');
+  const offered = await page.$$eval('.styles button[data-pattern]', b => b.length);
+  check(offered === 11, 'eleven Kumiko patterns on offer', String(offered));
   await page.click('button[data-pattern="kikkou"]');
   await page.waitForTimeout(400);
 
