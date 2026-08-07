@@ -1,4 +1,19 @@
+<meta charset="utf-8">
+<!-- Without this the Thai UI depends entirely on the server sending a charset.
+     Cloudflare Pages does; a file:// open or any other host may not. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The stylesheet already has a one-column layout under 940px and a 420px
+     case, but a phone lays out at ~980px and zooms out unless it is told the
+     viewport is the device.  Without this none of that responsive work runs. -->
 <title>Kumiko Lamp Configurator</title>
+<!-- Asanoha in a data: URI, so the page still issues no network request at all
+     and the deploy stops 404ing on /favicon.ico.  The xmlns is an XML namespace
+     name, not an address -- nothing dereferences it. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%231f3a5f'/%3E%3Cg stroke='%23f7f1e4' stroke-width='1.6' fill='none'%3E%3Cpath d='M16 5 L26 10.5 L26 21.5 L16 27 L6 21.5 L6 10.5 Z'/%3E%3Cpath d='M16 5 V27 M6 10.5 L26 21.5 M26 10.5 L6 21.5'/%3E%3C/g%3E%3C/svg%3E">
+
+<!-- No doctype on purpose: this renders in quirks mode and the whole stylesheet
+     was written and measured there.  Adding one flips it to standards mode and
+     moves the layout. -->
 
 <style>
 /* ---- tokens -------------------------------------------------------- */
