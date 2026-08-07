@@ -36,8 +36,9 @@ git diff --check
 node extract.js && node core.test.js ./extracted.js      # geometry core vs Python's numbers
 npm install --no-save playwright && node page.test.js    # the real page in headless Chromium
 
-# Deploy (Cloudflare Pages, project kumiko-lamp, built from GitHub on push to main)
+# Deploy (Cloudflare Worker kumiko-lamp, built from GitHub on push to main)
 mkdir -p dist && cp web/index.html dist/                 # the entire build
+npx wrangler deploy --dry-run                            # validate wrangler.toml first
 ```
 
 There is no test framework and no single-test selector — each script is one all-or-nothing
@@ -49,10 +50,23 @@ interpreter is `python`** — `python3` resolves to the Microsoft Store shim and
 
 ## Deploying
 
-Cloudflare Pages project `kumiko-lamp`, connected to this GitHub repo: a push to `main`
-deploys. `wrangler.toml` holds only `pages_build_output_dir`; the build command lives in
-the dashboard. The build **must** assemble `dist/` rather than publish `web/`, which also
-carries `extract.js` and the two test scripts.
+Cloudflare **Worker with static assets** named `kumiko-lamp`, connected to this GitHub
+repo: a push to `main` deploys. The build **must** assemble `dist/` rather than serve
+`web/`, which also carries `extract.js` and the two test scripts.
+
+**It is a Worker, not a Pages project** — the dashboard's "import a repository" flow
+creates one, which is why the build runs its own deploy command (`npx wrangler deploy`).
+That command reads `[assets] directory` from `wrangler.toml`; the Pages spelling
+`pages_build_output_dir` makes it fail with *"Missing entry-point to Worker script or to
+assets directory"*. There is no `main`, so every request is served from `dist/`. Validate
+any change to that file with `npx wrangler deploy --dry-run` before pushing — it reports
+the asset count without deploying.
+
+The build environment installs `requirements.txt` (numpy, scipy, trimesh, manifold3d,
+~53 MB) because it detects the file at the repo root, even though copying one HTML file
+needs no Python at all. Harmless but wasteful, and it couples the deploy to those wheels
+still building; pointing the project's root directory at `web/` would end it, at the cost
+of moving `wrangler.toml` there too.
 
 `web/index.html` is the whole site and makes **no network request at all** — verified by
 serving it and watching the request log, where the only entry is the document itself. Keep

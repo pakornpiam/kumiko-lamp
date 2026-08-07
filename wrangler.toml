@@ -1,13 +1,21 @@
-# Cloudflare Pages. The site is one self-contained file -- web/index.html makes
-# no external request at all -- so the build is a copy, set as the project's
-# build command in the dashboard:
+# Cloudflare Workers with static assets. The site is one self-contained file --
+# web/index.html makes no external request at all -- so the build is a copy, set
+# as the project's build command in the dashboard:
 #
 #     mkdir -p dist && cp web/index.html dist/
 #
-# It has to assemble dist/ rather than publish web/ directly: web/ also holds
+# It has to assemble dist/ rather than serve web/ directly: web/ also holds
 # extract.js and the two test scripts, which have no business being served.
 #
-# Only the output directory lives here; Pages takes the build command from the
-# dashboard, not from this file.
+# This is a Worker, not a Pages project, because the dashboard's "import a
+# repository" flow creates one -- which is also why the build runs a deploy
+# command of its own (`npx wrangler deploy`).  That command reads [assets] from
+# here; `pages_build_output_dir` is the Pages spelling and makes it fail with
+# "Missing entry-point to Worker script or to assets directory".
+#
+# No `main`: with assets and no script, every request is served from dist/.
 name = "kumiko-lamp"
-pages_build_output_dir = "dist"
+compatibility_date = "2026-08-07"
+
+[assets]
+directory = "./dist"

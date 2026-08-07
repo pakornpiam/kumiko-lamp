@@ -505,8 +505,8 @@ mkdir -p dist && cp web/index.html dist/
 ```
 
 That is the entire build. It assembles `dist/` rather than publishing `web/`, which also
-carries `extract.js` and the two test scripts. This repo deploys to Cloudflare Pages from
-`main`; `wrangler.toml` names the output directory.
+carries `extract.js` and the two test scripts. This repo deploys to a Cloudflare Worker
+with static assets on every push to `main`; `wrangler.toml` points at `dist/`.
 
 The page makes **no network request at all** — no CDN, no webfont, no external image, and
 a `data:` URI favicon — so it works equally from `file://`, a static host, or a USB stick.
