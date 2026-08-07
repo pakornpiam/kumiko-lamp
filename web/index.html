@@ -81,6 +81,36 @@ a { color: var(--ai); }
 @media (max-width: 940px) { .bench { grid-template-columns: 1fr; } }
 
 .rail { display: flex; flex-direction: column; gap: 10px; }
+
+/* The rail runs ~1120px at rest and ~3240px with every group open, against a
+   ~470px stage, so reaching a lower slider used to scroll the viewer off the
+   screen.  Cap it to the viewport and let it scroll inside itself instead.
+
+   Sticky goes on the STAGE, not the rail: a sticky grid item's containing
+   block is its grid area, and align-items:start makes the row height the
+   tallest item -- always the rail -- so a sticky rail has zero travel and
+   never pins.  The short column is the one with room to move.
+
+   Desktop only.  Below 940px .bench is one column and the rail sits above the
+   stage; a ~300px nested scrollbox there is worse than the native page scroll. */
+@media (min-width: 941px) {
+  .rail {
+    position: sticky; top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    /* a flick at the end of the rail must not carry on into the document */
+    overscroll-behavior: contain;
+    /* reserve the scrollbar so the 310px track and its sliders never shift */
+    scrollbar-gutter: stable;
+  }
+  .workbench { position: sticky; top: 16px; }
+}
+
+/* A vh cap would silently truncate the rail on paper. */
+@media print {
+  .rail { position: static; max-height: none; overflow: visible; }
+  .workbench { position: static; }
+}
 .grp {
   background: var(--washi); border: 1px solid var(--edge);
   border-radius: 3px; box-shadow: var(--shadow);
@@ -300,7 +330,7 @@ pre.cmd {
   <div class="bench">
     <div class="rail" id="rail"></div>
 
-    <div>
+    <div class="workbench">
       <div class="stage">
         <div class="view">
           <canvas id="gl"></canvas>
@@ -3594,6 +3624,9 @@ var Kumiko = (function () {
       d.appendChild(body);
       rail.appendChild(d);
     });
+    /* Every rebuild -- style switch, language switch -- can change the
+       masthead, so refit here rather than at each call site. */
+    fitRail();
   }
 
   // ---------------------------------------------------------------- webgl
@@ -4180,7 +4213,22 @@ var Kumiko = (function () {
     });
   });
 
-  window.addEventListener('resize', function () { drawFlat(); draw(); });
+  /* The CSS cap is calc(100vh - 32px), which is right once the rail has been
+     scrolled past the masthead but ~190px too tall before that -- the bottom of
+     the control column would sit below the fold and need a page scroll after
+     all.  Measure the masthead instead of guessing at it: its height moves with
+     the language and with how the title wraps.  Uses the document offset, so it
+     is stable whatever the page is currently scrolled to. */
+  function fitRail() {
+    var rail = document.getElementById('rail');
+    if (!rail) return;
+    rail.style.maxHeight = '';
+    if (window.matchMedia && !window.matchMedia('(min-width: 941px)').matches) return;
+    var top = rail.getBoundingClientRect().top + window.scrollY;
+    rail.style.maxHeight = Math.max(320, window.innerHeight - top - 24) + 'px';
+  }
+
+  window.addEventListener('resize', function () { fitRail(); drawFlat(); draw(); });
   if (window.matchMedia) {
     var mq = window.matchMedia('(prefers-color-scheme: dark)');
     if (mq.addEventListener) mq.addEventListener('change', function () { drawFlat(); draw(); });

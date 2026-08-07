@@ -567,9 +567,32 @@ function zipEntry(buf, wanted) {
   await page.fill('#r-size', '180'); await page.dispatchEvent('#r-size', 'input');
   await page.waitForTimeout(500);
 
-  // screenshots, both themes -- collapse the rail back to its default state
+  // the rail is its own scroll container above 940px, so reaching a slider
+  // never moves the page
+  const railBox = await page.evaluate(() => {
+    const r = document.getElementById('rail');
+    document.querySelectorAll('details.grp').forEach(d => { d.open = true; });
+    return { scrollH: r.scrollHeight, clientH: r.clientHeight,
+             bottom: Math.round(r.getBoundingClientRect().bottom),
+             vh: window.innerHeight };
+  });
+  check(railBox.scrollH > railBox.clientH, 'the rail scrolls inside itself',
+        `${railBox.scrollH} of content in ${railBox.clientH}`);
+  check(railBox.bottom <= railBox.vh, 'the whole rail fits on screen unscrolled',
+        `bottom ${railBox.bottom} vs viewport ${railBox.vh}`);
+  const stillTop = await page.evaluate(() => {
+    const r = document.getElementById('rail');
+    r.scrollTop = r.scrollHeight;
+    return window.scrollY;
+  });
+  check(stillTop === 0, 'scrolling to the last slider does not move the page',
+        `scrollY ${stillTop}`);
+
+  // screenshots, both themes -- collapse the rail back to its default state.
+  // window.scrollTo does not reset the rail now that it scrolls independently.
   await page.evaluate(() => {
     document.querySelectorAll('details.grp').forEach((d, i) => { d.open = i < 2; });
+    document.getElementById('rail').scrollTop = 0;
     window.scrollTo(0, 0);
   });
   await page.emulateMedia({ colorScheme: 'light' });
