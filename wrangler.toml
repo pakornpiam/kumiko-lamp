@@ -13,9 +13,19 @@
 # here; `pages_build_output_dir` is the Pages spelling and makes it fail with
 # "Missing entry-point to Worker script or to assets directory".
 #
-# No `main`: with assets and no script, every request is served from dist/.
+# `main` is set, so this Worker now sees EVERY request -- including the page
+# itself.  That is why [assets] gained a binding name: worker/index.js has to
+# call env.ASSETS.fetch() explicitly for anything that is not /api/*, and
+# without it the site stops serving.
+#
+# The export service (container/) is reached through EXPORT_SERVICE when bound,
+# or EXPORT_ORIGIN as a plain URL.  The second is what lets `wrangler dev` talk
+# to a container running on localhost, which is the only way to exercise the
+# paid path without deploying.
 name = "kumiko-lamp"
+main = "worker/index.js"
 compatibility_date = "2026-08-07"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
