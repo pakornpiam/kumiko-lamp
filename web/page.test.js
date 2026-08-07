@@ -588,6 +588,45 @@ function zipEntry(buf, wanted) {
   check(stillTop === 0, 'scrolling to the last slider does not move the page',
         `scrollY ${stillTop}`);
 
+  // the preview is square, and its backing store tracks its box
+  const sq = await page.evaluate(() => {
+    const v = document.querySelector('.view').getBoundingClientRect();
+    const c = document.getElementById('gl');
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    return { w: Math.round(v.width), h: Math.round(v.height),
+             cw: c.clientWidth, ch: c.clientHeight, bw: c.width, bh: c.height,
+             dpr: dpr, bottom: Math.round(v.bottom), vh: window.innerHeight };
+  });
+  check(Math.abs(sq.w - sq.h) <= 1, 'the preview is square',
+        `${sq.w} x ${sq.h}`);
+  check(sq.bw === sq.cw * sq.dpr && sq.bh === sq.ch * sq.dpr,
+        'the canvas backing store matches its box',
+        `${sq.bw}x${sq.bh} for ${sq.cw}x${sq.ch} at dpr ${sq.dpr}`);
+  check(sq.bottom <= sq.vh, 'the whole preview fits on screen',
+        `bottom ${sq.bottom} vs viewport ${sq.vh}`);
+
+  // Lantern and Pattern are permanently open -- a click must not collapse them,
+  // and neither must a style or a language switch
+  const fixedOpen = () => page.$$eval('details.grp.fixed',
+    d => ({ n: d.length, allOpen: d.every(x => x.open),
+            marker: d.every(x => getComputedStyle(x.querySelector('summary'), '::after')
+                                   .content === 'none') }));
+  await page.click('details.grp.fixed > summary');
+  await page.waitForTimeout(200);
+  let fx = await fixedOpen();
+  check(fx.n === 2 && fx.allOpen, 'clicking a fixed group does not collapse it',
+        `${fx.n} fixed, all open ${fx.allOpen}`);
+  check(fx.marker, 'a fixed group shows no +/- marker');
+  await page.click('#lang-label'); await page.waitForTimeout(400);
+  fx = await fixedOpen();
+  check(fx.n === 2 && fx.allOpen, 'fixed groups survive a language switch');
+  await page.click('#lang-label'); await page.waitForTimeout(400);
+  await page.click('button[data-lantern-style="modern"]'); await page.waitForTimeout(900);
+  fx = await fixedOpen();
+  check(fx.n === 2 && fx.allOpen, 'fixed groups survive a style switch');
+  await page.click('button[data-lantern-style="classic"]'); await page.waitForTimeout(900);
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
+
   // screenshots, both themes -- collapse the rail back to its default state.
   // window.scrollTo does not reset the rail now that it scrolls independently.
   await page.evaluate(() => {

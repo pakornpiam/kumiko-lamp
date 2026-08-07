@@ -125,6 +125,13 @@ a { color: var(--ai); }
 .grp > summary::after { content: "+"; font-size: 15px; color: var(--sumi-3); }
 .grp[open] > summary::after { content: "\2212"; }
 .grp > summary:hover { color: var(--sumi); }
+/* Lantern and Pattern are the two you always want, so they are permanently
+   open: no marker, no pointer, no hover -- a heading rather than a control.
+   Still a <details open>, because every test drives group state through the
+   .open property and that keeps working whatever the click handler does. */
+.grp.fixed > summary { cursor: default; }
+.grp.fixed > summary::after { content: none; }
+.grp.fixed > summary:hover { color: var(--sumi-2); }
 .grp .body { padding: 4px 14px 14px; display: flex; flex-direction: column; gap: 13px; }
 
 .ctl label {
@@ -173,6 +180,19 @@ a { color: var(--ai); }
   position: relative; background: var(--stage);
   border: 1px solid var(--edge); border-radius: 3px; overflow: hidden;
   min-height: 470px; box-shadow: var(--shadow);
+  /* Square: a lamp is tall, and the old 810x470 letterbox was mostly air.
+     align-self is load-bearing -- a grid item stretches to the row height by
+     default, and stretch overrides aspect-ratio.  Starting it instead keeps the
+     height definite, which is also what lets the canvas resolve height: 100%.
+     fitLayout() caps it to the window so a square box cannot push its own
+     bottom below the fold; if that cap ever drops under min-height, min wins
+     and the preview letterboxes rather than collapsing. */
+  aspect-ratio: 1; align-self: start;
+  /* min-height is transferred back through the ratio: on a column narrower than
+     470 the clamped height becomes a 470px WIDTH and the page scrolls sideways.
+     max-width pins the width to the column and lets the box go portrait instead,
+     which is what the narrow layout looked like before it was square anyway. */
+  max-width: 100%;
 }
 .view canvas { display: block; width: 100%; height: 100%; }
 .hint {
@@ -3362,11 +3382,11 @@ var Kumiko = (function () {
   var styleStates = { classic: copyState(state), modern: modernPreset };
 
   var CLASSIC_GROUPS = [
-    { name: 'Lantern', open: true, lanternStyle: true, items: [
+    { name: 'Lantern', open: true, fixed: true, lanternStyle: true, items: [
       ['size', 'Width', 120, 245, 1, 'mm'],
       ['height', 'Height', 130, 250, 1, 'mm']
     ]},
-    { name: 'Pattern', open: true, style: true, items: [
+    { name: 'Pattern', open: true, fixed: true, style: true, items: [
       ['grid', 'Pattern pitch', 12, 45, 0.5, 'mm'],
       ['slatW', 'Slat width', 0.8, 3.2, 0.4, 'mm']
     ]},
@@ -3429,7 +3449,7 @@ var Kumiko = (function () {
   ];
 
   var MODERN_GROUPS = [
-    { name: 'Lantern', open: true, lanternStyle: true, items: [
+    { name: 'Lantern', open: true, fixed: true, lanternStyle: true, items: [
       ['size', 'Shade diameter', 80, 200, 1, 'mm'],
       /* Starts linked to the shade: 0 in state means "follow it".  Dragging
          this unlinks the two; dragging it back to the shade diameter relinks
@@ -3438,7 +3458,7 @@ var Kumiko = (function () {
       ['height', 'Shade height', 100, 300, 1, 'mm'],
       ['modernBaseH', 'Base height', 45, 160, 1, 'mm']
     ]},
-    { name: 'Pattern', open: true, style: true, kumikoOnly: true, items: [
+    { name: 'Pattern', open: true, fixed: true, style: true, kumikoOnly: true, items: [
       ['grid', 'Pattern pitch', 12, 45, 0.5, 'mm'],
       ['slatW', 'Slat width', 0.8, 3.2, 0.4, 'mm'],
       ['panelT', 'Lattice depth', 2, 7, 0.2, 'mm']
@@ -3497,9 +3517,16 @@ var Kumiko = (function () {
     railInputs = {};
     var groups = state.lanternStyle === 'modern' ? MODERN_GROUPS : CLASSIC_GROUPS;
     groups.forEach(function (g) {
-      var d = el('details', 'grp');
+      var d = el('details', g.fixed ? 'grp fixed' : 'grp');
       if (g.open) d.open = true;
-      d.appendChild(el('summary', null, t(g.name)));
+      var sum = el('summary', null, t(g.name));
+      if (g.fixed) {
+        /* Permanently open: swallow the click that would toggle it.  Left as a
+           <details open> so d.open assignments elsewhere still work. */
+        d.open = true;
+        sum.addEventListener('click', function (e) { e.preventDefault(); });
+      }
+      d.appendChild(sum);
       var body = el('div', 'body');
 
       if (g.lanternStyle) {
@@ -3626,7 +3653,7 @@ var Kumiko = (function () {
     });
     /* Every rebuild -- style switch, language switch -- can change the
        masthead, so refit here rather than at each call site. */
-    fitRail();
+    fitLayout();
   }
 
   // ---------------------------------------------------------------- webgl
@@ -4219,16 +4246,33 @@ var Kumiko = (function () {
      all.  Measure the masthead instead of guessing at it: its height moves with
      the language and with how the title wraps.  Uses the document offset, so it
      is stable whatever the page is currently scrolled to. */
-  function fitRail() {
+  function fitLayout() {
     var rail = document.getElementById('rail');
-    if (!rail) return;
-    rail.style.maxHeight = '';
+    var view = document.querySelector('.view');
+    if (rail) rail.style.maxHeight = '';
+    if (view) view.style.maxHeight = '';
+    if (!rail && !view) return;
     if (window.matchMedia && !window.matchMedia('(min-width: 941px)').matches) return;
-    var top = rail.getBoundingClientRect().top + window.scrollY;
-    rail.style.maxHeight = Math.max(320, window.innerHeight - top - 24) + 'px';
+    /* The rail and the view share a top offset -- both start at the bench row --
+       so one measurement caps both.  A square view is 340px taller than the old
+       letterbox and would otherwise push its own bottom below the fold. */
+    var top = (rail || view).getBoundingClientRect().top + window.scrollY;
+    var avail = window.innerHeight - top - 24;
+    if (rail) rail.style.maxHeight = Math.max(320, avail) + 'px';
+    if (view) view.style.maxHeight = Math.max(470, avail) + 'px';
   }
 
-  window.addEventListener('resize', function () { fitRail(); drawFlat(); draw(); });
+  window.addEventListener('resize', function () { fitLayout(); drawFlat(); draw(); });
+
+  /* The view's height is now a function of its own width and of the viewport
+     cap, so it changes on paths a window resize listener does not see.  draw()
+     only re-syncs the canvas backing store when it runs, and a stale store is a
+     stretched image and a wrong projection aspect.  Neither callback changes
+     layout, so this cannot loop. */
+  if (window.ResizeObserver) {
+    var viewBox = document.querySelector('.view');
+    if (viewBox) new ResizeObserver(function () { drawFlat(); draw(); }).observe(viewBox);
+  }
   if (window.matchMedia) {
     var mq = window.matchMedia('(prefers-color-scheme: dark)');
     if (mq.addEventListener) mq.addEventListener('change', function () { drawFlat(); draw(); });
