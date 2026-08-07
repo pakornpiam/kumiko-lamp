@@ -210,12 +210,31 @@ a { color: var(--ai); }
 .viewtabs button[aria-pressed="true"] { background: var(--ai); border-color: var(--ai); color: var(--washi); }
 .viewtabs button:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
 
-.swatch {
+/* The swatch and the pattern picker share one grid item: the swatch names the
+   selected pattern and the picker sits right under it, so choosing and seeing
+   are the same glance.  This column is also where the picker's ~280px went when
+   it left the rail, which is what stopped the rail hiding its own sliders. */
+.side {
+  display: flex; flex-direction: column; gap: 16px;
+  align-self: start;   /* hug the content instead of stretching to the row */
+  min-width: 0;
+}
+
+.swatch, .picker {
   background: var(--washi); border: 1px solid var(--edge); border-radius: 3px;
   padding: 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px;
-  align-self: start;   /* hug the swatch instead of stretching to the viewport */
 }
-.swatch canvas { width: 100%; height: auto; display: block; }
+/* drawFlat() narrows this when the column would otherwise outgrow the preview,
+   so centre it rather than let it hang off the left edge of the card. */
+.swatch canvas { width: 100%; height: auto; display: block; margin-inline: auto; }
+/* 232px less padding leaves ~102px a button, which wraps "Kawari-asanoha" and
+   "Bishamon-kikkou".  Tighten the type rather than widen the column -- the
+   column's width is the preview's 808. */
+.picker .styles button { font-size: 12px; padding: 7px 3px; }
+.picker .cap {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--sumi-3);
+}
 .swatch .cap {
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
   text-transform: uppercase; color: var(--sumi-3);
@@ -360,11 +379,17 @@ pre.cmd {
           </div>
           <div class="hint">Drag to turn &middot; scroll to zoom</div>
         </div>
-        <div class="swatch">
-          <div class="cap" id="sw-name">Asanoha</div>
-          <canvas id="flat" width="420" height="560"></canvas>
-          <div class="cap" id="sw-meta">&mdash;</div>
-          <div class="meaning"><b>Meaning</b><span id="sw-meaning"></span></div>
+        <!-- Picker above swatch: Modern's swatch is 636px tall, so the column
+             outgrows the preview and its tail falls below the fold.  Better the
+             thing down there is the passive artwork than a control. -->
+        <div class="side">
+          <div class="picker" id="picker"></div>
+          <div class="swatch">
+            <div class="cap" id="sw-name">Asanoha</div>
+            <canvas id="flat" width="420" height="560"></canvas>
+            <div class="cap" id="sw-meta">&mdash;</div>
+            <div class="meaning"><b>Meaning</b><span id="sw-meaning"></span></div>
+          </div>
         </div>
       </div>
       <div id="problems"></div>
@@ -3511,6 +3536,64 @@ var Kumiko = (function () {
     r.label.textContent = state.size + ' ' + r.unit;
   }
 
+  /* The pattern picker, in the column beside the preview.  buildRail() calls
+     this, so every path that rebuilds the rail -- style switch, holder change,
+     language toggle, init -- refreshes the picker too, with no extra
+     bookkeeping. */
+  function buildPicker(kumikoOnly) {
+    var host = document.getElementById('picker');
+    if (!host) return;
+    host.textContent = '';
+    host.appendChild(el('div', 'cap', t('Pattern')));
+
+    /* One tab per pattern family, then only that family's buttons.  Nine
+       patterns in a single grid had become a wall; the families also read
+       as what they are — two different traditions, not one long list. */
+    var fams = [];
+    K.patternNames().forEach(function (id) {
+      if (kumikoOnly && K.PATTERN_FAMILY[id] !== 'kumiko') return;
+      var f = K.PATTERN_FAMILY[id];
+      if (fams.indexOf(f) < 0) fams.push(f);
+    });
+    var active = K.PATTERN_FAMILY[state.pattern] || fams[0];
+    var tabs = el('div', 'famtabs');
+    tabs.setAttribute('role', 'tablist');
+    var wrap = el('div', 'styles');
+
+    function paint() {
+      tabs.querySelectorAll('button').forEach(function (t) {
+        t.setAttribute('aria-selected', String(t.dataset.family === active));
+      });
+      wrap.textContent = '';
+      K.patternNames().forEach(function (id) {
+        if (kumikoOnly && K.PATTERN_FAMILY[id] !== 'kumiko') return;
+        if (K.PATTERN_FAMILY[id] !== active) return;
+        var b = el('button', null, lang === 'th' ? PATTERN_TH[id] : K.PATTERN_LABEL[id]);
+        b.setAttribute('aria-pressed', String(id === state.pattern));
+        b.dataset.pattern = id;
+        b.addEventListener('click', function () {
+          state.pattern = id;
+          wrap.querySelectorAll('button').forEach(function (o) {
+            o.setAttribute('aria-pressed', String(o.dataset.pattern === id));
+          });
+          rebuild();
+        });
+        wrap.appendChild(b);
+      });
+    }
+
+    fams.forEach(function (f) {
+      var tab = el('button', null, t(K.FAMILY_LABEL[f] || f));
+      tab.dataset.family = f;
+      tab.setAttribute('role', 'tab');
+      tab.addEventListener('click', function () { active = f; paint(); });
+      tabs.appendChild(tab);
+    });
+    paint();
+    host.appendChild(tabs);
+    host.appendChild(wrap);
+  }
+
   function buildRail() {
     var rail = document.getElementById('rail');
     rail.textContent = '';
@@ -3545,54 +3628,11 @@ var Kumiko = (function () {
         body.appendChild(st);
       }
 
-      if (g.style) {
-        /* One tab per pattern family, then only that family's buttons.  Nine
-           patterns in a single grid had become a wall; the families also read
-           as what they are — two different traditions, not one long list. */
-        var fams = [];
-        K.patternNames().forEach(function (id) {
-          if (g.kumikoOnly && K.PATTERN_FAMILY[id] !== 'kumiko') return;
-          var f = K.PATTERN_FAMILY[id];
-          if (fams.indexOf(f) < 0) fams.push(f);
-        });
-        var active = K.PATTERN_FAMILY[state.pattern] || fams[0];
-        var tabs = el('div', 'famtabs');
-        tabs.setAttribute('role', 'tablist');
-        var wrap = el('div', 'styles');
-
-        function paint() {
-          tabs.querySelectorAll('button').forEach(function (t) {
-            t.setAttribute('aria-selected', String(t.dataset.family === active));
-          });
-          wrap.textContent = '';
-          K.patternNames().forEach(function (id) {
-            if (g.kumikoOnly && K.PATTERN_FAMILY[id] !== 'kumiko') return;
-            if (K.PATTERN_FAMILY[id] !== active) return;
-            var b = el('button', null, lang === 'th' ? PATTERN_TH[id] : K.PATTERN_LABEL[id]);
-            b.setAttribute('aria-pressed', String(id === state.pattern));
-            b.dataset.pattern = id;
-            b.addEventListener('click', function () {
-              state.pattern = id;
-              wrap.querySelectorAll('button').forEach(function (o) {
-                o.setAttribute('aria-pressed', String(o.dataset.pattern === id));
-              });
-              rebuild();
-            });
-            wrap.appendChild(b);
-          });
-        }
-
-        fams.forEach(function (f) {
-          var tab = el('button', null, t(K.FAMILY_LABEL[f] || f));
-          tab.dataset.family = f;
-          tab.setAttribute('role', 'tab');
-          tab.addEventListener('click', function () { active = f; paint(); });
-          tabs.appendChild(tab);
-        });
-        paint();
-        body.appendChild(tabs);
-        body.appendChild(wrap);
-      }
+      /* The picker renders beside the swatch, not here -- the group keeps the
+         flag so the table stays the one place that says which style offers
+         what, but its 280px of buttons no longer push this group's own sliders
+         under the rail's scroll fold. */
+      if (g.style) buildPicker(g.kumikoOnly);
 
       if (g.holder) {
         var hc = el('div', 'ctl');
@@ -3861,13 +3901,50 @@ var Kumiko = (function () {
   }
 
   // ---------------------------------------------------------------- flat swatch
+
+  /* How tall the swatch artwork may be.  The side column is the picker plus the
+     swatch, and the stage row takes the taller of that column and the preview --
+     so an oversized swatch pushes the print list below the fold and the page
+     starts scrolling again.  Modern's swatch is the tall one: it is drawn at the
+     shade's height-over-diameter, which is far leggier than a Classic panel.
+
+     The picker and the swatch's own text are fixed costs, so the artwork is what
+     gives.  Chrome is measured as (side - flat), which does not depend on the
+     answer, so calling this repeatedly returns the same budget. */
+  function flatBudget() {
+    var side = document.querySelector('.side');
+    var view = document.querySelector('.view');
+    var c = document.getElementById('flat');
+    if (!side || !view || !c) return Infinity;
+    /* One column below 941px: the swatch is under the preview, not beside it,
+       and nothing is competing for the row's height. */
+    if (window.matchMedia && !window.matchMedia('(min-width: 941px)').matches) return Infinity;
+    var chrome = side.getBoundingClientRect().height - c.getBoundingClientRect().height;
+    var budget = view.getBoundingClientRect().height - chrome;
+    /* Below roughly 1000px of window the picker and the swatch's text already
+       exceed the preview on their own, so no cap can make the column fit -- and
+       clamping anyway shrinks the artwork to a thumbnail while the page still
+       scrolls.  Give up rather than pay that: the swatch stays legible and its
+       tail is what goes under the fold, which is where passive artwork belongs. */
+    return budget < 200 ? Infinity : budget;
+  }
+
   function drawFlat() {
     var c = document.getElementById('flat'), P = K.derive(state);
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    /* Clear first: the card gives the canvas its full width through width:100%,
+       and reading clientWidth back off a width we set last time would ratchet
+       the swatch smaller on every redraw. */
+    c.style.width = '';
     var W = c.clientWidth || 208;
-    var H2 = Math.round(W * P.height /
-                        (P.lanternStyle === 'modern' ? P.size : P.panelW));
+    var ratio = P.height / (P.lanternStyle === 'modern' ? P.size : P.panelW);
+    var H2 = Math.round(W * ratio);
+    /* Narrow it rather than clamp the height -- the drawing is scaled from W, so
+       a bare max-height would squash the pattern out of proportion. */
+    var cap = flatBudget();
+    if (H2 > cap) { W = Math.max(80, Math.round(cap / ratio)); H2 = Math.round(W * ratio); }
     c.width = W * dpr; c.height = H2 * dpr;
+    c.style.width = W + 'px';
     c.style.height = H2 + 'px';
     var x = c.getContext('2d');
     x.setTransform(dpr, 0, 0, dpr, 0, 0);

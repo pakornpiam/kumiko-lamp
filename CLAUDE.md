@@ -234,6 +234,23 @@ pattern picker, plus the Lantern style tabs) handled by its own block in `buildR
 slider whose `0` means *off* is how an on/off parameter is expressed without inventing a
 control — see `plateT`.
 
+**`style:` renders nowhere near its group.** The flag stays on the Pattern entry, because
+the table is the one place that says which style offers what (`kumikoOnly:` beside it), but
+`buildRail` hands it to `buildPicker()`, which draws the family tabs and the pattern buttons
+into `#picker` in the `.side` column next to the preview. That is not decoration: the rail
+is capped to the viewport and scrolls inside itself, and 280px of buttons in the rail pushed
+the Pattern group's **own sliders** under that fold, where a control reads as missing rather
+than as scrolled away. Keep `buildPicker()` called from `buildRail()` — that is what makes
+the style switch, holder change, language toggle and init paths all refresh it for free.
+
+The `.side` column carries the picker **above** the swatch, and `drawFlat()` asks
+`flatBudget()` how tall the artwork may be. The stage row takes the taller of that column
+and the preview, so an unbounded swatch pushes the print list below the fold. `flatBudget()`
+returns `Infinity` under about a 1000px-tall window, where the picker and the swatch's text
+already exceed the preview and clamping would shrink the artwork to a thumbnail without
+buying the fit. Any group-height or side-column change wants re-measuring against
+`page.test.js`'s "below the rail fold" checks.
+
 ## Adding a pattern
 
 Write `f(w, h, s) -> [((x0,y0),(x1,y1)), ...]` centred on the origin and register it in

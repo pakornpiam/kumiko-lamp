@@ -176,6 +176,19 @@ function zipEntry(buf, wanted) {
   check(hidden.every(h => h === null), 'no Lai Thai pattern button exists');
   const offered = await page.$$eval('.styles button[data-pattern]', b => b.length);
   check(offered === 11, 'eleven Kumiko patterns on offer', String(offered));
+
+  // the picker lives beside the preview, not in the rail -- its ~280px there
+  // was pushing the Pattern group's own sliders under the rail's scroll fold
+  const where = await page.evaluate(() => ({
+    picker: document.querySelectorAll('#picker button[data-pattern]').length,
+    rail: document.querySelectorAll('#rail button[data-pattern]').length,
+    tabs: document.querySelectorAll('#picker .famtabs button').length
+  }));
+  check(where.picker === 11 && where.rail === 0,
+        'the pattern picker sits outside the rail',
+        `${where.picker} in the picker, ${where.rail} in the rail`);
+  check(where.tabs === 1, 'the family tabs moved with the buttons', String(where.tabs));
+
   await page.click('button[data-pattern="kikkou"]');
   await page.waitForTimeout(400);
 
@@ -643,6 +656,55 @@ function zipEntry(buf, wanted) {
   await page.evaluate(() => window.dispatchEvent(new Event('resize')));
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${OUT}/app-dark.png`, fullPage: false });
+
+  /* A laptop viewport is where the rail's own scroll fold used to hide the
+     pinned groups' controls, which reads as "the setting is missing" rather
+     than "scroll for more".  Collapsed headers below the fold are fine; a
+     slider or a button below it is the bug. */
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.waitForTimeout(500);
+  const belowFold = () => page.evaluate(() => {
+    const rail = document.getElementById('rail');
+    const rb = rail.getBoundingClientRect();
+    rail.scrollTop = 0;
+    const cut = [];
+    document.querySelectorAll('#rail .ctl, #rail .styletabs').forEach(c => {
+      const d = c.closest('details');
+      if (!d.classList.contains('fixed')) return;
+      if (c.getBoundingClientRect().bottom > rb.bottom + 1) {
+        const lab = c.querySelector('label span, button');
+        cut.push(d.querySelector('summary').textContent.trim() + '/' +
+                 (lab ? lab.textContent.trim() : '?'));
+      }
+    });
+    return cut;
+  });
+  let cut = await belowFold();
+  check(cut.length === 0, 'no pinned Classic control below the rail fold at 1366x768',
+        cut.join(', '));
+
+  /* Modern's Lantern carries four sliders to Classic's two, so its pinned pair
+     is 546px against this rail's 524 and Lattice depth is still ~22px under.
+     1536x864 is the first size that clears it -- asserted here rather than at
+     1366 so the suite states what actually ships. */
+  await page.click('button[data-lantern-style="modern"]');
+  await page.waitForTimeout(1000);
+  await page.setViewportSize({ width: 1536, height: 864 });
+  await page.waitForTimeout(500);
+  cut = await belowFold();
+  check(cut.length === 0, 'no pinned Modern control below the rail fold at 1536x864',
+        cut.join(', '));
+
+  // the picker follows the style switch: Modern wraps kumiko only
+  const modernPicker = await page.evaluate(() => ({
+    n: document.querySelectorAll('#picker button[data-pattern]').length,
+    rail: document.querySelectorAll('#rail button[data-pattern]').length
+  }));
+  check(modernPicker.n === 11 && modernPicker.rail === 0,
+        'the picker rebuilds beside the preview on a style switch',
+        `${modernPicker.n} in the picker, ${modernPicker.rail} in the rail`);
+  await page.click('button[data-lantern-style="classic"]');
+  await page.waitForTimeout(1000);
 
   // narrow viewport must not scroll sideways
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
