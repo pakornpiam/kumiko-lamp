@@ -2277,7 +2277,79 @@ var Kumiko = (function () {
         if (!mask[add[i]]) { mask[add[i]] = 1; filled++; }
     }
 
+    /* A cell is wholly in or wholly out, so a boundary vertex sits up to half a
+       cell off the real slat edge -- which is what makes a diagonal member read
+       as a staircase.  Snap those vertices onto the outline instead.  Only
+       positions move: the mask, the cell topology and the shared-vertex cache
+       are untouched, so the shell stays watertight by the same argument as
+       before, but the walls now follow the motif.
+
+       Ring rows are left alone.  Their outline is the ring itself, already
+       exact, and z = ring is the junction the lattice hands off to. */
+    var nv = nu * (nz + 1);
+    var shiftU = new Float32Array(nv), shiftZ = new Float32Array(nv);
+    /* The union's distance is the smallest SIGNED distance, not the smallest
+       magnitude.  Picking by magnitude lets a vertex sitting deep inside one
+       slat be claimed by a barely-missed neighbour and snapped the wrong way,
+       which erodes every crossing -- worst on the chained arcs of seigaiha. */
+    var bestSigned = new Float32Array(nv).fill(Infinity);
+    function vertexIndex(i, j) { return j * nu + ((i % nu) + nu) % nu; }
+    for (s = 0; s < segs.length; s++) {
+      var sp = segs[s];
+      var vp = [sp[0][0] + C / 2, sp[0][1] + zShift];
+      var vq = [sp[1][0] + C / 2, sp[1][1] + zShift];
+      var vdx = vq[0] - vp[0], vdz = vq[1] - vp[1];
+      var vlen = Math.hypot(vdx, vdz);
+      if (vlen < 1e-9) continue;
+      var vnx = Math.abs(vdz / vlen) * half + Math.abs(vdx / vlen) * endGrow;
+      var vzp = Math.abs(vdx / vlen) * half + Math.abs(vdz / vlen) * endGrow;
+      var vu0 = Math.min(vp[0], vq[0]) - vnx, vu1 = Math.max(vp[0], vq[0]) + vnx;
+      var vz0 = Math.min(vp[1], vq[1]) - vzp, vz1 = Math.max(vp[1], vq[1]) + vzp;
+      var va = Math.floor(vu0 / du) - 1, vb = Math.ceil(vu1 / du) + 1;
+      var vja = Math.max(0, modernLowerBound(zs, vz0) - 1);
+      var vjb = Math.min(nz, modernLowerBound(zs, vz1) + 1);
+      for (var vi = va; vi <= vb; vi++) {
+        var uv = vi * du;
+        for (var vj = vja; vj <= vjb; vj++) {
+          var zv = zs[vj];
+          if (zv < ring - 1e-9 || zv > P.height - ring + 1e-9) continue;
+          var vt = ((uv - vp[0]) * vdx + (zv - vp[1]) * vdz) / vlen;
+          vt = Math.max(-endGrow, Math.min(vlen + endGrow, vt));
+          var cu = vp[0] + vdx / vlen * vt, cz = vp[1] + vdz / vlen * vt;
+          var ru = uv - cu, rz = zv - cz, rm = Math.hypot(ru, rz);
+          var sd = rm - half;
+          var vk = vertexIndex(vi, vj);
+          if (sd >= bestSigned[vk]) continue;
+          bestSigned[vk] = sd;
+          shiftU[vk] = rm > 1e-9 ? -sd * ru / rm : 0;
+          shiftZ[vk] = rm > 1e-9 ? -sd * rz / rm : 0;
+        }
+      }
+    }
+    /* Keep the shift for boundary vertices only, and under half a cell in each
+       axis, so neighbouring vertices can never swap order and fold a cell. */
+    function cellAt(i, j) {
+      return (j < 0 || j >= nz) ? 0 : mask[index(i, j)];
+    }
+    for (j = 0; j <= nz; j++) {
+      var band = zs[j] > ring + 1e-9 && zs[j] < P.height - ring - 1e-9;
+      var capZ = 0.45 * Math.min(j > 0 ? zs[j] - zs[j - 1] : Infinity,
+                                 j < nz ? zs[j + 1] - zs[j] : Infinity);
+      var capU = 0.45 * du;
+      for (i = 0; i < nu; i++) {
+        var vk2 = vertexIndex(i, j);
+        var around = cellAt(i - 1, j - 1) + cellAt(i, j - 1) +
+                     cellAt(i - 1, j) + cellAt(i, j);
+        if (!band || around === 0 || around === 4) {
+          shiftU[vk2] = 0; shiftZ[vk2] = 0; continue;
+        }
+        shiftU[vk2] = Math.max(-capU, Math.min(capU, shiftU[vk2]));
+        shiftZ[vk2] = Math.max(-capZ, Math.min(capZ, shiftZ[vk2]));
+      }
+    }
+
     return { mask: mask, nu: nu, nz: nz, du: du, zs: zs, C: C,
+      shiftU: shiftU, shiftZ: shiftZ,
       slats: segs.length, filled: filled, target: target,
       chordError: R * (1 - Math.cos(Math.PI / nu)) };
   }
@@ -2313,12 +2385,18 @@ var Kumiko = (function () {
     var mask = raster.mask, nu = raster.nu, nz = raster.nz, zs = raster.zs;
     var R = P.modernOuterR, ri = R - P.panelT;
     var cache = new Array(nu * (nz + 1) * 2), out = [];
+    var shiftU = raster.shiftU, shiftZ = raster.shiftZ, du = raster.du;
     function index(i, j) { return j * nu + ((i % nu) + nu) % nu; }
     function vertex(i, j, outer) {
       i = ((i % nu) + nu) % nu;
       var key = (j * nu + i) * 2 + (outer ? 1 : 0);
       if (cache[key]) return cache[key];
-      var th = 2 * Math.PI * i / nu, z = zs[j], r = R;
+      /* Boundary vertices are nudged onto the true slat edge; both surfaces
+         take the same nudge, so the side walls stay square to them.  The seam
+         needs no special case because i wraps to the same key. */
+      var vk = j * nu + i;
+      var th = 2 * Math.PI * (i * du + shiftU[vk]) / raster.C;
+      var z = zs[j] + shiftZ[vk], r = R;
       if (!outer) {
         if (z <= P.modernRingH + 1e-9)
           r = P.modernFemaleThreadR + modernThreadProfile(z, th,

@@ -482,6 +482,42 @@ const STRICT_MODERN_PY = {
   masu_tsunagi: 90.65, senbon: 77.37, goma_gara: 111.33,
   bishamon_kikkou: 69.76, seigaiha: 98.80
 };
+/* Mean distance from each boundary grid vertex to the true slat outline, in the
+   developed plane.  A pure cell raster leaves this at roughly a quarter cell
+   (~0.24 mm at the stock 0.8 mm cell); snapping the boundary vertices onto the
+   outline takes it to a few microns. */
+function strictBoundaryError(K, P, pattern, raster) {
+  const { mask, nu, nz, du, zs, C, shiftU, shiftZ } = raster;
+  const grow = 0.8, zShift = P.height / 2, ring = P.modernRingH;
+  const segs = K.clipRect(K.PATTERNS[pattern](C, P.modernOpenH, P.grid),
+    -C / 2, -P.modernOpenH / 2 - grow, C / 2, P.modernOpenH / 2 + grow)
+    .map(s => [[s[0][0] + C / 2, s[0][1] + zShift],
+               [s[1][0] + C / 2, s[1][1] + zShift]]);
+  const half = P.slatW / 2, endGrow = Math.min(P.slatW * 0.20, 0.25);
+  const at = (i, j) => mask[j * nu + ((i % nu) + nu) % nu];
+  let sum = 0, n = 0;
+  for (let j = 1; j < nz; j++) {
+    if (zs[j] <= ring + 1e-9 || zs[j] >= P.height - ring - 1e-9) continue;
+    for (let i = 0; i < nu; i++) {
+      const around = at(i - 1, j - 1) + at(i, j - 1) + at(i - 1, j) + at(i, j);
+      if (around === 0 || around === 4) continue;
+      const k = j * nu + i;
+      const u = i * du + shiftU[k], z = zs[j] + shiftZ[k];
+      let best = Infinity;
+      for (const [p, q] of segs) {
+        const dx = q[0] - p[0], dz = q[1] - p[1], len = Math.hypot(dx, dz);
+        if (len < 1e-9) continue;
+        let t = ((u - p[0]) * dx + (z - p[1]) * dz) / len;
+        t = Math.max(-endGrow, Math.min(len + endGrow, t));
+        const d = Math.hypot(u - (p[0] + dx / len * t), z - (p[1] + dz / len * t)) - half;
+        if (d < best) best = d;
+      }
+      sum += Math.abs(best); n++;
+    }
+  }
+  return n ? sum / n : 0;
+}
+
 for (const [name, want] of Object.entries(STRICT_MODERN_PY)) {
   const started = Date.now();
   const SP = K.derive({ lanternStyle: 'modern', size: 100, height: 218,
@@ -505,9 +541,15 @@ for (const [name, want] of Object.entries(STRICT_MODERN_PY)) {
         strict.raster.chordError <= 0.1 + 1e-12,
         `strict ${name} wrap respects chord error`,
         `${strict.raster.nu} columns, ${strict.raster.chordError.toFixed(5)} mm`);
-  check(Math.abs(err) < 4,
+  check(Math.abs(err) < 3,
         `strict ${name} volume ${got.toFixed(2)} cm3`,
         `python ${want.toFixed(2)} (${err > 0 ? '+' : ''}${err.toFixed(2)}%)`);
+  /* Volume alone cannot see a staircase -- an over-filled cell here cancels an
+     under-filled one there.  Measure the boundary directly: every boundary
+     vertex should sit on the slat outline, not up to half a cell off it. */
+  check(strictBoundaryError(K, SP, name, strict.raster) < 0.05,
+        `strict ${name} boundary follows the motif`,
+        `mean |err| ${strictBoundaryError(K, SP, name, strict.raster).toFixed(4)} mm`);
 }
 
 for (const variant of [

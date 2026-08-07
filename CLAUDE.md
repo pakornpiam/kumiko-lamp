@@ -359,6 +359,31 @@ Python has real CSG and needs none of this: `_edge_chamfers` subtracts four squa
 turned 45° about their own edge direction, and the union of two perpendicular wedges is
 the mitred corner.
 
+## The strict Modern shade is a raster, and its boundary is snapped
+
+The browser cannot do a 2-D polygon boolean, so `buildStrictModernShade` rasterizes the
+developed pattern onto a θ/z cell grid and emits cell borders — which is what makes it
+watertight for free, and what made every diagonal member a **staircase** up to half a cell
+off the true edge.
+
+`modernStrictRaster` therefore also computes a per-grid-vertex shift that snaps **boundary
+vertices only** onto the slat outline, which `modernStrictMesh` applies inside its vertex
+cache. The mask, the cell topology and the shared-vertex cache are untouched, so
+watertightness still follows from the same argument; only positions move. Three rules:
+
+- **The union's distance is the smallest *signed* distance, not the smallest magnitude.**
+  Picking by magnitude lets a vertex deep inside one slat be claimed by a barely-missed
+  neighbour and snapped the wrong way. That erodes every crossing, and it cost seigaiha
+  −0.86% → −3.68% against Python before it was caught.
+- **Clamp the shift under half a cell per axis**, or two neighbouring vertices can swap
+  order and fold a cell.
+- **Leave the ring rows alone.** Their outline is the ring itself, `z = ring` is the
+  junction the lattice hands off to, and the lower ring's inner face carries the thread.
+
+**Volume cannot see a staircase** — an over-filled cell here cancels an under-filled one
+there. `core.test.js`'s `strictBoundaryError` measures the boundary directly instead:
+~0.24 mm for a plain raster at the stock 0.8 mm cell, under 0.016 mm once snapped.
+
 ## Why the code looks the way it does
 
 - **Everything is validated after a round-trip through the STL file, not in memory**
