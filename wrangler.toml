@@ -83,10 +83,17 @@ new_sqlite_classes = ["ExportContainer"]
 # EXPORT_ORIGIN is dev-only -- in production the container binding is used, and
 # setting it in production would silently route exports away from the container.
 [vars]
-# Sent from the site's own subdomain, not the root.  pkroaming.com already has
-# an MX pointing at AWS SES, so verifying the root in Resend would put two mail
-# setups on one name; the subdomain keeps them apart.  Resend's records land on
-# send.* and resend._domainkey.*, so none of them collide with the proxied
-# record that serves the site itself.
-MAIL_FROM = "Kumiko Lantern <noreply@kumikolantern.pkroaming.com>"
+# pkroaming.com is already verified with Resend -- send.pkroaming.com carries the
+# bounce MX and SPF, and resend._domainkey.pkroaming.com the DKIM key, so no new
+# DNS is needed for this project.
+#
+# The root MX (inbound-smtp.ap-northeast-1.amazonaws.com) is SES *inbound* and is
+# untouched by any of this: Resend's records sit on send.* and
+# resend._domainkey.*, never on the root itself.  Sending and receiving on this
+# domain are independent.
+#
+# There is no SPF record at the root, which is the one thing that would have
+# clashed.  If one is ever added, it has to keep whatever the other projects on
+# this domain rely on -- a second SPF record does not merge, it invalidates both.
+MAIL_FROM = "Kumiko Lantern <noreply@pkroaming.com>"
 # STRIPE_PRICE_ID = "price_..."   <- add once the Stripe product exists
