@@ -65,6 +65,19 @@ Three surfaces, and the split is load-bearing. `container/` knows geometry and n
 about payment; `worker/` knows entitlement and nothing about geometry; the container is
 never routed publicly, so the Worker is the only way to reach it.
 
+The container is a **Cloudflare Container behind a Durable Object** (`ExportContainer` in
+[worker/index.js](web/../worker/index.js)), written against the raw `ctx.container` API
+rather than the `@cloudflare/containers` helper so the repo keeps its no-package.json
+shape. `image_build_context = "."` is required: the image needs `requirements.txt` and
+`kumiko_lamp.py` from the repo root, and the Dockerfile's `COPY` paths assume it.
+**`wrangler deploy` needs a running Docker daemon** to build that image, even for
+`--dry-run`; `--containers-rollout=none` skips it when you only want to check the config.
+Port 8080 appears in three places — the Dockerfile `EXPOSE`, `container/server.py`, and
+`getTcpPort` — and they have to agree.
+
+`callExportService` prefers `EXPORT_ORIGIN` over the binding, which is what lets
+`wrangler dev` drive a container on localhost. Unset it in production.
+
 - **The container shells out to `kumiko_lamp.py`** rather than importing it, so the whole
   tested sequence — `check_fits`, `emit`, `check_part`, the clearance pass, the exit code —
   is the one a local CLI run takes. Verified: every part comes back hash-identical to

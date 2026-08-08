@@ -20,6 +20,42 @@ import { createCheckout, createPortal, verifyWebhook, applyEvent, isSubscribed }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
 
+/**
+ * The CSG generator, as a Durable Object wrapping a container.
+ *
+ * Written against the raw ctx.container API rather than the @cloudflare/containers
+ * helper so this repo keeps its no-build-step, no-dependency shape -- there is
+ * still no package.json, and wrangler bundles this file as it stands.
+ *
+ * Cold start is a real container boot plus a Python import of numpy, scipy and
+ * trimesh, so the first request after a sleep is slow in a way the measured
+ * 1.3s warm build does not suggest. sleepAfter is generous for that reason:
+ * paying to keep it warm beats making a paying customer wait twice.
+ */
+export class ExportContainer {
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.container = ctx.container;
+  }
+
+  async fetch(request) {
+    if (!this.container) {
+      return new Response(JSON.stringify({ error: 'no container runtime bound' }),
+                          { status: 503, headers: JSON_HEADERS });
+    }
+    if (!this.container.running) {
+      /* Plain start(), no options. The generator needs no outbound network and
+         turning egress off would be worth having, but that option is not
+         verifiable without a deploy and a wrong name here breaks every paid
+         export. Harden it once the first deploy proves the shape. */
+      this.container.start();
+    }
+    /* 8080 is what container/server.py listens on and what the Dockerfile
+       EXPOSEs; changing one means changing all three. */
+    return this.container.getTcpPort(8080).fetch(request);
+  }
+}
+
 function json(body, status, extra) {
   return new Response(JSON.stringify(body), {
     status: status || 200,
@@ -48,16 +84,27 @@ function cleanParams(raw) {
 
 async function callExportService(env, payload) {
   const body = JSON.stringify(payload);
-  if (env.EXPORT_SERVICE) {
-    return env.EXPORT_SERVICE.fetch(new Request('http://export/generate', {
-      method: 'POST', headers: JSON_HEADERS, body
-    }));
-  }
+  const req = () => new Request('http://export/generate', {
+    method: 'POST', headers: JSON_HEADERS, body
+  });
+
+  /* EXPORT_ORIGIN wins when set, so `wrangler dev` can drive a container running
+     on localhost -- the only way to exercise the paid path without deploying. In
+     production it is unset and the binding below is used. */
   if (env.EXPORT_ORIGIN) {
     return fetch(new URL('/generate', env.EXPORT_ORIGIN).toString(), {
       method: 'POST', headers: JSON_HEADERS, body
     });
   }
+  if (env.EXPORT_CONTAINER) {
+    /* One named instance, so concurrent exports share a warm container instead
+       of each paying a cold Python start. The container caps its own concurrency
+       and answers 503 when full, which is a far better thing to hand the caller
+       than a queue with no visible end. */
+    const id = env.EXPORT_CONTAINER.idFromName('export');
+    return env.EXPORT_CONTAINER.get(id).fetch(req());
+  }
+  if (env.EXPORT_SERVICE) return env.EXPORT_SERVICE.fetch(req());
   return null;
 }
 
@@ -228,7 +275,7 @@ export default {
     if (p === '/api/health') {
       return json({
         ok: true,
-        exportConfigured: !!(env.EXPORT_SERVICE || env.EXPORT_ORIGIN),
+        exportConfigured: !!(env.EXPORT_CONTAINER || env.EXPORT_SERVICE || env.EXPORT_ORIGIN),
         billingConfigured: !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID),
         mailConfigured: !!(env.RESEND_API_KEY || env.SEND_EMAIL) || env.DEV_ECHO_MAGIC_LINK === '1'
       });

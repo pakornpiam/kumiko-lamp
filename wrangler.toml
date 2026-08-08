@@ -41,7 +41,39 @@ binding = "ASSETS"
 binding = "KUMIKO"
 id = "PLACEHOLDER_RUN_WRANGLER_KV_NAMESPACE_CREATE"
 
+# The CSG generator.  A container rather than a Worker because manifold3d is a
+# native C++ extension and Workers are V8 isolates -- that constraint is the
+# whole reason this is not just another endpoint in worker/index.js.
+#
+# The build context is the repo root, not container/, because the image needs
+# requirements.txt and kumiko_lamp.py from the top level; the Dockerfile's COPY
+# paths are written relative to that.
+#
+# It has no route of its own.  The only way in is the Durable Object below,
+# which only worker/index.js can reach -- so the entitlement check cannot be
+# stepped around by calling the generator directly.
+[[containers]]
+class_name = "ExportContainer"
+image = "./container/Dockerfile"
+image_build_context = "."
+instance_type = "standard-1"
+# CSG is CPU-bound and a build peaks around 21s at the worst slider settings, so
+# more instances buys throughput, not speed.  The container also caps its own
+# concurrency at MAX_CONCURRENT and returns 503 rather than queueing.
+max_instances = 3
+
+[[durable_objects.bindings]]
+name = "EXPORT_CONTAINER"
+class_name = "ExportContainer"
+
+# Durable Objects need a migration to be created.  Bump the tag and add another
+# block for later changes; never edit this one after it has been deployed.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ExportContainer"]
+
 # Set with `npx wrangler secret put <NAME>`, never in this file:
 #   STRIPE_SECRET_KEY     STRIPE_WEBHOOK_SECRET     RESEND_API_KEY
 # Plain vars (safe to commit) go in [vars]:
-#   STRIPE_PRICE_ID   MAIL_FROM   EXPORT_ORIGIN
+#   STRIPE_PRICE_ID   MAIL_FROM
+# EXPORT_ORIGIN is dev-only -- in production the container binding is used.
