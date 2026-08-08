@@ -96,4 +96,13 @@ new_sqlite_classes = ["ExportContainer"]
 # clashed.  If one is ever added, it has to keep whatever the other projects on
 # this domain rely on -- a second SPF record does not merge, it invalidates both.
 MAIL_FROM = "Kumiko Lantern <noreply@pkroaming.com>"
-# STRIPE_PRICE_ID = "price_..."   <- add once the Stripe product exists
+
+# The subscription: USD 3 / month.  Safe to commit -- a price id names a public
+# product, and checkout is created server-side with the secret key anyway, so
+# knowing it buys nothing.
+#
+# Swapping this for a live-mode id is the switch that starts taking real money,
+# and it is the only place that decision is recorded.  A test id and a live key
+# do not mix: Stripe rejects the pair rather than silently charging, which is
+# the failure you want.
+STRIPE_PRICE_ID = "price_1U20bKR6t93KbTvkPYy1mhaa"
