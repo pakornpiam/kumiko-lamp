@@ -80,6 +80,13 @@ new_sqlite_classes = ["ExportContainer"]
 
 # Set with `npx wrangler secret put <NAME>`, never in this file:
 #   STRIPE_SECRET_KEY     STRIPE_WEBHOOK_SECRET     RESEND_API_KEY
-# Plain vars (safe to commit) go in [vars]:
-#   STRIPE_PRICE_ID   MAIL_FROM
-# EXPORT_ORIGIN is dev-only -- in production the container binding is used.
+# EXPORT_ORIGIN is dev-only -- in production the container binding is used, and
+# setting it in production would silently route exports away from the container.
+[vars]
+# Sent from the site's own subdomain, not the root.  pkroaming.com already has
+# an MX pointing at AWS SES, so verifying the root in Resend would put two mail
+# setups on one name; the subdomain keeps them apart.  Resend's records land on
+# send.* and resend._domainkey.*, so none of them collide with the proxied
+# record that serves the site itself.
+MAIL_FROM = "Kumiko Lantern <noreply@kumikolantern.pkroaming.com>"
+# STRIPE_PRICE_ID = "price_..."   <- add once the Stripe product exists
