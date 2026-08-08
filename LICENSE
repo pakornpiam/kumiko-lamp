@@ -1,4 +1,39 @@
-MIT License
+Copyright (c) 2026 Pakorn. All rights reserved.
+
+This software is proprietary from commit 5ea4957 onward. No permission is
+granted to use, copy, modify, merge, publish, distribute, sublicense or sell
+this software or the files it produces, except as expressly agreed in writing
+with the copyright holder.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+-------------------------------------------------------------------------------
+EVERYTHING PUBLISHED BEFORE THIS IS STILL MIT, PERMANENTLY
+-------------------------------------------------------------------------------
+
+A licence already granted cannot be withdrawn. Every commit up to and including
+3b8d8d5 was published under the MIT licence below, and that grant is
+irrevocable for those versions. Anyone who has a copy -- including any fork or
+clone of this public repository -- keeps the full MIT rights to it forever, for
+any purpose, including commercial use.
+
+That covers, at the point of the change:
+
+  - web/index.html, which generated STLs entirely in the browser
+  - kumiko_lamp.py and every pattern in it
+  - the 36 generated STL files in stl/
+
+The change above binds future versions only. It is not a claim over those.
+
+                            ---- MIT License ----
+                    applying to commit 3b8d8d5 and earlier
 
 Copyright (c) 2026 Pakorn
 

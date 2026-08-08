@@ -1,8 +1,59 @@
-/* Drive the real page in headless Chromium. */
+/* Drive the real page in headless Chromium.
+ *
+ * Served over http rather than opened from disk. Export is a server call now,
+ * and Chromium refuses fetch('/api/...') from a file:// page before it becomes
+ * a request at all -- so from disk there is nothing to intercept and nothing to
+ * assert. This also matches how the page is actually delivered.
+ *
+ * The stub answers only what the page needs to come up and to prove it asks for
+ * the right thing. Real bytes are export.test.js's job, against a real stack. */
 const { chromium } = require('playwright');
 const fs = require('fs');
-const PAGE = 'file://' + require('path').join(__dirname, 'index.html');
+const http = require('http');
 const OUT = require('os').tmpdir();
+
+let lastExportRequest = null;
+let stubSubscribed = false;
+
+const server = http.createServer((req, res) => {
+  const send = (code, type, body) => {
+    res.writeHead(code, { 'Content-Type': type, 'Content-Length': body.length });
+    res.end(body);
+  };
+  if (req.url === '/api/me') {
+    return send(200, 'application/json', Buffer.from(JSON.stringify({
+      signedIn: stubSubscribed, email: stubSubscribed ? 'tester@example.com' : null,
+      subscribed: stubSubscribed, priceConfigured: true
+    })));
+  }
+  if (req.url === '/api/export') {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    return req.on('end', () => {
+      try { lastExportRequest = JSON.parse(body); } catch { lastExportRequest = null; }
+      if (!stubSubscribed) {
+        return send(402, 'application/json',
+          Buffer.from(JSON.stringify({ error: 'subscription required', reason: 'not_subscribed' })));
+      }
+      /* Smallest legal empty zip: end-of-central-directory and nothing else. */
+      const zip = Buffer.concat([Buffer.from([0x50, 0x4b, 0x05, 0x06]), Buffer.alloc(18)]);
+      res.writeHead(200, {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': 'attachment; filename="probe.zip"',
+        'Content-Length': zip.length
+      });
+      res.end(zip);
+    });
+  }
+  if (req.url === '/' || req.url.startsWith('/index.html')) {
+    const html = fs.readFileSync(__dirname + '/index.html');
+    return send(200, 'text/html; charset=utf-8', html);
+  }
+  send(404, 'application/json', Buffer.from('{"error":"not found"}'));
+});
+
+const PORT = 8788 + (process.pid % 900);
+const PAGE = `http://127.0.0.1:${PORT}/`;
 
 let fails = 0;
 const check = (ok, msg, extra) => {
@@ -66,6 +117,7 @@ function zipEntry(buf, wanted) {
 }
 
 (async () => {
+  await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
   /* PW_CHROMIUM overrides the browser binary for sandboxes that ship their own;
      unset, Playwright uses the one `playwright install chromium` downloaded, so
      this runs on Linux, macOS and Windows alike. */
@@ -75,7 +127,14 @@ function zipEntry(buf, wanted) {
   const page = await ctx.newPage();
 
   const errors = [];
-  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  /* Chromium logs a console error for any non-2xx fetch, and this suite drives
+     the refusal paths on purpose. Those two statuses ARE the assertion just
+     above them, so counting them here would make a passing gate look like a
+     regression. Everything else, including any other status, still counts. */
+  const deliberate = /Failed to load resource.*status of (401|402)\b/;
+  page.on('console', m => {
+    if (m.type() === 'error' && !deliberate.test(m.text())) errors.push(m.text());
+  });
   page.on('pageerror', e => errors.push(String(e)));
 
   await page.goto(PAGE);
@@ -235,28 +294,67 @@ function zipEntry(buf, wanted) {
   await page.fill('#r-cableFloor', '2'); await page.dispatchEvent('#r-cableFloor', 'input');
   await page.waitForTimeout(450);
 
-  // download a single STL and validate the bytes
-  const [dl] = await Promise.all([
+  /* Export is a server call now, so this file can no longer produce the bytes:
+     what it CAN prove offline is that the page asks for the right thing. The
+     bytes themselves are checked in export.test.js against a running stack --
+     including the strict Modern topology guard, which is the strongest check in
+     the suite and must not be quietly lost.
+
+     The route is intercepted rather than reached: page.test.js runs from
+     file://, and keeping it runnable with nothing installed is worth more than
+     testing the transport twice. */
+  /* Unsubscribed: the stub answers 402 and the page must say so rather than
+     produce a file. This is the gate, from the outside. */
+  stubSubscribed = false;
+  await page.reload();
+  await page.waitForFunction(() => window.__kumikoReady === true, null, { timeout: 30000 });
+  /* A reload puts the rail back to its default, and later assertions drive
+     sliders in groups that start collapsed. */
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => { d.open = true; }));
+  await page.waitForTimeout(600);
+  await page.click('#dl-all');
+  await page.waitForTimeout(900);
+  const refused = await page.$eval('#account', a => a.innerText.replace(/\s+/g, ' '));
+  check(/subscription/i.test(refused), 'an unsubscribed download is refused, with a reason',
+        refused.slice(-70));
+
+  stubSubscribed = true;
+  await page.reload();
+  await page.waitForFunction(() => window.__kumikoReady === true, null, { timeout: 30000 });
+  /* A reload puts the rail back to its default, and later assertions drive
+     sliders in groups that start collapsed. */
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => { d.open = true; }));
+  await page.waitForTimeout(600);
+  await page.click('button[data-pattern="kikkou"]');
+  await page.waitForTimeout(500);
+
+  const [partDl] = await Promise.all([
     page.waitForEvent('download', { timeout: 20000 }),
     page.click('#parts tr:nth-child(2) button.dl')
   ]);
-  const p = await dl.path();
-  const buf = fs.readFileSync(p);
-  const n = buf.readUInt32LE(80);
-  check(buf.length === 84 + n * 50, `post.stl is a valid binary STL`,
-        `${n} triangles, ${buf.length} bytes`);
-  check(dl.suggestedFilename() === 'post.stl', 'download filename',
-        dl.suggestedFilename());
+  let seen = lastExportRequest;
+  check(seen && seen.part === 'post', 'a part button asks the server for that part',
+        seen && String(seen.part));
+  check(partDl.suggestedFilename() === 'post.stl', 'single-part download filename',
+        partDl.suggestedFilename());
+  check(!!seen && seen.params && seen.params.post === 18 && seen.params.groove_d === 6,
+        'the request carries the slider set under the generator\'s own names',
+        seen && seen.params && `${Object.keys(seen.params).length} params`);
+  check(!!seen && seen.params && !('modern_base_d' in seen.params),
+        'the linked-diameter sentinel is omitted rather than sent as 0');
 
-  // zip of the whole set
-  const zdl = await Promise.all([
+  const [zipDl] = await Promise.all([
     page.waitForEvent('download', { timeout: 30000 }),
     page.click('#dl-all')
   ]);
-  const zbuf = fs.readFileSync(await zdl[0].path());
-  check(zbuf[0] === 0x50 && zbuf[1] === 0x4b, 'zip magic', zdl[0].suggestedFilename());
-  check(zbuf.length > 100000, 'zip carries the whole set',
-        (zbuf.length / 1048576).toFixed(2) + ' MB');
+  seen = lastExportRequest;
+  check(seen && seen.part === null, 'the zip button asks for the whole set',
+        seen && String(seen.part));
+  check(seen && seen.pattern === 'kikkou' && seen.style === 'classic',
+        'the request carries pattern and style',
+        seen && `${seen.style}/${seen.pattern}`);
+  check(/^kumiko-lamp-.*\.zip$/.test(zipDl.suggestedFilename()),
+        'zip download filename', zipDl.suggestedFilename());
 
   // the diffuser plate.  Left until after the export checks so nothing above
   // sees a glazed lamp, and switched off again before the screenshots.
@@ -370,33 +468,19 @@ function zipEntry(buf, wanted) {
         modernManifoldCopy.includes('strict single-body export mesh'),
         'Modern copy distinguishes lightweight preview from watertight download');
 
-  const previewShade = await page.evaluate(() => {
-    const m = Kumiko.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
-                                pattern: 'asanoha' });
-    const p = m.parts[0];
-    return { triangles: p.mesh.tris.length / 9,
-             bytes: Kumiko.stlBinary(p.mesh.tris).length };
-  });
+  /* The watertightness of these bytes is export.test.js's job now -- the server
+     builds them and this file only has a stub. What is still provable here is
+     that the page asks for the right part under its stable name. */
   const [modernShadeDl] = await Promise.all([
     page.waitForEvent('download', { timeout: 30000 }),
     page.click('#parts tr:first-child button.dl')
   ]);
-  const modernShadeBytes = fs.readFileSync(await modernShadeDl.path());
-  const modernShadeTopology = stlTopology(modernShadeBytes);
-  check(modernShadeDl.suggestedFilename() === 'modern_shade_asanoha.stl' &&
-        modernShadeBytes.length === 84 + modernShadeBytes.readUInt32LE(80) * 50,
-        'direct Modern shade keeps its stable binary-STL filename');
-  check(modernShadeTopology.nonTwo === 0 &&
-        modernShadeTopology.sameDirection === 0 &&
-        modernShadeTopology.degenerate === 0 &&
-        modernShadeTopology.components === 1 &&
-        modernShadeTopology.signedVolume > 0,
-        'direct Modern shade download is one positive float32-watertight body',
-        JSON.stringify(modernShadeTopology));
-  check(modernShadeBytes.length !== previewShade.bytes &&
-        modernShadeBytes.readUInt32LE(80) !== previewShade.triangles,
-        'direct Modern shade substitutes strict export geometry for preview bytes',
-        `${previewShade.triangles} preview vs ${modernShadeBytes.readUInt32LE(80)} export tris`);
+  check(modernShadeDl.suggestedFilename() === 'modern_shade_asanoha.stl',
+        'direct Modern shade keeps its stable filename', modernShadeDl.suggestedFilename());
+  check(lastExportRequest && lastExportRequest.part === 'modern_shade_asanoha' &&
+        lastExportRequest.style === 'modern',
+        'the Modern shade request names the part and the style',
+        lastExportRequest && `${lastExportRequest.style}/${lastExportRequest.part}`);
 
   await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
   await page.click('button[data-holder="e14"]');
@@ -408,17 +492,15 @@ function zipEntry(buf, wanted) {
     page.waitForEvent('download', { timeout: 20000 }),
     page.click('#parts tr:last-child button.dl')
   ]);
-  const e14RingBytes = fs.readFileSync(await e14RingDl.path());
-  check(e14RingDl.suggestedFilename() === 'socket_adapter_ring.stl' &&
-        e14RingBytes.length === 84 + e14RingBytes.readUInt32LE(80) * 50,
-        'Modern E14 adapter downloads as a valid stable-name STL');
-  const [e14ZipDl] = await Promise.all([
-    page.waitForEvent('download', { timeout: 30000 }),
-    page.click('#dl-all')
-  ]);
-  const e14ZipBytes = fs.readFileSync(await e14ZipDl.path());
-  check(e14ZipBytes.includes(e14RingBytes),
-        'Modern E14 ZIP carries the selected adapter geometry');
+  check(e14RingDl.suggestedFilename() === 'socket_adapter_ring.stl',
+        'Modern E14 adapter keeps the stable adapter-ring filename',
+        e14RingDl.suggestedFilename());
+  check(lastExportRequest && lastExportRequest.params &&
+        lastExportRequest.params.socket_neck === 27 &&
+        !('holder_type' in lastExportRequest.params),
+        'the E14 preset reaches the server as a neck dimension, not a label',
+        lastExportRequest && lastExportRequest.params &&
+        String(lastExportRequest.params.socket_neck));
   await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
   await page.click('button[data-holder="e27"]');
   await page.waitForTimeout(550);
@@ -475,33 +557,21 @@ function zipEntry(buf, wanted) {
     page.waitForEvent('download', { timeout: 20000 }),
     page.click('#parts tr:nth-child(2) button.dl')
   ]);
-  const modernBaseBytes = fs.readFileSync(await modernBaseDl.path());
-  check(modernBaseDl.suggestedFilename() === 'modern_base.stl' &&
-        modernBaseBytes.length === 84 + modernBaseBytes.readUInt32LE(80) * 50,
-        'Modern base download is a valid binary STL', modernBaseDl.suggestedFilename());
+  check(modernBaseDl.suggestedFilename() === 'modern_base.stl',
+        'Modern base keeps its stable filename', modernBaseDl.suggestedFilename());
   const [modernZipDl] = await Promise.all([
     page.waitForEvent('download', { timeout: 30000 }),
     page.click('#dl-all')
   ]);
-  const modernZip = fs.readFileSync(await modernZipDl.path());
-  check(modernZipDl.suggestedFilename() === 'kumiko-lamp-modern-100mm-asanoha.zip' &&
-        modernZip.includes(Buffer.from('modern_shade_asanoha.stl')) &&
-        modernZip.includes(Buffer.from('modern_base.stl')) &&
-        modernZip.includes(Buffer.from('socket_adapter_ring.stl')),
-        'Modern ZIP is style-named and contains all three printable files',
-        modernZipDl.suggestedFilename());
-  const zippedShade = zipEntry(modernZip, 'modern_shade_asanoha.stl');
-  const zippedShadeTopology = zippedShade && stlTopology(zippedShade);
-  check(!!zippedShade && zippedShade.equals(modernShadeBytes),
-        'Modern ZIP reuses the cached strict shade bytes');
-  check(!!zippedShadeTopology && zippedShadeTopology.nonTwo === 0 &&
-        zippedShadeTopology.sameDirection === 0 &&
-        zippedShadeTopology.degenerate === 0 &&
-        zippedShadeTopology.components === 1 &&
-        zippedShadeTopology.signedVolume > 0 &&
-        zippedShade.readUInt32LE(80) !== previewShade.triangles,
-        'Modern ZIP shade is strict topology rather than preview geometry',
-        zippedShadeTopology && JSON.stringify(zippedShadeTopology));
+  check(modernZipDl.suggestedFilename() === 'kumiko-lamp-modern-100mm-asanoha.zip',
+        'Modern ZIP is style-and-diameter named', modernZipDl.suggestedFilename());
+  check(lastExportRequest && lastExportRequest.style === 'modern' &&
+        lastExportRequest.params && lastExportRequest.params.size === 100 &&
+        lastExportRequest.params.modern_base_h === 90,
+        'the Modern request carries the shade and base dimensions',
+        lastExportRequest && lastExportRequest.params &&
+        JSON.stringify({ size: lastExportRequest.params.size,
+                         h: lastExportRequest.params.modern_base_h }));
 
   await page.click('#v-exp'); await page.waitForTimeout(250);
   check(await page.getAttribute('#v-exp', 'aria-pressed') === 'true',
@@ -748,6 +818,7 @@ function zipEntry(buf, wanted) {
         errors.slice(0, 3).join(' | '));
 
   await browser.close();
+  await new Promise((r) => server.close(r));
   console.log(fails ? `\n${fails} FAILURES` : '\nall browser checks passed');
   process.exit(fails ? 1 : 0);
 })();

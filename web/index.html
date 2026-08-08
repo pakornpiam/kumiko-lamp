@@ -349,6 +349,36 @@ button.primary:disabled { opacity: .45; cursor: not-allowed; filter: none; }
 button.primary:focus-visible { outline: 2px solid var(--kigara); outline-offset: 2px; }
 .actions .said { font-size: 13.5px; color: var(--sumi-2); }
 
+/* Account and subscription.  Sits under the download button because that is
+   the only place it is load-bearing -- nothing else on the page is gated. */
+.account {
+  margin-top: 16px; padding: 14px 16px; max-width: 620px;
+  background: var(--washi); border: 1px solid var(--edge); border-radius: 3px;
+  font-size: 13.5px; color: var(--sumi-2); line-height: 1.5;
+}
+.account h3 {
+  margin: 0 0 6px; font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--sumi-3);
+}
+.account form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.account input[type=email] {
+  flex: 1 1 220px; min-width: 0; font-family: var(--serif); font-size: 14px;
+  padding: 9px 11px; border: 1px solid var(--edge); border-radius: 2px;
+  background: var(--hinoki); color: var(--sumi);
+}
+.account input[type=email]:focus-visible { outline: 2px solid var(--ai); outline-offset: 1px; }
+.account button {
+  font-family: var(--serif); font-size: 14px; cursor: pointer;
+  padding: 9px 16px; border-radius: 2px;
+  border: 1px solid var(--ai); background: var(--ai); color: var(--washi);
+}
+.account button.ghost { background: transparent; color: var(--sumi-2); border-color: var(--edge); }
+.account button:hover { filter: brightness(1.12); }
+.account button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+.account .who { font-family: var(--mono); font-size: 12px; color: var(--sumi); }
+.account .err { color: #8c2f21; }
+.account .ok { color: #2f6b3a; }
+
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 26px; }
 .cols h3 { font-size: 15px; margin-bottom: 7px; }
 .cols p, .cols li { font-size: 14.5px; color: var(--sumi-2); }
@@ -444,6 +474,9 @@ pre.cmd {
       <button class="primary" id="dl-all">Download all parts (.zip)</button>
       <span class="said" id="said"></span>
     </div>
+    <!-- Account and subscription.  Built by JS so every string goes through
+         t() and switches with the language like the rest of the page. -->
+    <div class="account" id="account" hidden></div>
   </section>
 
   <section class="block">
@@ -3267,7 +3300,37 @@ var Kumiko = (function () {
     'fits':'พิมพ์ได้', 'too big':'ใหญ่เกินไป', 'This lamp will not go together':'ไม่สามารถประกอบโคมนี้ได้',
     'Fix the problems above first.':'แก้ไขปัญหาด้านบนก่อน',
     'Some parts are larger than the bed.':'ชิ้นส่วนบางชิ้นใหญ่กว่าพื้นที่พิมพ์',
-    'panel':'แผง', 'slats':'ซี่', 'contours':'เส้นขอบ', 'imported artwork':'ภาพนำเข้า', 'pitch':'ระยะลาย'
+    'panel':'แผง', 'slats':'ซี่', 'contours':'เส้นขอบ', 'imported artwork':'ภาพนำเข้า', 'pitch':'ระยะลาย',
+
+    /* account and subscription */
+    'Print-ready files':'ไฟล์พร้อมพิมพ์',
+    'The export service is not reachable from here. Downloads need the hosted app.':
+      'ไม่สามารถเชื่อมต่อบริการสร้างไฟล์จากที่นี่ได้ การดาวน์โหลดต้องใช้แอปบนเว็บ',
+    'The preview is free. Downloads are built by the CSG generator and checked watertight before they are sent, which needs a subscription.':
+      'การแสดงตัวอย่างใช้ได้ฟรี ส่วนไฟล์ดาวน์โหลดสร้างด้วยตัวสร้างแบบ CSG และตรวจสอบว่าปิดสนิทก่อนส่ง ซึ่งต้องสมัครสมาชิก',
+    'you@example.com':'you@example.com',
+    'Email address':'อีเมล',
+    'Email me a sign-in link':'ส่งลิงก์เข้าสู่ระบบทางอีเมล',
+    'Sending…':'กำลังส่ง…',
+    'Check your email for a sign-in link. It works once and expires in 15 minutes.':
+      'ตรวจอีเมลของคุณเพื่อดูลิงก์เข้าสู่ระบบ ลิงก์ใช้ได้ครั้งเดียวและหมดอายุใน 15 นาที',
+    'The sign-in email could not be sent.':'ไม่สามารถส่งอีเมลเข้าสู่ระบบได้',
+    'You are signed in.':'เข้าสู่ระบบแล้ว',
+    'That sign-in link has expired or was already used.':'ลิงก์เข้าสู่ระบบหมดอายุหรือถูกใช้ไปแล้ว',
+    'Sign out':'ออกจากระบบ',
+    'Subscription active — downloads are unlocked.':'สมาชิกใช้งานอยู่ — ดาวน์โหลดได้แล้ว',
+    'Subscribe to download':'สมัครสมาชิกเพื่อดาวน์โหลด',
+    'Manage billing':'จัดการการชำระเงิน',
+    'Billing is not configured on this deployment.':'ยังไม่ได้ตั้งค่าการชำระเงินบนระบบนี้',
+    'Could not open the billing page.':'ไม่สามารถเปิดหน้าชำระเงินได้',
+    'Thank you — your subscription is being confirmed.':'ขอบคุณ — กำลังยืนยันการสมัครสมาชิก',
+    'Checkout was cancelled.':'ยกเลิกการชำระเงินแล้ว',
+    'Building print-ready files…':'กำลังสร้างไฟล์พร้อมพิมพ์…',
+    'Sign in to download the print-ready files.':'เข้าสู่ระบบเพื่อดาวน์โหลดไฟล์พร้อมพิมพ์',
+    'A subscription is needed to download.':'ต้องสมัครสมาชิกจึงจะดาวน์โหลดได้',
+    'This lamp cannot be built:':'ไม่สามารถสร้างโคมนี้ได้:',
+    'The download failed. Please try again.':'ดาวน์โหลดไม่สำเร็จ กรุณาลองใหม่',
+    'Could not reach the export service.':'ไม่สามารถเชื่อมต่อบริการสร้างไฟล์ได้'
   };
   function t(s) { return lang === 'th' && TH[s] ? TH[s] : s; }
 
@@ -4121,7 +4184,7 @@ var Kumiko = (function () {
       var td5 = el('td');
       var b = el('button', 'dl', 'STL');
       b.addEventListener('click', function () {
-        download(p.id + '.stl', exportPartBytes(p));
+        requestExport(p.id, p.id + '.stl');
       });
       td5.appendChild(b);
       tr.appendChild(td5);
@@ -4322,13 +4385,242 @@ var Kumiko = (function () {
     }, 40);
   }
 
+  /* ---------------------------------------------------------------- account
+
+     Export is the one gated thing on the page: the preview, the validation and
+     the print list all stay free.  What is sold is print-ready geometry -- the
+     server runs the real CSG generator and refuses to hand over a part that is
+     not watertight, which the browser's own overlapping lattices could never
+     promise.
+
+     Opened from disk with no Worker behind it, every call here fails and the
+     panel says the export service is unavailable.  The rest of the app is
+     untouched by that, which is the point of keeping the gate this narrow. */
+
+  var account = { loaded: false, signedIn: false, email: null, subscribed: false,
+                  billing: false, note: null, noteKind: null, busy: false };
+
+  function accountNote(msg, kind) {
+    account.note = msg; account.noteKind = kind || null;
+    renderAccount();
+  }
+
+  async function api(path, opts) {
+    var r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts || {}));
+    var body = null;
+    try { body = await r.json(); } catch (_) {}
+    return { ok: r.ok, status: r.status, body: body || {} };
+  }
+
+  async function refreshAccount() {
+    /* Opened from disk there is no origin to call, and fetch does not fail
+       quietly -- it logs to the console, which is noise in something that is
+       otherwise silent and a false alarm in the page tests.  Do not ask. */
+    if (location.protocol === 'file:') {
+      account.loaded = false;
+      renderAccount();
+      return;
+    }
+    try {
+      var r = await api('/api/me');
+      if (!r.ok) throw new Error('unavailable');
+      account.signedIn = !!r.body.signedIn;
+      account.email = r.body.email || null;
+      account.subscribed = !!r.body.subscribed;
+      account.billing = !!r.body.priceConfigured;
+      account.loaded = true;
+    } catch (_) {
+      /* No backend -- a file:// open, or the static build.  Say so plainly
+         rather than showing a sign-in form that cannot work. */
+      account.loaded = false;
+    }
+    renderAccount();
+  }
+
+  function renderAccount() {
+    var box = document.getElementById('account');
+    if (!box) return;
+    box.textContent = '';
+    box.hidden = false;
+
+    box.appendChild(el('h3', null, t('Print-ready files')));
+
+    if (!account.loaded) {
+      box.appendChild(el('p', null, t('The export service is not reachable from here. Downloads need the hosted app.')));
+      return;
+    }
+
+    box.appendChild(el('p', null, t(
+      'The preview is free. Downloads are built by the CSG generator and checked watertight before they are sent, which needs a subscription.')));
+
+    if (!account.signedIn) {
+      var form = el('form');
+      var input = document.createElement('input');
+      input.type = 'email'; input.required = true; input.id = 'acct-email';
+      input.placeholder = t('you@example.com');
+      input.setAttribute('aria-label', t('Email address'));
+      var go = el('button', null, t('Email me a sign-in link'));
+      go.type = 'submit'; go.disabled = account.busy;
+      form.appendChild(input); form.appendChild(go);
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        signIn(input.value);
+      });
+      box.appendChild(form);
+    } else {
+      var who = el('p', 'who', account.email);
+      box.appendChild(who);
+      var row = el('form');
+      row.addEventListener('submit', function (e) { e.preventDefault(); });
+      if (account.subscribed) {
+        row.appendChild(el('p', null, t('Subscription active — downloads are unlocked.')));
+        if (account.billing) {
+          var portal = el('button', 'ghost', t('Manage billing'));
+          portal.type = 'button';
+          portal.addEventListener('click', function () { goto('/api/portal'); });
+          row.appendChild(portal);
+        }
+      } else if (account.billing) {
+        var sub = el('button', null, t('Subscribe to download'));
+        sub.type = 'button'; sub.disabled = account.busy;
+        sub.addEventListener('click', function () { goto('/api/checkout'); });
+        row.appendChild(sub);
+      } else {
+        row.appendChild(el('p', null, t('Billing is not configured on this deployment.')));
+      }
+      var out = el('button', 'ghost', t('Sign out'));
+      out.type = 'button';
+      out.addEventListener('click', async function () {
+        await api('/api/auth/signout', { method: 'POST' });
+        account.signedIn = false; account.email = null; account.subscribed = false;
+        accountNote(null);
+      });
+      row.appendChild(out);
+      box.appendChild(row);
+    }
+
+    if (account.note) {
+      box.appendChild(el('p', account.noteKind === 'err' ? 'err' : 'ok', account.note));
+    }
+  }
+
+  async function signIn(raw) {
+    account.busy = true; accountNote(t('Sending…'));
+    var r = await api('/api/auth/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: String(raw || '') })
+    });
+    account.busy = false;
+    if (!r.ok) return accountNote(t('The sign-in email could not be sent.'), 'err');
+    /* Deliberately the same message whatever was typed: the server answers
+       identically for a known and an unknown address so this cannot be used to
+       discover who has an account, and saying more here would undo that. */
+    accountNote(t('Check your email for a sign-in link. It works once and expires in 15 minutes.'));
+    if (r.body.devLink) location.href = r.body.devLink;   /* dev only */
+  }
+
+  async function goto(path) {
+    account.busy = true; renderAccount();
+    var r = await api(path, { method: 'POST' });
+    account.busy = false;
+    if (r.ok && r.body.url) { location.href = r.body.url; return; }
+    accountNote(t('Could not open the billing page.'), 'err');
+  }
+
+  /**
+   * Ask the server to build and send the files.
+   *
+   * `part` narrows it to one STL; null asks for the whole set as a ZIP.  The
+   * whole slider set goes up, because the CLI's own flags cannot express a
+   * configuration this app can produce.
+   */
+  async function requestExport(part, filename) {
+    if (!model || !model.parts) return;
+    var btnAll = document.getElementById('dl-all');
+    var said = document.getElementById('said');
+    btnAll.disabled = true;
+    said.textContent = t('Building print-ready files…');
+    try {
+      var r = await fetch('/api/export', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pattern: state.pattern,
+          style: state.lanternStyle,
+          part: part,
+          params: exportParams()
+        })
+      });
+      if (r.ok) {
+        download(filename, new Uint8Array(await r.arrayBuffer()),
+                 part ? 'model/stl' : 'application/zip');
+        said.textContent = '';
+        return;
+      }
+      var body = {};
+      try { body = await r.json(); } catch (_) {}
+      said.textContent = '';
+      if (r.status === 401) {
+        await refreshAccount();
+        accountNote(t('Sign in to download the print-ready files.'), 'err');
+      } else if (r.status === 402) {
+        await refreshAccount();
+        accountNote(t('A subscription is needed to download.'), 'err');
+      } else if (r.status === 422 && body.reasons && body.reasons.length) {
+        /* The generator's own wording, already shown by checkFits in this page
+           for the cases it can see -- so translate it the same way rather than
+           inventing a second vocabulary for the same problem. */
+        accountNote(t('This lamp cannot be built:') + ' ' +
+                    body.reasons.map(translateProblem).join('; '), 'err');
+      } else {
+        accountNote(body.error ? translateProblem(body.error)
+                               : t('The download failed. Please try again.'), 'err');
+      }
+    } catch (_) {
+      said.textContent = '';
+      accountNote(t('Could not reach the export service.'), 'err');
+    } finally {
+      btnAll.disabled = !!(model && model.problems && model.problems.length);
+    }
+  }
+
+  /* Only the keys the generator knows, as numbers.  DEFAULTS is the list of
+     what the app can actually change; pattern, style and the app-only link flag
+     are sent separately or not at all. */
+  function exportParams() {
+    var skip = { pattern: 1, holderType: 1, lanternStyle: 1, modernBaseLinked: 1 };
+    var map = { size: 'size', height: 'height', post: 'post', postChamfer: 'post_chamfer',
+      panelT: 'panel_t', panelBorder: 'panel_border', slatW: 'slat_w', grid: 'grid',
+      rebateD: 'rebate_d', rebateLip: 'rebate_lip', plateT: 'plate_t',
+      grooveD: 'groove_d', slotClear: 'slot_clear', panelClear: 'panel_clear',
+      socketClear: 'socket_clear', plinth: 'plinth', baseT: 'base_t', capT: 'cap_t',
+      edgeChamfer: 'edge_chamfer', leg: 'leg', legH: 'leg_h', legTenon: 'leg_tenon',
+      legTenonH: 'leg_tenon_h', legClear: 'leg_clear', snapEngagement: 'snap_engagement',
+      postInsertD: 'post_insert_d', postInsertH: 'post_insert_h', finialH: 'finial_h',
+      finialTenonH: 'finial_tenon_h', socketBore: 'socket_bore',
+      socketCbore: 'socket_cbore', socketCboreD: 'socket_cbore_d',
+      socketNeck: 'socket_neck', cableW: 'cable_w', cableH: 'cable_h',
+      cableFloor: 'cable_floor', baseVents: 'base_vents', baseVentR0: 'base_vent_r0',
+      baseVentR1: 'base_vent_r1', capVentD: 'cap_vent_d', capGrilleF: 'cap_grille_f',
+      arc: 'arc', nozzle: 'nozzle', modernBaseH: 'modern_base_h',
+      modernThreadClear: 'modern_thread_clear', modernBaseD: 'modern_base_d' };
+    var out = {};
+    for (var k in state) {
+      if (skip[k] || !map[k]) continue;
+      var v = +state[k];
+      if (!isFinite(v)) continue;
+      out[map[k]] = v;
+    }
+    /* 0 is the app's "follow the shade" sentinel; Python's is None, which it
+       gets by the key simply being absent. */
+    if (!out.modern_base_d) delete out.modern_base_d;
+    return out;
+  }
+
   document.getElementById('dl-all').addEventListener('click', function () {
     if (!model || !model.parts) return;
-    var files = [];
-    model.parts.forEach(function (p) {
-      files.push({ name: p.id + (p.qty > 1 ? '_x' + p.qty : '') + '.stl',
-                   data: exportPartBytes(p) });
-    });
     /* Once the two diameters part company a single number cannot describe the
        lamp, so name both rather than pick one. */
     var P = model.P, size;
@@ -4338,9 +4630,9 @@ var Kumiko = (function () {
              Math.round(P.modernBaseDiameter) + 'mm';
     else
       size = Math.round(P.foot) + 'mm';
-    download('kumiko-lamp-' + (state.lanternStyle === 'modern' ? 'modern-' : '') +
-             size + '-' + state.pattern + '.zip',
-             K.zipStore(files), 'application/zip');
+    requestExport(null,
+      'kumiko-lamp-' + (state.lanternStyle === 'modern' ? 'modern-' : '') +
+      size + '-' + state.pattern + '.zip');
   });
 
   ['v-asm', 'v-exp'].forEach(function (id) {
@@ -4395,6 +4687,9 @@ var Kumiko = (function () {
     try { localStorage.setItem('kumiko-language', lang); } catch (_) {}
     applyStaticLanguage();
     buildRail();
+    /* The panel is built from t(), so it has to be redrawn like the rail --
+       a note left over from the other language would otherwise sit there. */
+    renderAccount();
     if (model) {
       renderProblems(); renderMeta(); drawFlat();
       if (model.parts) renderParts();
@@ -4404,6 +4699,23 @@ var Kumiko = (function () {
   buildRail();
   initGL();
   rebuild();
+
+  /* Coming back from a magic link or from Stripe.  Strip the marker afterwards
+     so a refresh does not replay the message, and so the URL stays clean. */
+  (function () {
+    var q = new URLSearchParams(location.search);
+    var signin = q.get('signin'), sub = q.get('subscribed'), cancelled = q.get('checkout');
+    refreshAccount().then(function () {
+      if (signin === 'ok') accountNote(t('You are signed in.'));
+      else if (signin === 'expired') accountNote(t('That sign-in link has expired or was already used.'), 'err');
+      else if (sub === '1') accountNote(t('Thank you — your subscription is being confirmed.'));
+      else if (cancelled === 'cancelled') accountNote(t('Checkout was cancelled.'));
+    });
+    if (signin || sub || cancelled) {
+      history.replaceState(null, '', location.pathname);
+    }
+  })();
+
   window.__kumikoReady = true;
 })();
 </script>

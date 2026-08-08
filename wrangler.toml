@@ -13,9 +13,96 @@
 # here; `pages_build_output_dir` is the Pages spelling and makes it fail with
 # "Missing entry-point to Worker script or to assets directory".
 #
-# No `main`: with assets and no script, every request is served from dist/.
+# `main` is set, so this Worker now sees EVERY request -- including the page
+# itself.  That is why [assets] gained a binding name: worker/index.js has to
+# call env.ASSETS.fetch() explicitly for anything that is not /api/*, and
+# without it the site stops serving.
+#
+# The export service (container/) is reached through EXPORT_SERVICE when bound,
+# or EXPORT_ORIGIN as a plain URL.  The second is what lets `wrangler dev` talk
+# to a container running on localhost, which is the only way to exercise the
+# paid path without deploying.
 name = "kumiko-lamp"
+main = "worker/index.js"
 compatibility_date = "2026-08-07"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
+
+# Sessions, magic-link tokens and Stripe entitlement.  KV rather than D1
+# because the account token carries workers_kv but no d1 scope, and nothing
+# here needs a join.  Eventually consistent, so a just-cancelled subscription
+# can survive a short window -- acceptable for this, and why stripe.js also
+# checks the period end rather than trusting the key's presence alone.
+#
+# Created in the dashboard as "kumiko".  `wrangler kv namespace create` fails on
+# this account with a 10000 auth error -- reads work, so the token can reach the
+# KV API but not create account-level resources.  The dashboard is the way in.
+#
+# Its own namespace on purpose.  The account also has a SESSIONS namespace from
+# another project, and sharing one would mean either app's bug can drop the
+# other's sessions with no way to clear this project's data alone.
+[[kv_namespaces]]
+binding = "KUMIKO"
+id = "ee23ccf9197d4c9d92cedf56827f714d"
+
+# The CSG generator.  A container rather than a Worker because manifold3d is a
+# native C++ extension and Workers are V8 isolates -- that constraint is the
+# whole reason this is not just another endpoint in worker/index.js.
+#
+# The build context is the repo root, not container/, because the image needs
+# requirements.txt and kumiko_lamp.py from the top level; the Dockerfile's COPY
+# paths are written relative to that.
+#
+# It has no route of its own.  The only way in is the Durable Object below,
+# which only worker/index.js can reach -- so the entitlement check cannot be
+# stepped around by calling the generator directly.
+[[containers]]
+class_name = "ExportContainer"
+image = "./container/Dockerfile"
+image_build_context = "."
+instance_type = "standard-1"
+# CSG is CPU-bound and a build peaks around 21s at the worst slider settings, so
+# more instances buys throughput, not speed.  The container also caps its own
+# concurrency at MAX_CONCURRENT and returns 503 rather than queueing.
+max_instances = 3
+
+[[durable_objects.bindings]]
+name = "EXPORT_CONTAINER"
+class_name = "ExportContainer"
+
+# Durable Objects need a migration to be created.  Bump the tag and add another
+# block for later changes; never edit this one after it has been deployed.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ExportContainer"]
+
+# Set with `npx wrangler secret put <NAME>`, never in this file:
+#   STRIPE_SECRET_KEY     STRIPE_WEBHOOK_SECRET     RESEND_API_KEY
+# EXPORT_ORIGIN is dev-only -- in production the container binding is used, and
+# setting it in production would silently route exports away from the container.
+[vars]
+# pkroaming.com is already verified with Resend -- send.pkroaming.com carries the
+# bounce MX and SPF, and resend._domainkey.pkroaming.com the DKIM key, so no new
+# DNS is needed for this project.
+#
+# The root MX (inbound-smtp.ap-northeast-1.amazonaws.com) is SES *inbound* and is
+# untouched by any of this: Resend's records sit on send.* and
+# resend._domainkey.*, never on the root itself.  Sending and receiving on this
+# domain are independent.
+#
+# There is no SPF record at the root, which is the one thing that would have
+# clashed.  If one is ever added, it has to keep whatever the other projects on
+# this domain rely on -- a second SPF record does not merge, it invalidates both.
+MAIL_FROM = "Kumiko Lantern <noreply@pkroaming.com>"
+
+# The subscription: USD 3 / month.  Safe to commit -- a price id names a public
+# product, and checkout is created server-side with the secret key anyway, so
+# knowing it buys nothing.
+#
+# Swapping this for a live-mode id is the switch that starts taking real money,
+# and it is the only place that decision is recorded.  A test id and a live key
+# do not mix: Stripe rejects the pair rather than silently charging, which is
+# the failure you want.
+STRIPE_PRICE_ID = "price_1U20bKR6t93KbTvkPYy1mhaa"
