@@ -80,10 +80,24 @@ Port 8080 appears in three places — the Dockerfile `EXPOSE`, `container/server
 
 - **The container shells out to `kumiko_lamp.py`** rather than importing it, so the whole
   tested sequence — `check_fits`, `emit`, `check_part`, the clearance pass, the exit code —
-  is the one a local CLI run takes. Verified: every part comes back hash-identical to
-  running the generator locally. **`--params-json` exists because the CLI's sixteen flags
+  is the one a local CLI run takes. **`--params-json` exists because the CLI's sixteen flags
   cannot express the app's thirty sliders**, so without it a customer's actual
   configuration is unbuildable.
+
+**STL bytes are reproducible per platform, not across them.** Same machine, same
+parameters gives byte-identical output — but the Linux container and native Windows differ
+on `base.stl` and `top_cap.stl`, the two heaviest boolean parts, while `post`, `leg`,
+`panel_*`, `socket_adapter_ring` and `diffuser_plate` match exactly. Measured: volumes
+agree to full printed precision and both meshes are watertight, single-body and
+degenerate-free; `base` merely comes out 1404 triangles on Linux against 1402 on Windows.
+That is manifold3d tessellating a boolean differently on a different libm, not a geometry
+difference, and no slicer can tell.
+
+It matters for one instruction only: **"verify all stock hashes are unchanged after
+regeneration" silently assumes the same platform as last time.** The checked-in `stl/`
+artifacts were generated on Windows, so regenerating them in the container or in CI will
+show `base` and `top_cap` as changed when nothing is wrong. Compare volume and topology
+before believing a hash.
 - **The offered pattern list is probed at startup, not hardcoded.** `LAITHAI_ENABLED` hides
   a family and Modern takes kumiko only, so a stale copy would refuse a pattern the app
   offers, or accept one argparse rejects **on stderr with exit 2** — a usage error that
