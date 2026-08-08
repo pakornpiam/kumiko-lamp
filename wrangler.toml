@@ -36,10 +36,16 @@ binding = "ASSETS"
 # can survive a short window -- acceptable for this, and why stripe.js also
 # checks the period end rather than trusting the key's presence alone.
 #
-#   npx wrangler kv namespace create KUMIKO      <- then paste the id below
+# Created in the dashboard as "kumiko".  `wrangler kv namespace create` fails on
+# this account with a 10000 auth error -- reads work, so the token can reach the
+# KV API but not create account-level resources.  The dashboard is the way in.
+#
+# Its own namespace on purpose.  The account also has a SESSIONS namespace from
+# another project, and sharing one would mean either app's bug can drop the
+# other's sessions with no way to clear this project's data alone.
 [[kv_namespaces]]
 binding = "KUMIKO"
-id = "PLACEHOLDER_RUN_WRANGLER_KV_NAMESPACE_CREATE"
+id = "ee23ccf9197d4c9d92cedf56827f714d"
 
 # The CSG generator.  A container rather than a Worker because manifold3d is a
 # native C++ extension and Workers are V8 isolates -- that constraint is the
