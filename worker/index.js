@@ -28,9 +28,15 @@ const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
  * still no package.json, and wrangler bundles this file as it stands.
  *
  * Cold start is a real container boot plus a Python import of numpy, scipy and
- * trimesh, so the first request after a sleep is slow in a way the measured
- * 1.3s warm build does not suggest. sleepAfter is generous for that reason:
- * paying to keep it warm beats making a paying customer wait twice.
+ * trimesh, so the first request after a sleep is slow in a way the measured 1.3s
+ * warm build does not suggest.
+ *
+ * Nothing here manages sleep -- `sleepAfter` belongs to the @cloudflare/containers
+ * helper, not this raw API, so the platform reclaims the instance on its own
+ * schedule. That is the main cost lever: containers bill for the time they are
+ * up, not per request. If the subscription price is thin, the fix is a DO alarm
+ * that calls container.stop() after an idle period, traded against making the
+ * next customer wait through a cold start.
  */
 export class ExportContainer {
   constructor(ctx) {
