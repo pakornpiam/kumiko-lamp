@@ -54,6 +54,18 @@ run that prints `OK`/`FAIL` lines and exits non-zero on failure. To narrow a Pyt
 Docs say `python3` (correct for Linux/macOS, and what the shebangs use). **On Windows the
 interpreter is `python`** — `python3` resolves to the Microsoft Store shim and fails.
 
+**`wrangler dev` will not start on Windows while `[[containers]]` is configured**, whatever
+`EXPORT_ORIGIN` says: it refuses during "Preparing container image(s)" with *"Local
+development with containers is currently not supported on Windows"*, before any of your
+code loads. Docker running changes nothing, and `wrangler dev` has no `--enable-containers`
+flag to turn it off — the switch is config-only. Either run the dev half under WSL, or point
+`-c` at a scratch copy of `wrangler.toml` with the `[[containers]]`, `[[durable_objects]]`
+and `[[migrations]]` blocks dropped. The second is not a lesser test: `callExportService`
+returns on `EXPORT_ORIGIN` before it ever reads `EXPORT_CONTAINER`
+([worker/index.js:100](worker/index.js#L100)), so the exercised path is identical, and
+`export.test.js` passes against it. Keep that copy out of the repo — it duplicates the KV id
+and `[vars]`, and a stale one deploying is a worse failure than an inconvenient test.
+
 ## The paid export path
 
 **The browser no longer produces STLs.** Export posts the slider set to `/api/export`; the
