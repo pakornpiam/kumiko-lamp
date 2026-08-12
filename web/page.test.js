@@ -464,10 +464,17 @@ function zipEntry(buf, wanted) {
         'back to six rows once the plate is off');
   check(!(await page.isDisabled('#dl-all')), 'export re-enabled unglazed');
 
-  // the cap screws and finials.  Off by default, so this runs last.
-  await page.fill('#r-postInsertD', '4');
-  await page.dispatchEvent('#r-postInsertD', 'input');
-  await page.waitForTimeout(600);
+  /* The cap screws and finials.  Off by default, so this runs last.  A choice
+     rather than a dimension now: Off or M3, no insert-hole slider to drag. */
+  check(await page.$('#r-postInsertD') === null,
+        'the insert hole is a choice, not a slider');
+  await page.click('button[data-cap-screws="m3"]');
+  await page.waitForTimeout(700);
+  /* The toggle rebuilds the rail, which puts every group back to collapsed. */
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => { d.open = true; }));
+  check(await page.getAttribute('button[data-cap-screws="m3"]', 'aria-pressed') === 'true' &&
+        await page.getAttribute('button[data-cap-screws="off"]', 'aria-pressed') === 'false',
+        'the toggle records which way it is set');
   check(await page.$$eval('#parts tr', r => r.length) === 7,
         'the insert adds a finial print row');
   const fnotes = await page.$$eval('#parts .note', n => n.map(x => x.textContent.split(' ')[0]));
@@ -477,6 +484,32 @@ function zipEntry(buf, wanted) {
         tall.trim());
   check(/--post-insert 4/.test(await page.textContent('#cli')),
         'CLI echo carries the insert', await page.textContent('#cli'));
+  /* The screws are the one thing in this lamp you have to buy, and the finial
+     caps hide them once it is together -- so the page has to say what they are. */
+  check((await page.textContent('#s-screw')).trim() === '4 × M3 × 8 mm',
+        'the page names the screw to buy', (await page.textContent('#s-screw')).trim());
+  check(/4 × M3/.test(await page.textContent('#s-insert')) &&
+        /4\.0 × 6\.5 mm/.test(await page.textContent('#s-insert')),
+        'and the insert that receives it', (await page.textContent('#s-insert')).trim());
+  check(await page.isVisible('#a-screw'),
+        'the assembly gains its screwing step');
+  /* Thai replaces the whole list and the whole dl, so the step's id and its
+     hidden state have to survive that round trip. */
+  await page.click('#lang-label'); await page.waitForTimeout(500);
+  check((await page.textContent('#a-screw')).includes('อินเสิร์ต') &&
+        await page.isVisible('#a-screw'),
+        'the screwing step survives the Thai list replacement',
+        (await page.textContent('#a-screw')).slice(0, 40));
+  check((await page.textContent('#s-screw')).trim() === '4 × M3 × 8 mm' &&
+        (await page.textContent('.block:nth-of-type(2) .cols > div:nth-child(2) dt'))
+          .includes('สกรู'),
+        'the hardware rows localize while the sizes stay as printed');
+  await page.click('#lang-label'); await page.waitForTimeout(500);
+  /* buildRail runs on a language switch, which puts every group back to its
+     default collapsed state -- the sliders below are unreachable until they are
+     opened again. */
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => { d.open = true; }));
+  await page.waitForTimeout(200);
   await page.fill('#r-snapEngagement', '0.2');
   await page.dispatchEvent('#r-snapEngagement', 'input');
   await page.waitForTimeout(600);
@@ -484,18 +517,52 @@ function zipEntry(buf, wanted) {
         'Screw-head finial cap', 'finial is presented as the screw-head cap');
   check(/--snap-lock 0.2/.test(await page.textContent('#cli')),
         'CLI echo carries snap engagement', await page.textContent('#cli'));
-  // the top notch is past what an 18 mm post takes, and must say so
-  await page.fill('#r-postInsertD', '5.6');
-  await page.dispatchEvent('#r-postInsertD', 'input');
+  /* The insert has to leave two walls between its hole and the panel grooves.
+     With M3 fixed that guard is reached from the other side -- a 16 mm post
+     leaves nothing -- and it is the size the lamp ships with, not a notch on a
+     slider nobody would choose. */
+  await page.fill('#r-post', '17');
+  await page.dispatchEvent('#r-post', 'input');
   await page.waitForTimeout(500);
-  check(!!(await page.$('#problems .problems')) && await page.isDisabled('#dl-all'),
-        'an insert that reaches the panel groove blocks export');
-  await page.fill('#r-postInsertD', '0');
-  await page.dispatchEvent('#r-postInsertD', 'input');
-  await page.waitForTimeout(600);
+  check(/leaves under two walls/.test(await page.textContent('#problems')) &&
+        await page.isDisabled('#dl-all'),
+        'a post too slim for the insert blocks export, and says which wall',
+        (await page.textContent('#problems')).replace(/\s+/g, ' ').slice(0, 90));
+  await page.fill('#r-post', '18');
+  await page.dispatchEvent('#r-post', 'input');
+  await page.waitForTimeout(500);
+  check(!(await page.isDisabled('#dl-all')), 'the stock post carries it again');
+  await page.click('button[data-cap-screws="off"]');
+  await page.waitForTimeout(700);
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => { d.open = true; }));
   check(await page.$$eval('#parts tr', r => r.length) === 6,
         'back to six rows once the insert is off');
+  check(!(await page.isVisible('#a-screw')) &&
+        /friction fit/.test(await page.textContent('#s-screw')),
+        'the step and the screw spec go away with it');
   check(!(await page.isDisabled('#dl-all')), 'lower-foot snaps remain exportable without finials');
+
+  /* One number breaks the arrises of all eight blocks -- four feet, four
+     finials -- so it has to reach the generator, not just the preview. */
+  await page.fill('#r-legChamfer', '2');
+  await page.dispatchEvent('#r-legChamfer', 'input');
+  await page.waitForTimeout(600);
+  check(/--leg-chamfer 2/.test(await page.textContent('#cli')),
+        'CLI echo carries the leg chamfer', await page.textContent('#cli'));
+  check(!(await page.isDisabled('#dl-all')) &&
+        (await page.$$eval('#parts tr', r => r.length)) === 6,
+        'a chamfered lamp still builds its six parts');
+  const [chamferDl] = await Promise.all([
+    page.waitForEvent('download', { timeout: 20000 }),
+    page.click('#parts tr:nth-child(5) button.dl')
+  ]);
+  check(chamferDl.suggestedFilename() === 'leg.stl' &&
+        lastExportRequest && lastExportRequest.params.leg_chamfer === 2,
+        'the leg request carries the chamfer under the generator\'s name',
+        lastExportRequest && String(lastExportRequest.params.leg_chamfer));
+  await page.fill('#r-legChamfer', '0');
+  await page.dispatchEvent('#r-legChamfer', 'input');
+  await page.waitForTimeout(500);
   await page.fill('#r-snapEngagement', '0');
   await page.dispatchEvent('#r-snapEngagement', 'input');
   await page.waitForTimeout(500);
@@ -517,6 +584,9 @@ function zipEntry(buf, wanted) {
      into the bed; the slider is Classic-only rather than merely ignored. */
   check(await page.$('#r-socketRiser') === null,
         'Modern does not offer the socket riser');
+  check(!(await page.isVisible('#s-hardware')) &&
+        await page.$('button[data-cap-screws]') === null,
+        'Modern offers neither the cap-screw toggle nor its hardware rows');
   const modernRows = await page.$$eval('#parts .note', n =>
     n.map(x => x.textContent.split(' ')[0]));
   check(modernRows.join(',') ===

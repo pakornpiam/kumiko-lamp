@@ -506,7 +506,17 @@ pre.cmd {
           <li>Drop the four posts into the corner sockets in the base.</li>
           <li>Slide each panel down between two posts, lattice facing out.</li>
           <li>Fit the cap over the post tops and panel top edges.</li>
+          <!-- Only when the cap is screwed down.  renderModel unhides it, and
+               re-applies that after every render: this list is replaced whole
+               by the Thai and Modern overrides. -->
+          <li id="a-screw" hidden>Melt an insert into each post top, screw the cap down
+              through the four holes, then press a finial over each head.</li>
         </ol>
+        <!-- Hidden in Modern, which has no cap screws at all. -->
+        <dl class="spec" id="s-hardware">
+          <div><dt>Cap screws</dt><dd id="s-screw">none</dd></div>
+          <div><dt>Heat-set inserts</dt><dd id="s-insert">none</dd></div>
+        </dl>
         <p>Friction fit throughout, with an optional reusable snap for the four feet and
            four screw-head finial caps. The cap lifts off to change the bulb &mdash; unless
            you fit the optional cap screws, which means removing four finials first.
@@ -590,7 +600,7 @@ var Kumiko = (function () {
     rebateD: 0.6, rebateLip: 8, plateT: 0,
     grooveD: 6, slotClear: 0.4, panelClear: 0.3, socketClear: 0.4,
     plinth: 5, baseT: 16, capT: 10, edgeChamfer: 2,
-    leg: 20, legH: 12, legTenon: 10, legTenonH: 8, legClear: 0.35,
+    leg: 20, legH: 12, legTenon: 10, legTenonH: 8, legClear: 0.35, legChamfer: 0,
     snapEngagement: 0,
     postInsertD: 0, postInsertH: 6.5, finialH: 8, finialTenonH: 2,
     holderType: 'e27',
@@ -660,6 +670,29 @@ var Kumiko = (function () {
     /* All that is left of the cap over a post socket: the sockets cut up from
        the underside and the finial socket eats down from the top. */
     p.capFloor = p.capT - p.grooveD - (p.screwed ? p.finialTenonH : 0);
+    /* The screws are the only part of this lamp that is bought rather than
+       printed, so the size has to be derivable: the pilot hole gives the thread,
+       the cap floor and the blind hole give the length window.  screwLen is null
+       when no stock length fits -- a shopping problem, not a print failure, so
+       nothing refuses the build over it. */
+    p.screwName = (function (d) {
+      var m = [2, 2.5, 3, 4, 5];
+      for (var i = 0; i < m.length; i++)
+        if (Math.abs(d - m[i]) <= 0.25) return 'M' + m[i];
+      return d.toFixed(1) + ' mm';
+    })(p.screwD);
+    /* The insert the hole was cut for: postInsertH is "insert + relief", and the
+       relief is 0.8, so an M3's 5.7 mm falls out of the stock 6.5. */
+    p.insertLen = Math.max(0, p.postInsertH - 0.8);
+    p.screwLenMin = p.capFloor + 2 * p.screwD;   /* two diameters of thread */
+    p.screwLenMax = p.capFloor + p.postInsertH;  /* before it bottoms out */
+    p.screwLen = (function () {
+      var stock = [6, 8, 10, 12, 14, 16, 20, 25], best = null;
+      for (var i = 0; i < stock.length; i++)
+        if (stock[i] >= p.screwLenMin - 1e-9 && stock[i] <= p.screwLenMax + 1e-9)
+          best = stock[i];
+      return best;
+    })();
     p.postWall = p.post / 2 - p.grooveD - p.postInsertD / 2;
     p.totalHeight = p.legH + p.baseT + (p.height - 2 * p.grooveD) + p.capT +
                     (p.screwed ? p.finialH : 0);
@@ -914,6 +947,12 @@ var Kumiko = (function () {
       bad('Leg socket runs into the ventilation slots.');
     if (P.legH < 3 * 0.2)
       bad('Leg is under three layers tall.');
+    if (P.legChamfer < 0)
+      bad('Leg chamfer cannot be negative.');
+    /* Not reachable from the sliders -- the leg starts at 12 and the chamfer
+       stops at 4 -- but the export service is handed whatever it is sent. */
+    if (2 * P.legChamfer >= P.leg)
+      bad('Leg chamfers meet through the leg.');
     if (P.snapEngagement < 0)
       bad('Snap engagement cannot be negative.');
     if (P.snapEngagement > 0.4 + 1e-9)
@@ -1644,6 +1683,15 @@ var Kumiko = (function () {
   function rectLoop(x0, y0, x1, y1, ccw) {
     return orient([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], ccw !== false);
   }
+  /* The same rectangle with its four corners cut at 45 degrees -- what Python
+     gets by subtracting a turned prism from each vertical arris.  At c <= 0 it
+     is rectLoop itself, vertex for vertex, so an unchamfered part is unchanged. */
+  function chamferRectLoop(x0, y0, x1, y1, c, ccw) {
+    if (!(c > 0)) return rectLoop(x0, y0, x1, y1, ccw);
+    return orient([[x0 + c, y0], [x1 - c, y0], [x1, y0 + c], [x1, y1 - c],
+                   [x1 - c, y1], [x0 + c, y1], [x0, y1 - c], [x0, y0 + c]],
+                  ccw !== false);
+  }
   function circleLoop(cx, cy, r, n, ccw) {
     var L = [];
     for (var i = 0; i < n; i++) {
@@ -2053,6 +2101,18 @@ var Kumiko = (function () {
     return extrudeStack([{ loops: [orient(loop, true)], z0: z0, z1: z1 }]);
   }
 
+  /* Append in place.  `tris = tris.concat(prism)` inside a per-slat loop copies
+     everything built so far on every iteration, which is quadratic in the slat
+     count and is what used to freeze the page: measured here, 400 slats cost
+     24 ms that way and 2 ms this way, 7000 cost 7.3 s against 10 ms, and 12000
+     cost 20.6 s against 15 ms.  A 230 mm seigaiha panel at pitch 12 is about
+     7000 slats.  The element order is identical either way, so every volume,
+     bbox and exported byte is unchanged. */
+  function pushTris(dst, src) {
+    for (var i = 0; i < src.length; i++) dst.push(src[i]);
+    return dst;
+  }
+
   /* 45-degree printable thread profile.  The 2 mm pitch contains two 0.8 mm
      flanks and 0.2 mm flats at root and crest.  Advancing theta by one turn
      shifts the phase by exactly one pitch, so the seam closes bit-for-bit. */
@@ -2248,7 +2308,7 @@ var Kumiko = (function () {
     for (i = 0; i < segs.length; i++) {
       var p = [segs[i][0][0], segs[i][0][1] + cy];
       var q = [segs[i][1][0], segs[i][1][1] + cy];
-      tris = tris.concat(prismFromLoop(slatLoop(p, q, P.slatW), 0, zm));
+      pushTris(tris, prismFromLoop(slatLoop(p, q, P.slatW), 0, zm));
     }
     return { tris: tris, slats: segs.length, manifold: false };
   }
@@ -2344,7 +2404,7 @@ var Kumiko = (function () {
                     fieldW / 2, P.modernOpenH / 2 + grow);
     var bendScale = (2 * Math.PI - gapArc / R) / C;
     for (var i = 0; i < segs.length; i++)
-      tris = tris.concat(modernCurvedSlat(segs[i][0], segs[i][1], P.slatW,
+      pushTris(tris, modernCurvedSlat(segs[i][0], segs[i][1], P.slatW,
         ri, R, P.modernChordError, H / 2, bendScale));
     /* A 0.4 mm developed gap avoids coincident +/-pi faces.  This full-height
        1.6 mm curved rail bridges it with 0.6 mm overlap on each side. */
@@ -2803,7 +2863,9 @@ var Kumiko = (function () {
     var a = P.leg / 2, b = P.legTenon / 2;
     var zc = P.finialH + P.finialTenonH - P.finialCavityH;
     var cav = circleLoop(0, 0, P.finialCavityD / 2, P.arc, false);
-    var body = rectLoop(-a, -a, a, a, true);
+    /* The finial is the foot's block turned over, so it takes the same break on
+       its four arrises and leaves its skirt square. */
+    var body = chamferRectLoop(-a, -a, a, a, P.legChamfer, true);
     if (!P.snapped)
       return { tris: extrudeStack([
         { loops: [body], z0: 0, z1: zc },
@@ -2904,9 +2966,11 @@ var Kumiko = (function () {
      one would let a square leg rotate out of line with the base edges. */
   function buildLeg(P) {
     var a = P.leg / 2, b = P.legTenon / 2;
+    /* The foot's arrises only -- the tenon stays square to its socket. */
+    var foot = chamferRectLoop(-a, -a, a, a, P.legChamfer, true);
     if (!P.snapped)
       return { tris: extrudeStack([
-        { loops: [rectLoop(-a, -a, a, a, true)], z0: 0, z1: P.legH },
+        { loops: [foot], z0: 0, z1: P.legH },
         { loops: [rectLoop(-b, -b, b, b, true)], z0: P.legH,
           z1: P.legH + P.legTenonH }
       ]), manifold: true };
@@ -2921,8 +2985,7 @@ var Kumiko = (function () {
       var z0 = cuts[i], z1 = cuts[i + 1];
       if (z1 - z0 < TOL) continue;
       var zm = (z0 + z1) / 2;
-      var loops = [zm < P.legH ? rectLoop(-a, -a, a, a, true)
-                               : rectLoop(-b, -b, b, b, true)];
+      var loops = [zm < P.legH ? foot : rectLoop(-b, -b, b, b, true)];
       if (zm >= P.legH + SNAP_ROOT) loops.push(cavity);
       if (zm >= zs0 && zm <= zs1) loops = loops.concat(snapTabLoops(P, true));
       layers.push({ loops: loops, z0: z0, z1: z1 });
@@ -2990,7 +3053,7 @@ var Kumiko = (function () {
       P.capVentD, P.capVentD, g);
     segs = clipCircle(segs, 0, 0, r + 0.8);
     for (var i = 0; i < segs.length; i++)
-      tris = tris.concat(quadPrism(slatLoop(segs[i][0], segs[i][1], P.slatW + 0.4, true), 0, t));
+      pushTris(tris, quadPrism(slatLoop(segs[i][0], segs[i][1], P.slatW + 0.4, true), 0, t));
 
     return { tris: tris, manifold: false, grilleSegs: segs.length };
   }
@@ -3095,6 +3158,27 @@ var Kumiko = (function () {
         out.push({ name: 'finial' + i, kind: 'post',
           tris: transform(finial, mul(trans(corners[i][0] * pc, corners[i][1] * pc, zf),
                                       rotX(180))) });
+      /* The screws themselves.  Bought, not printed, so they are drawn and
+         never listed: the finial caps hide them once assembled, which left the
+         one feature you have to buy hardware for with nothing to look at.  Head
+         bears on the finial socket floor, shank runs down into the insert. */
+      var zSeat = zb + P.height - P.grooveD + P.capT - P.finialTenonH;
+      var headH = P.screwD;                       /* ISO 4762: head height = d */
+      var shank = P.screwLen !== null ? P.screwLen : P.screwLenMax;
+      /* The insert the screw threads into, one per post, filling the top of the
+         blind hole.  Bought like the screws, so drawn and never listed. */
+      var zPostTop = zb + P.height;
+      for (i = 0; i < 4; i++) {
+        var sx = corners[i][0] * pc, sy = corners[i][1] * pc;
+        var head = circleLoop(sx, sy, P.screwHeadD / 2, 16, true);
+        var body = circleLoop(sx, sy, P.screwD / 2, 12, true);
+        var tris = prismFromLoop(head, zSeat, zSeat + headH)
+          .concat(prismFromLoop(body, zSeat - shank, zSeat));
+        out.push({ name: 'screw' + i, kind: 'screw', tris: tris });
+        out.push({ name: 'insert' + i, kind: 'insert',
+          tris: prismFromLoop(circleLoop(sx, sy, P.postInsertD / 2, 12, true),
+                              zPostTop - P.insertLen, zPostTop) });
+      }
     }
     // Legs sit below z = 0, so the assembly's origin is the base underside and
     // its z-extent comes out as totalHeight.
@@ -3355,7 +3439,7 @@ var Kumiko = (function () {
     'Base height':'ความสูงฐาน', 'Lattice depth':'ความลึกโครงลาย',
     'Thread clearance':'ระยะเผื่อเกลียว',
     'Holder type':'ชนิดขั้วหลอดไฟ',
-    'Cap screws':'สกรูยึดฝา', 'Insert hole':'รูอินเสิร์ต', 'Finial height':'ความสูงยอดฝา',
+    'Cap screws':'สกรูยึดฝา', 'Off':'ไม่ใช้', 'Finial height':'ความสูงยอดฝา',
     'Snap engagement':'ระยะล็อกสแนป',
     'Width':'ความกว้าง', 'Height':'ความสูง', 'Pattern pitch':'ระยะลาย', 'Slat width':'ความกว้างซี่',
     'Thickness':'ความหนา', 'Frame border':'ขอบกรอบ', 'Diffuser plate':'แผ่นกระจายแสง',
@@ -3364,7 +3448,8 @@ var Kumiko = (function () {
     'Groove depth':'ความลึกร่อง', 'Base reveal':'ขอบฐานยื่น', 'Base thickness':'ความหนาฐาน',
     'Cap thickness':'ความหนาฝา', 'Cap vent':'ช่องระบายอากาศฝา', 'Leg section':'ขนาดขา',
     'Leg height':'ความสูงขา', 'Tenon section':'ขนาดเดือย', 'Tenon depth':'ความลึกเดือย',
-    'Tenon clearance':'ระยะเผื่อเดือย', 'Groove clearance':'ระยะเผื่อร่อง',
+    'Tenon clearance':'ระยะเผื่อเดือย', 'Leg chamfer':'ลบมุมขา',
+    'Groove clearance':'ระยะเผื่อร่อง',
     'Panel width clearance':'ระยะเผื่อความกว้างแผง', 'Post socket clearance':'ระยะเผื่อเบ้าเสา',
     'Bore':'รูขั้ว', 'Counterbore':'รูบ่าขั้ว', 'Adapter ring bore':'รูวงแหวนแปลง',
     'Socket riser':'ความสูงปลอกครอบขั้ว',
@@ -3454,7 +3539,10 @@ var Kumiko = (function () {
   };
   var HTML_TH = {
     '.block:nth-of-type(2) .cols > div:nth-child(1) dl':'<div><dt>หัวฉีด / ความสูงชั้น</dt><dd id="s-noz">0.4 / 0.2 mm</dd></div><div><dt>จำนวนผนัง</dt><dd id="s-walls">4</dd></div><div><dt>อินฟิล</dt><dd>15% gyroid</dd></div><div><dt>ซัพพอร์ต</dt><dd>ไม่ใช้</dd></div><div><dt>ปีกยึดชิ้นงาน</dt><dd>5 mm สำหรับเสาและแผง</dd></div>',
-    '.block:nth-of-type(2) .cols > div:nth-child(2) ol':'<li>สวมเสาทั้งสี่ลงในเบ้ามุมของฐาน</li><li>เลื่อนแผงแต่ละด้านลงระหว่างเสาสองต้น โดยหันหน้าลายออก</li><li>สวมฝาบนเข้ากับปลายเสาและขอบบนของแผง</li>',
+    /* The screwing step carries its own id and stays hidden here too: this
+       string replaces the whole list, so renderModel re-applies the toggle. */
+    '.block:nth-of-type(2) .cols > div:nth-child(2) ol':'<li>สวมเสาทั้งสี่ลงในเบ้ามุมของฐาน</li><li>เลื่อนแผงแต่ละด้านลงระหว่างเสาสองต้น โดยหันหน้าลายออก</li><li>สวมฝาบนเข้ากับปลายเสาและขอบบนของแผง</li><li id="a-screw" hidden>หลอมอินเสิร์ตลงในปลายเสาแต่ละต้น ขันสกรูยึดฝาผ่านรูทั้งสี่ แล้วกดฝาครอบหัวสกรูปิดแต่ละตัว</li>',
+    '.block:nth-of-type(2) .cols > div:nth-child(2) dl':'<div><dt>สกรูยึดฝา</dt><dd id="s-screw">ไม่มี</dd></div><div><dt>อินเสิร์ตแบบหลอม</dt><dd id="s-insert">ไม่มี</dd></div>',
     '.block:nth-of-type(2) .cols > div:nth-child(2) p':'ทุกจุดเป็นการสวมแน่น และเลือกใช้สแนปแบบถอดซ้ำได้กับขาทั้งสี่และฝาครอบหัวสกรูทั้งสี่ ยกฝาออกเพื่อเปลี่ยนหลอดไฟได้ เว้นแต่ติดตั้งสกรูฝา ซึ่งต้องถอดฝาครอบทั้งสี่ก่อน หากแผงฝืด ให้เพิ่มระยะเผื่อร่องแล้วพิมพ์เฉพาะเสาใหม่',
     '.block:nth-of-type(2) .cols > div:nth-child(3) p':'ด้านหลังของแต่ละแผงมีร่องเปิดที่ขอบบน สำหรับสอดกระดาษโชจิหรือกระดาษเวลลัมก่อนปิดฝา',
     '.block:nth-of-type(2) .cols > div:nth-child(3) dl':'<div><dt>แผ่นกระจายแสง</dt><dd id="s-diff">—</dd></div><div><dt>ความลึกร่อง</dt><dd id="s-reb">—</dd></div>',
@@ -3622,13 +3710,18 @@ var Kumiko = (function () {
       ['legH', 'Leg height', 4, 40, 0.5, 'mm'],
       ['legTenon', 'Tenon section', 5, 20, 0.5, 'mm'],
       ['legTenonH', 'Tenon depth', 3, 9, 0.5, 'mm'],
-      ['legClear', 'Tenon clearance', 0.1, 1.0, 0.05, 'mm']
+      ['legClear', 'Tenon clearance', 0.1, 1.0, 0.05, 'mm'],
+      /* One number breaks the arrises of all eight blocks: the four feet and
+         the four finials share this section.  0 leaves both square. */
+      ['legChamfer', 'Leg chamfer', 0, 4, 0.5, 'mm']
     ]},
-    { name: 'Cap screws', items: [
-      /* 0 means no insert, so this slider is the on/off switch for the whole
-         top fixing — the same trick plateT uses.  The top notch is past what
-         an 18 mm post will take; checkFits catches it and says why. */
-      ['postInsertD', 'Insert hole', 0, 5.6, 0.2, 'mm'],
+    /* The one parameter here that is a choice rather than a dimension: an
+       insert or none.  It was a 0-to-5.6 slider, but almost everything on it was
+       a way to get the lamp wrong — 5.6 breaks into the panel groove, 4.4 is not
+       a screw anyone sells, and M4 cannot reach full engagement in a 6.5 mm
+       hole.  postInsertD is still a plain parameter everywhere else, and every
+       guard still stands, because --params-json can hand the API any value. */
+    { name: 'Cap screws', capScrews: true, items: [
       ['finialH', 'Finial height', 4, 24, 0.5, 'mm']
     ]},
     { name: 'Joints', items: [
@@ -3844,6 +3937,31 @@ var Kumiko = (function () {
         body.appendChild(hc);
       }
 
+      /* Off or M3, the same two-button shape as the holder row above.  The
+         value it writes is the ordinary postInsertD every other path reads. */
+      if (g.capScrews) {
+        var cc = el('div', 'ctl');
+        var cl = el('label');
+        cl.appendChild(el('span', null, t('Cap screws')));
+        cc.appendChild(cl);
+        var cp = el('div', 'styles');
+        [['off', 'Off', 0], ['m3', 'M3', 4]].forEach(function (opt) {
+          var cb = el('button', null, t(opt[1]));
+          cb.type = 'button';
+          cb.dataset.capScrews = opt[0];
+          cb.setAttribute('aria-pressed', String((state.postInsertD > 0) === (opt[2] > 0)));
+          cb.addEventListener('click', function () {
+            if (state.postInsertD === opt[2]) return;
+            state.postInsertD = opt[2];
+            buildRail();
+            rebuild();
+          });
+          cp.appendChild(cb);
+        });
+        cc.appendChild(cp);
+        body.appendChild(cc);
+      }
+
       g.items.forEach(function (it) {
         var key = it[0], lab = it[1];
         var c = el('div', 'ctl');
@@ -3886,8 +4004,26 @@ var Kumiko = (function () {
   // ---------------------------------------------------------------- webgl
   var gl, prog, buf = {}, canvas, cam = { az: -0.62, el: 0.32, dist: 0, drag: false };
 
+  /* Registered once, even though initGL runs again on a restore. */
+  var glListeners = false;
+
   function initGL() {
     canvas = document.getElementById('gl');
+    /* A dropped context -- a driver reset, a laptop changing GPUs, sleep and
+       wake -- silently turns every later gl call into a no-op, and with no
+       animation loop to notice, the preview simply stops.  The default action
+       of `lost` is to make the loss permanent, so preventing it is what allows
+       `restored` to fire at all; everything then has to be rebuilt, because the
+       shaders and buffers went with the context. */
+    if (!glListeners) {
+      glListeners = true;
+      canvas.addEventListener('webglcontextlost', function (e) {
+        e.preventDefault();
+      }, false);
+      canvas.addEventListener('webglcontextrestored', function () {
+        if (initGL() && model && model.parts) { uploadScene(); draw(); }
+      }, false);
+    }
     gl = canvas.getContext('webgl',
       { antialias: true, alpha: false, preserveDrawingBuffer: true });
     if (!gl) return false;
@@ -3942,7 +4078,9 @@ var Kumiko = (function () {
   }
 
   var COLORS = {
-    panel: [0.86, 0.75, 0.55], post: [0.66, 0.44, 0.21], plate: [0.49, 0.32, 0.15]
+    panel: [0.86, 0.75, 0.55], post: [0.66, 0.44, 0.21], plate: [0.49, 0.32, 0.15],
+    /* Bought hardware, so it reads as steel and brass rather than as filament. */
+    screw: [0.55, 0.57, 0.60], insert: [0.72, 0.58, 0.28]
   };
   var CLEAR_MAT = { rgb: [0.80, 0.87, 0.92], a: 0.34 };
 
@@ -3961,6 +4099,12 @@ var Kumiko = (function () {
         if (part.name === 'cap') off = H * 0.34;
         /* Above the cap, or they hang where it used to be. */
         else if (part.name.indexOf('finial') === 0) off = H * 0.46;
+        /* Between the two, so the stack reads cap, screws, then the caps that
+           hide them -- which is also the order they go together in. */
+        else if (part.kind === 'screw') off = H * 0.40;
+        /* The posts do not move, so the inserts only need to clear their tops
+           to read as dropping into them. */
+        else if (part.kind === 'insert') off = H * 0.08;
         else if (part.name === 'modern_shade') off = H * 0.24;
         else if (part.name === 'adapter') off = H * 0.10;
         else if (part.kind === 'panel') off = H * 0.12;
@@ -4312,6 +4456,8 @@ var Kumiko = (function () {
       'Leg overhangs the edge of the base.':'ขายื่นพ้นขอบฐาน',
       'Leg socket runs into the ventilation slots.':'เบ้าขาชนช่องระบายอากาศ',
       'Leg is under three layers tall.':'ขาสูงน้อยกว่าสามชั้นพิมพ์',
+      'Leg chamfer cannot be negative.':'ระยะลบมุมขาต้องไม่ติดลบ',
+      'Leg chamfers meet through the leg.':'มุมลบทั้งสองด้านชนกันทะลุขา',
       'Finial skirt is under three layers deep.':'บ่ายอดฝาลึกน้อยกว่าสามชั้นพิมพ์',
       'Screw cavity leaves under two walls of finial skirt.':'โพรงสกรูเหลือผนังบ่ายอดฝาน้อยกว่าสองเส้น',
       'Screw cavity breaks out of the top of the finial.':'โพรงสกรูทะลุออกด้านบนของยอดฝา',
@@ -4405,6 +4551,32 @@ var Kumiko = (function () {
         ' mm พอดี เมื่อใช้ผนัง ' + walls + ' รอบ ซี่จึงตันโดยไม่ต้องมีอินฟิลภายใน'
       : 'Slats are ' + fmt(P.slatW) + ' mm wide, exactly ' + walls + ' × ' +
         fmt(P.nozzle, 1) + ' mm, so at ' + walls + ' wall loops they come out solid with no infill inside them.';
+    /* The fasteners.  Nothing else in the app says what to buy, and the finial
+       caps hide the screws once the lamp is together.  The step and the rows are
+       re-applied on every render because the Thai and Modern overrides replace
+       the whole list and the whole dl. */
+    var screwStep = document.getElementById('a-screw');
+    var hardware = document.getElementById('s-hardware');
+    var classicScrews = P.lanternStyle !== 'modern' && P.screwed;
+    if (screwStep) screwStep.hidden = !classicScrews;
+    if (hardware) hardware.hidden = P.lanternStyle === 'modern';
+    if (!classicScrews) {
+      document.getElementById('s-screw').textContent =
+        lang === 'th' ? 'ไม่มี — ฝาสวมแน่น' : 'none — the cap is a friction fit';
+      document.getElementById('s-insert').textContent = lang === 'th' ? 'ไม่มี' : 'none';
+    } else {
+      /* No stock length inside the window is a shopping problem, not a print
+         failure, so say what does fit instead of naming a screw that cannot
+         seat. */
+      document.getElementById('s-screw').textContent = P.screwLen !== null
+        ? '4 × ' + P.screwName + ' × ' + P.screwLen + ' mm'
+        : '4 × ' + P.screwName + (lang === 'th' ? ' ยาวไม่เกิน ' : ' up to ') +
+          fmt(P.screwLenMax, 1) + ' mm';
+      document.getElementById('s-insert').textContent =
+        '4 × ' + P.screwName + ' — ' + fmt(P.postInsertD, 1) + ' × ' +
+        fmt(P.postInsertH, 1) + ' mm' + (lang === 'th' ? ' (รู)' : ' hole');
+    }
+
     /* A printed plate does the sheet's job, so it supersedes it when fitted. */
     if (P.lanternStyle === 'modern') {
       document.getElementById('s-diff').textContent = lang === 'th' ? 'ไม่มี — เลือกใส่กระดาษเอง' : 'none — optional paper liner';
@@ -4445,7 +4617,8 @@ var Kumiko = (function () {
      ['panelT','--panel-thickness'],
      ['edgeChamfer','--edge-chamfer'],
      ['plateT','--diffuser-plate'],['postInsertD','--post-insert'],
-     ['socketRiser','--socket-riser']].forEach(function (f) {
+     ['socketRiser','--socket-riser'],
+     ['legChamfer','--leg-chamfer']].forEach(function (f) {
       if (Math.abs(state[f[0]] - d[f[0]]) > 1e-9) flags.push(f[1] + ' ' + state[f[0]]);
     });
     var neckPreset = K.HOLDER_PRESETS[state.holderType];
@@ -4698,7 +4871,8 @@ var Kumiko = (function () {
       grooveD: 'groove_d', slotClear: 'slot_clear', panelClear: 'panel_clear',
       socketClear: 'socket_clear', plinth: 'plinth', baseT: 'base_t', capT: 'cap_t',
       edgeChamfer: 'edge_chamfer', leg: 'leg', legH: 'leg_h', legTenon: 'leg_tenon',
-      legTenonH: 'leg_tenon_h', legClear: 'leg_clear', snapEngagement: 'snap_engagement',
+      legTenonH: 'leg_tenon_h', legClear: 'leg_clear', legChamfer: 'leg_chamfer',
+      snapEngagement: 'snap_engagement',
       postInsertD: 'post_insert_d', postInsertH: 'post_insert_h', finialH: 'finial_h',
       finialTenonH: 'finial_tenon_h', socketBore: 'socket_bore',
       socketCbore: 'socket_cbore', socketCboreD: 'socket_cbore_d',

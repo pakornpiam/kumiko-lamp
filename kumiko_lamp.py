@@ -185,6 +185,12 @@ class Params:
     # layout of Params must not shift.
     socket_riser: float = 0.0
 
+    # 45 deg break on the four vertical arrises of the four feet and the four
+    # finials -- one block shape, so one number details all eight.  0 disables
+    # it and both parts keep their existing geometry exactly.  Appended for the
+    # same reason as the fields above it.
+    leg_chamfer: float = 0.0
+
     # ---- derived ---------------------------------------------------------
     @property
     def slot_w(self) -> float:
@@ -324,6 +330,74 @@ class Params:
     def screw_head_d(self) -> float:
         """ISO 4762 socket cap head is 1.8 d, within 0.1 across M2.5 to M4."""
         return 1.8 * self.screw_d
+
+    @property
+    def screw_name(self) -> str:
+        """
+        What to ask a shop for.  `screw_d` inverts the pilot hole, but only the
+        M series has a name, so anything between sizes is quoted as a diameter
+        rather than rounded into a screw that does not exist.
+        """
+        for m in (2.0, 2.5, 3.0, 4.0, 5.0):
+            if abs(self.screw_d - m) <= 0.25:
+                return f"M{m:g}"
+        return f"{self.screw_d:.1f} mm"
+
+    @property
+    def insert_len(self) -> float:
+        """
+        The insert the hole was cut for.  `post_insert_h` is insert plus relief
+        and the relief is 0.8, so an M3's 5.7 mm falls out of the stock 6.5.
+        """
+        return max(0.0, self.post_insert_h - 0.8)
+
+    @property
+    def screw_len_min(self) -> float:
+        """Through the cap floor, plus two diameters of thread to hold it."""
+        return self.cap_floor + 2.0 * self.screw_d
+
+    @property
+    def screw_len_max(self) -> float:
+        """Any longer and it bottoms out in the post's blind hole."""
+        return self.cap_floor + self.post_insert_h
+
+    @property
+    def screw_len(self):
+        """
+        Longest stock length that fits the window, or None when none does.
+
+        A screw too long to seat is a worse answer than no recommendation, and
+        so is one with a thread's worth of engagement -- but neither is a print
+        failure, so this reports rather than refuses.
+        """
+        fits = [L for L in (6, 8, 10, 12, 14, 16, 20, 25)
+                if self.screw_len_min - 1e-9 <= L <= self.screw_len_max + 1e-9]
+        return max(fits) if fits else None
+
+    def hardware_note(self) -> str:
+        """
+        The fasteners this lamp needs, in one line.
+
+        Nothing else says it.  The cap screws are the only part of the lamp that
+        is bought rather than printed, and a hole with no stated size is a lamp
+        nobody can finish.
+        """
+        if not self.screwed:
+            return "none -- the cap is a friction fit"
+        if self.screw_len is not None:
+            screw = f"4 x {self.screw_name} x {self.screw_len} mm socket cap screws"
+        elif self.screw_len_min <= self.screw_len_max:
+            # A real window, just no stock length inside it.
+            screw = (f"4 x {self.screw_name} socket cap screws, "
+                     f"{self.screw_len_min:.1f}-{self.screw_len_max:.1f} mm")
+        else:
+            # Deeper thread than the blind hole allows: quote what does fit and
+            # say what it costs, rather than name a screw that cannot seat.
+            screw = (f"4 x {self.screw_name} socket cap screws up to "
+                     f"{self.screw_len_max:.1f} mm (under two diameters of thread)")
+        return (f"{screw}, and 4 x {self.screw_name} heat-set inserts "
+                f"({self.insert_len:.1f} mm) for a {self.post_insert_d:.1f} x "
+                f"{self.post_insert_h:.1f} mm hole, one per post")
 
     @property
     def finial_cavity_d(self) -> float:
@@ -1729,7 +1803,10 @@ def build_cap_finial(P: Params) -> trimesh.Trimesh:
                  sections=P.arc)
     solid = union([body, skirt] + _snap_tabs(P, P.finial_h,
                                              P.finial_tenon_h))
-    return cleanup(difference(solid, [cavity]))
+    # The arrises of the body only: the skirt is leg_tenon wide and centred, so
+    # the corner prisms never reach it.
+    return cleanup(difference(solid, [cavity] +
+                              _arris_chamfers(a, 0.0, P.finial_h, P.leg_chamfer)))
 
 
 def build_leg(P: Params) -> trimesh.Trimesh:
@@ -1750,6 +1827,10 @@ def build_leg(P: Params) -> trimesh.Trimesh:
         cavity = box(-c, -c, P.leg_h + SNAP_ROOT, c, c,
                      P.leg_h + P.leg_tenon_h + EPS)
         solid = difference(solid, [cavity])
+    # The arrises of the foot only; the tenon has to stay square to the socket.
+    arris = _arris_chamfers(a, 0.0, P.leg_h, P.leg_chamfer)
+    if arris:
+        solid = difference(solid, arris)
     return cleanup(solid)
 
 
@@ -1766,6 +1847,28 @@ def _leg_sockets(P: Params):
             out.append(box(cx - s, cy - s, -EPS, cx + s, cy + s,
                            P.leg_tenon_h))
             out += _snap_recesses(P, cx, cy, z0, z1)
+    return out
+
+
+def _arris_chamfers(half: float, z0: float, z1: float, c: float):
+    """
+    Cutters for the four vertical arrises of a square column of side 2*half.
+
+    The same 45-degree-turned prism `build_post` subtracts from its one outward
+    arris, at all four corners: the leg and the finial are seen from every side,
+    so there is no hidden corner to leave sharp.
+    """
+    if c <= 0:
+        return []
+    s = c * math.sqrt(2.0)
+    out = []
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            T = trimesh.transformations.translation_matrix(
+                (sx * half, sy * half, (z0 + z1) / 2.0))
+            R = trimesh.transformations.rotation_matrix(math.radians(45), (0, 0, 1))
+            out.append(trimesh.creation.box(
+                extents=(s, s, (z1 - z0) + 2 * EPS), transform=T @ R))
     return out
 
 
@@ -2540,6 +2643,12 @@ def check_fits(P: Params, pattern=None):
         issues.append("leg socket runs into the ventilation slots")
     if P.leg_h < 3 * 0.2:
         issues.append("leg is under three layers tall")
+    if P.leg_chamfer < 0:
+        issues.append("leg chamfer cannot be negative")
+    # Not reachable from the sliders -- the leg starts at 12 and the chamfer
+    # stops at 4 -- but --params-json reaches every field there is.
+    if 2 * P.leg_chamfer >= P.leg:
+        issues.append("leg chamfers meet through the leg")
     if P.snap_engagement < 0:
         issues.append("snap engagement cannot be negative")
     if P.snap_engagement > 0.4 + 1e-9:
@@ -2700,6 +2809,9 @@ def main(argv=None):
     ap.add_argument("--snap-lock", nargs="?", const=0.2, type=float,
                     metavar="MM", help="reusable foot and finial snap engagement; "
                                         "bare flag uses 0.2 mm, 0 disables")
+    ap.add_argument("--leg-chamfer", type=float,
+                    help="45 deg break on the vertical arrises of the four feet "
+                         "and four finials (mm); 0 for none")
     ap.add_argument("--socket-riser", type=float,
                     help="Classic only: lift the adapter seat on a riser that "
                          "covers the lamp holder (mm); 0 for none, 60 clears a "
@@ -2783,6 +2895,7 @@ def main(argv=None):
                       ("plate_t", args.diffuser_plate),
                       ("post_insert_d", args.post_insert),
                       ("snap_engagement", args.snap_lock),
+                      ("leg_chamfer", args.leg_chamfer),
                       ("socket_riser", args.socket_riser),
                       ("modern_base_h", args.modern_base_height),
                       ("modern_base_d", args.modern_base_diameter),
@@ -2938,6 +3051,10 @@ def main(argv=None):
     else:
         print(f"\nassembled: {P.foot:.0f} x {P.foot:.0f} x {P.total_height:.0f} mm"
               f"   built in {time.time() - t0:.1f} s")
+        # The screws are the only bought part of this lamp, and until now the
+        # only thing the generator said about them was the size of their holes.
+        if P.screwed:
+            print(f"hardware:  {P.hardware_note()}")
 
     if problems:
         print("\nPROBLEMS:")
