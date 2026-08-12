@@ -275,13 +275,27 @@ is byte-identical with the feature present.
 adapter counterbore on a chimney grown out of the base so the lamp holder hangs hidden
 inside it instead of standing exposed in the lantern; the tube exists to carry
 `socket_cbore` up, so its OD can only be that plus `SOCKET_RISER_WALL` either side — Ø56 at
-stock, radius 28, which fits inside the vent ring at `base_vent_r0 = 29` by one millimetre.
-Both guards are needed, because `socket_cbore` *is* a slider. `socket_seat_z` is exactly
-`base_t` when the riser is 0, so the stock base's cutters are unchanged and `stl/base.stl`
-stays byte-identical — the same trick `plate_t` uses. The Modern base prints deck-down
-under `modern_base_for_print`, so a riser above that deck would grow into the bed:
-`check_modern_fits` rejects it rather than building a base that silently ignores it, and
-`MODERN_GROUPS` does not offer the slider.
+stock. `socket_seat_z` is exactly `base_t` when the riser is 0, so the stock base's cutters
+are unchanged and `stl/base.stl` stays byte-identical — the same trick `plate_t` uses. The
+Modern base prints deck-down under `modern_base_for_print`, so a riser above that deck
+would grow into the bed: `check_modern_fits` rejects it rather than building a base that
+silently ignores it, and `MODERN_GROUPS` does not offer the slider.
+
+**`base_vent_r0` is the vent ring's minimum radius, not its radius.** Use the derived
+`vent_r0` / `vent_r1` (`ventR0` / `ventR1`) everywhere — builders *and* guards — because
+the ring steps outward to clear `holder_outer_r + HOLDER_VENT_GAP`, which is the
+counterbore or, when fitted, the riser tube around it. The counterbore is a slider running
+to Ø74 and the ring was pinned at r29–37, so two thirds of that range was refused with
+nothing in either app able to move the vents; they are not sliders and never have been.
+At stock the holder wants 27 and the ring is already at 29, so every existing part is
+unchanged. Ø74 puts it at r39–47, and a riser on top at r42–50.
+
+Consequently **no guard says "counterbore runs into the ventilation slots" any more** — it
+cannot happen. The limits moved outward and are real: `post_center - leg_socket_span / 2`
+against `vent_r1` in Classic (a Ø74 seat plus a riser stops fitting under about a 130 mm
+lamp), and the tangential slot corner against the threaded neck in Modern — where the neck
+follows the *shade* diameter, not `modern_base_d`, so a Ø74 seat needs roughly a Ø130
+shade however wide the base is.
 
 Minimum-layer checks are written `x < 3 * 0.2`, and `3 * 0.2` is `0.6000000000000001` in
 both languages — subtract an epsilon if the boundary is a reachable slider stop. The same

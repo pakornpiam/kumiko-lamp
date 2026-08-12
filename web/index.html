@@ -640,6 +640,17 @@ var Kumiko = (function () {
     p.risen = p.socketRiser > 0;
     p.socketRiserOd = p.socketCbore + 2 * p.socketRiserWall;
     p.socketSeatZ = p.baseT + p.socketRiser;
+    /* The ventilation ring stands clear of the holder rather than refusing to
+       share the room with it: baseVentR0 is its minimum radius, not its answer.
+       The counterbore is a slider reaching Ø74 and a ring pinned at r29 would
+       reject most of that range with no control in the app able to move it. At
+       stock the holder wants 27 and the ring is already at 29, so nothing
+       shifts and every existing part is unchanged. */
+    p.holderVentGap = 2;
+    p.holderOuterR = Math.max(p.socketCbore / 2,
+                              p.risen ? p.socketRiserOd / 2 : 0);
+    p.ventR0 = Math.max(p.baseVentR0, p.holderOuterR + p.holderVentGap);
+    p.ventR1 = p.ventR0 + (p.baseVentR1 - p.baseVentR0);
     p.screwed = p.postInsertD > 0;
     p.screwD = p.postInsertD - 1;
     p.capScrewD = p.screwD + 0.4;            /* 3.4 at M3: the standard hole */
@@ -691,10 +702,10 @@ var Kumiko = (function () {
     p.modernFemaleThreadR = p.modernThreadCoreR + p.modernThreadClear;
     p.modernThreadWall = p.modernOuterR -
                          (p.modernThreadCrestR + p.modernThreadClear);
-    var modernVentRm = (p.baseVentR0 + p.baseVentR1) / 2;
+    var modernVentRm = (p.ventR0 + p.ventR1) / 2;
     p.modernVentHalfLen = p.baseVents > 0
       ? Math.PI * modernVentRm / p.baseVents * 0.60 : Infinity;
-    p.modernVentCornerR = Math.hypot(p.baseVentR1, p.modernVentHalfLen);
+    p.modernVentCornerR = Math.hypot(p.ventR1, p.modernVentHalfLen);
     if (p.lanternStyle === 'modern') {
       p.foot = p.modernFootprint;
       p.totalHeight = p.modernBaseH + p.height - p.modernThreadEngagement;
@@ -773,8 +784,9 @@ var Kumiko = (function () {
         bad('Modern base needs at least three ventilation slots.');
       if (P.modernThreadCoreR <= P.socketCbore / 2 + 2 * P.nozzle)
         bad('Modern neck has insufficient wall outside the holder deck.');
-      if (P.socketCbore / 2 >= P.baseVentR0)
-        bad('Adapter counterbore runs into the ventilation slots.');
+      /* The ring clears the holder by construction, so a wide counterbore can no
+         longer run into it -- what it can do is push the ring into the neck, and
+         the neck follows the shade diameter rather than the base's. */
       if (P.baseVentR0 > 0 && P.baseVentR1 > P.baseVentR0 && P.baseVents >= 3 &&
           P.modernVentCornerR >= P.modernThreadCoreR - 2 * P.nozzle)
         bad('Modern ventilation slots run into the threaded neck wall.');
@@ -836,16 +848,19 @@ var Kumiko = (function () {
       bad('Panel frame is narrower than its groove engagement.');
     if (P.rebateLip >= P.panelBorder)
       bad('Diffuser rebate eats the whole frame lip.');
-    if (P.socketCbore / 2 >= P.baseVentR0)
-      bad('Adapter counterbore runs into the ventilation slots.');
+    /* The ring steps clear of the holder, so nothing here can run into it; what
+       still has to hold is that the ring is a ring.  Not a slider in either app,
+       but --params-json reaches these. */
+    if (!(P.baseVentR0 > 0 && P.baseVentR1 > P.baseVentR0))
+      bad('Vent radii must satisfy 0 < inner < outer.');
+    if (P.baseVents < 3)
+      bad('Base needs at least three ventilation slots.');
     if (P.socketRiser < 0)
       bad('Socket riser cannot be negative.');
     /* 3 * 0.2 is 0.6000000000000001 and 0.6 is a reachable slider stop, so
        this boundary needs the epsilon or it rejects itself. */
     if (P.socketRiser > 0 && P.socketRiser < 3 * 0.2 - 1e-9)
       bad('Socket riser is under three layers tall.');
-    if (P.risen && P.socketRiserOd / 2 >= P.baseVentR0)
-      bad('Socket riser runs into the ventilation slots.');
     /* The cap's underside sits height - 2 * grooveD above the base's top face:
        assemble puts the cap at zBase + height - grooveD, and zBase is itself
        baseT - grooveD. */
@@ -893,7 +908,9 @@ var Kumiko = (function () {
       bad('Leg tenon is not narrower than the leg, so it has no shoulder.');
     if (P.postCenter + P.leg / 2 > P.foot / 2)
       bad('Leg overhangs the edge of the base.');
-    if (P.postCenter - legSocketSpan / 2 <= P.baseVentR1)
+    /* Against the ring where it actually ends up: this is the outward limit a
+       growing holder eventually reaches, and the honest refusal for it. */
+    if (P.postCenter - legSocketSpan / 2 <= P.ventR1)
       bad('Leg socket runs into the ventilation slots.');
     if (P.legH < 3 * 0.2)
       bad('Leg is under three layers tall.');
@@ -2282,8 +2299,10 @@ var Kumiko = (function () {
     return v;
   }
 
+  /* Placed on the derived radii, so the ring rides outward with a wide holder
+     instead of colliding with it. */
   function ventVoids(P) {
-    var v = [], rm = (P.baseVentR0 + P.baseVentR1) / 2;
+    var v = [], rm = (P.ventR0 + P.ventR1) / 2;
     var half = Math.PI * rm / P.baseVents * 0.6;
     for (var j = 0; j < P.baseVents; j++) {
       var ang = 2 * Math.PI * j / P.baseVents;
@@ -2291,7 +2310,7 @@ var Kumiko = (function () {
       var tx = -Math.sin(ang), ty = Math.cos(ang);
       v.push(slatLoop([cx - tx * half, cy - ty * half],
                       [cx + tx * half, cy + ty * half],
-                      P.baseVentR1 - P.baseVentR0, false));
+                      P.ventR1 - P.ventR0, false));
     }
     return v;
   }
@@ -4278,10 +4297,10 @@ var Kumiko = (function () {
       'Less than three layers of floor under the cord tunnel.':'พื้นใต้ช่องสายไฟบางกว่าสามชั้นพิมพ์',
       'Panel frame is narrower than its groove engagement.':'กรอบแผงแคบกว่าระยะที่สวมเข้าในร่อง',
       'Diffuser rebate eats the whole frame lip.':'ร่องแผ่นกระจายแสงกินขอบกรอบทั้งหมด',
-      'Adapter counterbore runs into the ventilation slots.':'รูบ่าวงแหวนแปลงชนช่องระบายอากาศ',
+      'Vent radii must satisfy 0 < inner < outer.':'รัศมีช่องระบายอากาศต้องเป็น 0 < ด้านใน < ด้านนอก',
+      'Base needs at least three ventilation slots.':'ฐานต้องมีช่องระบายอากาศอย่างน้อยสามช่อง',
       'Socket riser cannot be negative.':'ความสูงปลอกครอบขั้วต้องไม่ติดลบ',
       'Socket riser is under three layers tall.':'ปลอกครอบขั้วสูงน้อยกว่าสามชั้นพิมพ์',
-      'Socket riser runs into the ventilation slots.':'ปลอกครอบขั้วชนช่องระบายอากาศ',
       'Socket riser reaches the top cap.':'ปลอกครอบขั้วชนฝาบน',
       'Socket riser is a Classic-only feature.':'ปลอกครอบขั้วใช้ได้เฉพาะแบบคลาสสิก',
       'Post socket breaks out of the side of the base and cap.':'เบ้าเสาทะลุด้านข้างของฐานและฝา',

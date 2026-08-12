@@ -54,6 +54,12 @@ MODERN_THREAD_CLEAR = 0.30
 MODERN_CHORD_ERROR = 0.1
 MODERN_LATTICE_OVERLAP = 0.8
 
+# Material left between the holder pocket and the ventilation slots.  The ring
+# steps outward to keep it, so `base_vent_r0` is the ring's minimum radius rather
+# than its exact one: the counterbore is a slider running to Ø74 and a fixed ring
+# at r 29 would refuse most of it with nothing in the app able to move it.
+HOLDER_VENT_GAP = 2.0
+
 # Wall left around the adapter counterbore when the holder is lifted on a riser.
 # Derived rather than a second slider: the tube exists to carry `socket_cbore`
 # up, so its outer diameter can only follow it.  3.0 puts the stock riser at
@@ -270,6 +276,29 @@ class Params:
         base's cutters -- and therefore its STL -- bit-for-bit as they were.
         """
         return self.base_t + self.socket_riser
+
+    @property
+    def holder_outer_r(self) -> float:
+        """Widest the holder gets: its counterbore, or the riser tube over it."""
+        return max(self.socket_cbore / 2.0,
+                   self.socket_riser_od / 2.0 if self.risen else 0.0)
+
+    @property
+    def vent_r0(self) -> float:
+        """
+        Inner radius of the ventilation ring, clear of the holder.
+
+        `base_vent_r0` is the floor, not the answer: a wide counterbore or a
+        riser pushes the whole ring outward rather than being refused for
+        running into slots the app has no control to move.  At stock the holder
+        needs 27 and the ring already sits at 29, so nothing shifts.
+        """
+        return max(self.base_vent_r0, self.holder_outer_r + HOLDER_VENT_GAP)
+
+    @property
+    def vent_r1(self) -> float:
+        """Outer radius, carrying the ring's width out with it."""
+        return self.vent_r0 + (self.base_vent_r1 - self.base_vent_r0)
 
     @property
     def screwed(self) -> bool:
@@ -1795,8 +1824,8 @@ def build_base(P: Params) -> trimesh.Trimesh:
     cutters.append(cyl(P.socket_cbore, seat - P.socket_cbore_d, seat + EPS,
                        sections=P.arc))
 
-    # ring of tangential ventilation slots
-    r0, r1 = P.base_vent_r0, P.base_vent_r1
+    # ring of tangential ventilation slots, standing clear of the holder
+    r0, r1 = P.vent_r0, P.vent_r1
     rm = (r0 + r1) / 2.0
     half_len = math.pi * rm / P.base_vents * 0.60
     for j in range(P.base_vents):
@@ -2093,7 +2122,7 @@ def build_modern_shade(P: Params, pattern: str) -> trimesh.Trimesh:
 
 def _modern_vent_cutters(P: Params, z0: float, z1: float):
     """Classic tangential vent layout carried onto the circular modern deck."""
-    r0, r1 = P.base_vent_r0, P.base_vent_r1
+    r0, r1 = P.vent_r0, P.vent_r1
     rm = (r0 + r1) / 2.0
     half_len = math.pi * rm / P.base_vents * 0.60
     out = []
@@ -2375,14 +2404,16 @@ def check_modern_fits(P: Params, pattern=None):
     vents_valid = 0 < P.base_vent_r0 < P.base_vent_r1
     if not vents_valid:
         issues.append("modern vent radii must satisfy 0 < inner < outer")
-    if vents_valid and P.socket_cbore / 2.0 >= P.base_vent_r0:
-        issues.append("adapter counterbore runs into the ventilation slots")
     if P.base_vents < 3:
         issues.append("modern base needs at least three ventilation slots")
     elif vents_valid:
-        rm = (P.base_vent_r0 + P.base_vent_r1) / 2.0
+        # The ring now steps outward to clear the holder, so a wide counterbore
+        # cannot run into it -- what it can do is push the ring into the neck.
+        # The neck follows the shade diameter, not the base's, so this is the
+        # guard that refuses a Ø74 seat under a Ø100 shade.
+        rm = (P.vent_r0 + P.vent_r1) / 2.0
         half_len = math.pi * rm / P.base_vents * 0.60
-        vent_outer_corner = math.hypot(P.base_vent_r1, half_len)
+        vent_outer_corner = math.hypot(P.vent_r1, half_len)
         if vent_outer_corner >= P.modern_thread_root_r - 2 * P.nozzle:
             issues.append("modern ventilation slots run into the threaded neck wall")
     ring_od = P.socket_cbore - 0.4
@@ -2456,16 +2487,19 @@ def check_fits(P: Params, pattern=None):
         issues.append("cord tunnel breaks into the panel groove above it")
     if P.cable_floor < 3 * 0.2:
         issues.append("less than three layers of floor under the cord tunnel")
-    if P.socket_cbore / 2 >= P.base_vent_r0:
-        issues.append("adapter counterbore runs into the ventilation slots")
+    # The ring clears the holder by construction, so nothing here can run into
+    # it; what still has to hold is that the ring itself is a ring.  Not a
+    # slider in either app, but --params-json reaches these.
+    if not 0 < P.base_vent_r0 < P.base_vent_r1:
+        issues.append("vent radii must satisfy 0 < inner < outer")
+    if P.base_vents < 3:
+        issues.append("base needs at least three ventilation slots")
     if P.socket_riser < 0:
         issues.append("socket riser cannot be negative")
     # 3 * 0.2 is 0.6000000000000001 and 0.6 is a reachable slider stop, so this
     # boundary needs the epsilon or it rejects itself.
     if 0 < P.socket_riser < 3 * 0.2 - 1e-9:
         issues.append("socket riser is under three layers tall")
-    if P.risen and P.socket_riser_od / 2 >= P.base_vent_r0:
-        issues.append("socket riser runs into the ventilation slots")
     # The cap's underside sits `height - 2 * groove_d` above the base's top
     # face: place_parts puts the cap at z_base + height - groove_d, and z_base
     # is itself base_t - groove_d.
@@ -2500,7 +2534,9 @@ def check_fits(P: Params, pattern=None):
         issues.append("leg tenon is not narrower than the leg, so it has no shoulder")
     if P.post_center + P.leg / 2 > P.foot / 2:
         issues.append("leg overhangs the edge of the base")
-    if P.post_center - leg_socket_span / 2 <= P.base_vent_r1:
+    # Against the ring where it actually ends up: this is the outward limit a
+    # growing holder eventually runs into, and the honest refusal for it.
+    if P.post_center - leg_socket_span / 2 <= P.vent_r1:
         issues.append("leg socket runs into the ventilation slots")
     if P.leg_h < 3 * 0.2:
         issues.append("leg is under three layers tall")

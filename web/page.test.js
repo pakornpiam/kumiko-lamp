@@ -306,14 +306,20 @@ function zipEntry(buf, wanted) {
   check(!(await page.isDisabled('#dl-all')) &&
         (await page.$$eval('#parts tr', r => r.length)) === 6,
         'a risen lamp still builds its six parts');
-  // it rides on the counterbore, so widening that has to carry it into the vents
-  await page.fill('#r-socketCbore', '56');
+  /* The counterbore slider reaches 74 and every bit of that has to build: the
+     vent ring steps outward to clear the holder -- and the riser tube around it
+     -- rather than refusing to share the room. */
+  await page.fill('#r-socketCbore', '74');
   await page.dispatchEvent('#r-socketCbore', 'input');
-  await page.waitForTimeout(500);
-  check(await page.isDisabled('#dl-all'),
-        'a riser wider than the vent ring blocks export');
-  await page.fill('#r-socketCbore', '50'); await page.dispatchEvent('#r-socketCbore', 'input');
+  await page.waitForTimeout(600);
+  check(!(await page.isDisabled('#dl-all')) && !(await page.$('#problems .problems')),
+        'the counterbore reaches its full 74 mm with a riser fitted');
   await page.fill('#r-socketRiser', '0'); await page.dispatchEvent('#r-socketRiser', 'input');
+  await page.waitForTimeout(600);
+  check(!(await page.isDisabled('#dl-all')) &&
+        (await page.$$eval('#parts tr', r => r.length)) === 6,
+        'and on its own, still six parts');
+  await page.fill('#r-socketCbore', '50'); await page.dispatchEvent('#r-socketCbore', 'input');
   await page.waitForTimeout(500);
 
   /* The panel toggle is a way of looking at the lamp, not a property of it: the
