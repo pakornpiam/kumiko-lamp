@@ -331,6 +331,14 @@ end 0.6 mm before the tip. The lower tenon is hollow only when snapping, while t
 already flexes around its screw cavity. Keep every snap branch conditional so
 `snap_engagement = 0` stays byte-identical with the old parts.
 
+**The finial is the foot's block turned over**, and `build_cap_finial` reads `leg` and
+`leg_tenon` to say so. That coupling is why `leg_chamfer` is one number for eight pieces:
+it breaks the four vertical arrises of each foot *and* each finial, so the two ends of the
+lamp cannot drift apart. Both keep their tenons square — those are what the sockets hold —
+and the browser gets there by swapping `rectLoop` for `chamferRectLoop` on the body loops
+alone, which is why the arrises were chosen over an end-face bevel: the loop changes and
+`extrudeStack` never has to know.
+
 A new **part id** is two more places than you expect: `partLabels` and `partNotes` in
 `renderParts` are keyed by it, and a miss renders `undefined.stl · undefined` in Thai. A
 new **slider group** is a third: its name and every label need a `TH` entry.

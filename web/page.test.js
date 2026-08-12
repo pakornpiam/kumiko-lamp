@@ -541,6 +541,28 @@ function zipEntry(buf, wanted) {
         /friction fit/.test(await page.textContent('#s-screw')),
         'the step and the screw spec go away with it');
   check(!(await page.isDisabled('#dl-all')), 'lower-foot snaps remain exportable without finials');
+
+  /* One number breaks the arrises of all eight blocks -- four feet, four
+     finials -- so it has to reach the generator, not just the preview. */
+  await page.fill('#r-legChamfer', '2');
+  await page.dispatchEvent('#r-legChamfer', 'input');
+  await page.waitForTimeout(600);
+  check(/--leg-chamfer 2/.test(await page.textContent('#cli')),
+        'CLI echo carries the leg chamfer', await page.textContent('#cli'));
+  check(!(await page.isDisabled('#dl-all')) &&
+        (await page.$$eval('#parts tr', r => r.length)) === 6,
+        'a chamfered lamp still builds its six parts');
+  const [chamferDl] = await Promise.all([
+    page.waitForEvent('download', { timeout: 20000 }),
+    page.click('#parts tr:nth-child(5) button.dl')
+  ]);
+  check(chamferDl.suggestedFilename() === 'leg.stl' &&
+        lastExportRequest && lastExportRequest.params.leg_chamfer === 2,
+        'the leg request carries the chamfer under the generator\'s name',
+        lastExportRequest && String(lastExportRequest.params.leg_chamfer));
+  await page.fill('#r-legChamfer', '0');
+  await page.dispatchEvent('#r-legChamfer', 'input');
+  await page.waitForTimeout(500);
   await page.fill('#r-snapEngagement', '0');
   await page.dispatchEvent('#r-snapEngagement', 'input');
   await page.waitForTimeout(500);

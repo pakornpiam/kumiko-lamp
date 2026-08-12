@@ -550,6 +550,31 @@ check(K.buildAll({ lanternStyle: 'modern', size: 150, height: 218,
                    socketCbore: 74 }).problems.length === 0,
       'a wider Modern shade takes the Ø74 counterbore');
 
+/* The leg chamfer details all eight blocks from one number, because the finial
+   is the foot's section turned over.  python kumiko_lamp.py --leg-chamfer 2
+   --post-insert 4 measures leg 5.5 and finial 3.2. */
+const chamfered = K.buildAll({ legChamfer: 2, postInsertD: 4 });
+check(chamfered.problems.length === 0, 'a 2 mm leg chamfer builds clean',
+      chamfered.problems.join(' | '));
+const CHAMFER_PY = { leg: 5.5, finial: 3.2 };
+for (const [name, want] of Object.entries(CHAMFER_PY)) {
+  const part = chamfered.parts.find(p => p.id === name);
+  const got = part.vol / 1000, err = (got - want) / want * 100;
+  check(Math.abs(err) < 1.5, `chamfered ${name} volume ${got.toFixed(2)} cm3`,
+        `python ${want} (${err > 0 ? '+' : ''}${err.toFixed(2)}%)`);
+  check(closure(part.mesh.tris).closed, `chamfered ${name} surface closed`);
+  const bb = K.bbox(part.mesh.tris);
+  check(Math.abs(bb.size[0] - chamfered.P.leg) < 1e-9 &&
+        Math.abs(bb.size[1] - chamfered.P.leg) < 1e-9,
+        `chamfered ${name} keeps its ${chamfered.P.leg} mm section`,
+        bb.size.map(v => v.toFixed(1)).join(' × '));
+}
+/* The corners meeting is not reachable from the sliders -- leg starts at 12,
+   the chamfer stops at 4 -- but --params-json reaches every field. */
+check(K.buildAll({ legChamfer: 6, leg: 12 }).problems
+       .some(m => /chamfers meet through the leg/.test(m)),
+      'chamfers that would meet are refused');
+
 console.log('\nmodern parts and assembly');
 const modern = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218 });
 check(modern.problems.length === 0 && modern.parts.length === 3,
