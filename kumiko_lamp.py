@@ -338,6 +338,14 @@ class Params:
         return f"{self.screw_d:.1f} mm"
 
     @property
+    def insert_len(self) -> float:
+        """
+        The insert the hole was cut for.  `post_insert_h` is insert plus relief
+        and the relief is 0.8, so an M3's 5.7 mm falls out of the stock 6.5.
+        """
+        return max(0.0, self.post_insert_h - 0.8)
+
+    @property
     def screw_len_min(self) -> float:
         """Through the cap floor, plus two diameters of thread to hold it."""
         return self.cap_floor + 2.0 * self.screw_d
@@ -382,7 +390,8 @@ class Params:
             screw = (f"4 x {self.screw_name} socket cap screws up to "
                      f"{self.screw_len_max:.1f} mm (under two diameters of thread)")
         return (f"{screw}, and 4 x {self.screw_name} heat-set inserts "
-                f"for a {self.post_insert_d:.1f} x {self.post_insert_h:.1f} mm hole")
+                f"({self.insert_len:.1f} mm) for a {self.post_insert_d:.1f} x "
+                f"{self.post_insert_h:.1f} mm hole, one per post")
 
     @property
     def finial_cavity_d(self) -> float:

@@ -377,10 +377,22 @@ and Modern bases share the bore, counterbore and stable adapter-ring filename, a
 manual neck override always wins.
 
 `GROUPS` items are positional 6-tuples rendered as `input[type=range]` — the **only**
-control type in the file. Anything else is a one-off flag on the group (`style:` for the
-pattern picker, plus the Lantern style tabs) handled by its own block in `buildRail`. A
-slider whose `0` means *off* is how an on/off parameter is expressed without inventing a
-control — see `plateT`.
+control type in the file. Anything else is a one-off flag on the group, each handled by
+its own block in `buildRail`: `style:` for the pattern picker, `lanternStyle:` for the
+style tabs, `holder:` for E27/E14, and `capScrews:` for Off/M3. The last three all render
+the same labelled button pair, so a new choice costs a flag and a `[value, label]` list
+rather than a control.
+
+A slider whose `0` means *off* is how an on/off parameter is usually expressed without
+inventing a control — `plateT` and `socketRiser` both work that way. `postInsertD` used
+to and no longer does: almost every value on that slider was a way to get the lamp wrong
+(5.6 breaks into the panel groove, 4.4 is not a screw anyone sells, M4 cannot reach full
+engagement in a 6.5 mm hole), so the rail offers Off or M3 and writes 0 or 4.0. The
+parameter itself is unchanged everywhere else — `Params`, `DEFAULTS`, `exportParams`,
+`--post-insert`, and every guard — because `--params-json` still hands the API any value
+and the guards are what refuse it. **Dropping a slider therefore does not drop its
+guard**; it moves which slider can reach it. The post-wall guard is now reached from
+`post`, not from the insert diameter.
 
 **`style:` renders nowhere near its group.** The flag stays on the Pattern entry, because
 the table is the one place that says which style offers what (`kumikoOnly:` beside it), but

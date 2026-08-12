@@ -681,6 +681,9 @@ var Kumiko = (function () {
         if (Math.abs(d - m[i]) <= 0.25) return 'M' + m[i];
       return d.toFixed(1) + ' mm';
     })(p.screwD);
+    /* The insert the hole was cut for: postInsertH is "insert + relief", and the
+       relief is 0.8, so an M3's 5.7 mm falls out of the stock 6.5. */
+    p.insertLen = Math.max(0, p.postInsertH - 0.8);
     p.screwLenMin = p.capFloor + 2 * p.screwD;   /* two diameters of thread */
     p.screwLenMax = p.capFloor + p.postInsertH;  /* before it bottoms out */
     p.screwLen = (function () {
@@ -3132,6 +3135,9 @@ var Kumiko = (function () {
       var zSeat = zb + P.height - P.grooveD + P.capT - P.finialTenonH;
       var headH = P.screwD;                       /* ISO 4762: head height = d */
       var shank = P.screwLen !== null ? P.screwLen : P.screwLenMax;
+      /* The insert the screw threads into, one per post, filling the top of the
+         blind hole.  Bought like the screws, so drawn and never listed. */
+      var zPostTop = zb + P.height;
       for (i = 0; i < 4; i++) {
         var sx = corners[i][0] * pc, sy = corners[i][1] * pc;
         var head = circleLoop(sx, sy, P.screwHeadD / 2, 16, true);
@@ -3139,6 +3145,9 @@ var Kumiko = (function () {
         var tris = prismFromLoop(head, zSeat, zSeat + headH)
           .concat(prismFromLoop(body, zSeat - shank, zSeat));
         out.push({ name: 'screw' + i, kind: 'screw', tris: tris });
+        out.push({ name: 'insert' + i, kind: 'insert',
+          tris: prismFromLoop(circleLoop(sx, sy, P.postInsertD / 2, 12, true),
+                              zPostTop - P.insertLen, zPostTop) });
       }
     }
     // Legs sit below z = 0, so the assembly's origin is the base underside and
@@ -3400,7 +3409,7 @@ var Kumiko = (function () {
     'Base height':'ความสูงฐาน', 'Lattice depth':'ความลึกโครงลาย',
     'Thread clearance':'ระยะเผื่อเกลียว',
     'Holder type':'ชนิดขั้วหลอดไฟ',
-    'Cap screws':'สกรูยึดฝา', 'Insert hole':'รูอินเสิร์ต', 'Finial height':'ความสูงยอดฝา',
+    'Cap screws':'สกรูยึดฝา', 'Off':'ไม่ใช้', 'Finial height':'ความสูงยอดฝา',
     'Snap engagement':'ระยะล็อกสแนป',
     'Width':'ความกว้าง', 'Height':'ความสูง', 'Pattern pitch':'ระยะลาย', 'Slat width':'ความกว้างซี่',
     'Thickness':'ความหนา', 'Frame border':'ขอบกรอบ', 'Diffuser plate':'แผ่นกระจายแสง',
@@ -3672,11 +3681,13 @@ var Kumiko = (function () {
       ['legTenonH', 'Tenon depth', 3, 9, 0.5, 'mm'],
       ['legClear', 'Tenon clearance', 0.1, 1.0, 0.05, 'mm']
     ]},
-    { name: 'Cap screws', items: [
-      /* 0 means no insert, so this slider is the on/off switch for the whole
-         top fixing — the same trick plateT uses.  The top notch is past what
-         an 18 mm post will take; checkFits catches it and says why. */
-      ['postInsertD', 'Insert hole', 0, 5.6, 0.2, 'mm'],
+    /* The one parameter here that is a choice rather than a dimension: an
+       insert or none.  It was a 0-to-5.6 slider, but almost everything on it was
+       a way to get the lamp wrong — 5.6 breaks into the panel groove, 4.4 is not
+       a screw anyone sells, and M4 cannot reach full engagement in a 6.5 mm
+       hole.  postInsertD is still a plain parameter everywhere else, and every
+       guard still stands, because --params-json can hand the API any value. */
+    { name: 'Cap screws', capScrews: true, items: [
       ['finialH', 'Finial height', 4, 24, 0.5, 'mm']
     ]},
     { name: 'Joints', items: [
@@ -3892,6 +3903,31 @@ var Kumiko = (function () {
         body.appendChild(hc);
       }
 
+      /* Off or M3, the same two-button shape as the holder row above.  The
+         value it writes is the ordinary postInsertD every other path reads. */
+      if (g.capScrews) {
+        var cc = el('div', 'ctl');
+        var cl = el('label');
+        cl.appendChild(el('span', null, t('Cap screws')));
+        cc.appendChild(cl);
+        var cp = el('div', 'styles');
+        [['off', 'Off', 0], ['m3', 'M3', 4]].forEach(function (opt) {
+          var cb = el('button', null, t(opt[1]));
+          cb.type = 'button';
+          cb.dataset.capScrews = opt[0];
+          cb.setAttribute('aria-pressed', String((state.postInsertD > 0) === (opt[2] > 0)));
+          cb.addEventListener('click', function () {
+            if (state.postInsertD === opt[2]) return;
+            state.postInsertD = opt[2];
+            buildRail();
+            rebuild();
+          });
+          cp.appendChild(cb);
+        });
+        cc.appendChild(cp);
+        body.appendChild(cc);
+      }
+
       g.items.forEach(function (it) {
         var key = it[0], lab = it[1];
         var c = el('div', 'ctl');
@@ -3991,8 +4027,8 @@ var Kumiko = (function () {
 
   var COLORS = {
     panel: [0.86, 0.75, 0.55], post: [0.66, 0.44, 0.21], plate: [0.49, 0.32, 0.15],
-    /* Bought hardware, so it reads as steel rather than as filament. */
-    screw: [0.55, 0.57, 0.60]
+    /* Bought hardware, so it reads as steel and brass rather than as filament. */
+    screw: [0.55, 0.57, 0.60], insert: [0.72, 0.58, 0.28]
   };
   var CLEAR_MAT = { rgb: [0.80, 0.87, 0.92], a: 0.34 };
 
@@ -4014,6 +4050,9 @@ var Kumiko = (function () {
         /* Between the two, so the stack reads cap, screws, then the caps that
            hide them -- which is also the order they go together in. */
         else if (part.kind === 'screw') off = H * 0.40;
+        /* The posts do not move, so the inserts only need to clear their tops
+           to read as dropping into them. */
+        else if (part.kind === 'insert') off = H * 0.08;
         else if (part.name === 'modern_shade') off = H * 0.24;
         else if (part.name === 'adapter') off = H * 0.10;
         else if (part.kind === 'panel') off = H * 0.12;

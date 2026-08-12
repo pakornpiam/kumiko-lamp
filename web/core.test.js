@@ -453,6 +453,19 @@ check(screwed.assembly.filter(p => p.kind === 'screw').length === 4 &&
       'four screws drawn in the assembly and none in the print list');
 check(all.assembly.filter(p => p.kind === 'screw').length === 0,
       'an unscrewed lamp draws no screws');
+/* One insert per post, filling the top of its blind hole: postInsertH is
+   insert plus 0.8 of relief, so the stock 6.5 is an M3's 5.7. */
+check(screwed.P.insertLen === 5.7, 'the 6.5 mm hole takes a 5.7 mm insert',
+      String(screwed.P.insertLen));
+const inserts = screwed.assembly.filter(p => p.kind === 'insert');
+check(inserts.length === 4 && all.assembly.filter(p => p.kind === 'insert').length === 0,
+      'four inserts drawn, one per post, and none when unscrewed');
+const insertBox = K.bbox(inserts[0].tris);
+check(Math.abs(insertBox.size[2] - screwed.P.insertLen) < 1e-6 &&
+      Math.abs(insertBox.hi[2] - (screwed.P.baseT - screwed.P.grooveD +
+                                  screwed.P.height)) < 1e-6,
+      'each insert sits in the top of the post it threads into',
+      `${insertBox.size[2].toFixed(1)} tall, top at ${insertBox.hi[2].toFixed(1)}`);
 const e14 = K.buildAll({ holderType: 'e14' });
 check(e14.parts[5].label === 'E14 adapter ring' && e14.P.socketNeck === 27,
       'E14 build labels and sizes the adapter ring');
