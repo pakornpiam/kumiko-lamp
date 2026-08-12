@@ -326,6 +326,65 @@ class Params:
         return 1.8 * self.screw_d
 
     @property
+    def screw_name(self) -> str:
+        """
+        What to ask a shop for.  `screw_d` inverts the pilot hole, but only the
+        M series has a name, so anything between sizes is quoted as a diameter
+        rather than rounded into a screw that does not exist.
+        """
+        for m in (2.0, 2.5, 3.0, 4.0, 5.0):
+            if abs(self.screw_d - m) <= 0.25:
+                return f"M{m:g}"
+        return f"{self.screw_d:.1f} mm"
+
+    @property
+    def screw_len_min(self) -> float:
+        """Through the cap floor, plus two diameters of thread to hold it."""
+        return self.cap_floor + 2.0 * self.screw_d
+
+    @property
+    def screw_len_max(self) -> float:
+        """Any longer and it bottoms out in the post's blind hole."""
+        return self.cap_floor + self.post_insert_h
+
+    @property
+    def screw_len(self):
+        """
+        Longest stock length that fits the window, or None when none does.
+
+        A screw too long to seat is a worse answer than no recommendation, and
+        so is one with a thread's worth of engagement -- but neither is a print
+        failure, so this reports rather than refuses.
+        """
+        fits = [L for L in (6, 8, 10, 12, 14, 16, 20, 25)
+                if self.screw_len_min - 1e-9 <= L <= self.screw_len_max + 1e-9]
+        return max(fits) if fits else None
+
+    def hardware_note(self) -> str:
+        """
+        The fasteners this lamp needs, in one line.
+
+        Nothing else says it.  The cap screws are the only part of the lamp that
+        is bought rather than printed, and a hole with no stated size is a lamp
+        nobody can finish.
+        """
+        if not self.screwed:
+            return "none -- the cap is a friction fit"
+        if self.screw_len is not None:
+            screw = f"4 x {self.screw_name} x {self.screw_len} mm socket cap screws"
+        elif self.screw_len_min <= self.screw_len_max:
+            # A real window, just no stock length inside it.
+            screw = (f"4 x {self.screw_name} socket cap screws, "
+                     f"{self.screw_len_min:.1f}-{self.screw_len_max:.1f} mm")
+        else:
+            # Deeper thread than the blind hole allows: quote what does fit and
+            # say what it costs, rather than name a screw that cannot seat.
+            screw = (f"4 x {self.screw_name} socket cap screws up to "
+                     f"{self.screw_len_max:.1f} mm (under two diameters of thread)")
+        return (f"{screw}, and 4 x {self.screw_name} heat-set inserts "
+                f"for a {self.post_insert_d:.1f} x {self.post_insert_h:.1f} mm hole")
+
+    @property
     def finial_cavity_d(self) -> float:
         """Bore in the finial that swallows the head, 0.55 radially clear."""
         return self.screw_head_d + 1.2
@@ -2938,6 +2997,10 @@ def main(argv=None):
     else:
         print(f"\nassembled: {P.foot:.0f} x {P.foot:.0f} x {P.total_height:.0f} mm"
               f"   built in {time.time() - t0:.1f} s")
+        # The screws are the only bought part of this lamp, and until now the
+        # only thing the generator said about them was the size of their holes.
+        if P.screwed:
+            print(f"hardware:  {P.hardware_note()}")
 
     if problems:
         print("\nPROBLEMS:")

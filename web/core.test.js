@@ -432,6 +432,27 @@ check(screwed.parts.length === 7 && screwed.parts[5].id === 'finial' &&
       'screwing adds a finial row under the leg row, post still second');
 check(screwed.assembly.filter(p => /^finial/.test(p.name)).length === 4,
       'four finials placed');
+/* The screws are bought, not printed, so they are drawn and never listed.
+   Sizes are the contract with Python, which prints the same line from the same
+   derivation: `4 x M3 x 8 mm socket cap screws`. */
+check(screwed.P.screwName === 'M3' && screwed.P.screwLen === 8,
+      'a 4.0 insert hole asks for M3 × 8 screws',
+      `${screwed.P.screwName} × ${screwed.P.screwLen} ` +
+      `(window ${screwed.P.screwLenMin}–${screwed.P.screwLenMax})`);
+check(K.derive({ postInsertD: 3.5 }).screwName === 'M2.5' &&
+      K.derive({ postInsertD: 4.4 }).screwName === '3.4 mm',
+      'off-series pilot holes are quoted as a diameter, not rounded to a screw');
+/* M4 wants 8 mm of thread and the blind hole gives 6.5, so nothing stock fits;
+   that is reported, never refused -- the lamp still prints. */
+const noStock = K.buildAll({ postInsertD: 5, post: 20 });
+check(noStock.P.screwLen === null && noStock.problems.length === 0,
+      'no stock length is a null recommendation, not a build failure',
+      noStock.problems.join(' | '));
+check(screwed.assembly.filter(p => p.kind === 'screw').length === 4 &&
+      screwed.parts.every(p => p.id !== 'screw'),
+      'four screws drawn in the assembly and none in the print list');
+check(all.assembly.filter(p => p.kind === 'screw').length === 0,
+      'an unscrewed lamp draws no screws');
 const e14 = K.buildAll({ holderType: 'e14' });
 check(e14.parts[5].label === 'E14 adapter ring' && e14.P.socketNeck === 27,
       'E14 build labels and sizes the adapter ring');

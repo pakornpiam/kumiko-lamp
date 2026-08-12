@@ -506,7 +506,17 @@ pre.cmd {
           <li>Drop the four posts into the corner sockets in the base.</li>
           <li>Slide each panel down between two posts, lattice facing out.</li>
           <li>Fit the cap over the post tops and panel top edges.</li>
+          <!-- Only when the cap is screwed down.  renderModel unhides it, and
+               re-applies that after every render: this list is replaced whole
+               by the Thai and Modern overrides. -->
+          <li id="a-screw" hidden>Melt an insert into each post top, screw the cap down
+              through the four holes, then press a finial over each head.</li>
         </ol>
+        <!-- Hidden in Modern, which has no cap screws at all. -->
+        <dl class="spec" id="s-hardware">
+          <div><dt>Cap screws</dt><dd id="s-screw">none</dd></div>
+          <div><dt>Heat-set inserts</dt><dd id="s-insert">none</dd></div>
+        </dl>
         <p>Friction fit throughout, with an optional reusable snap for the four feet and
            four screw-head finial caps. The cap lifts off to change the bulb &mdash; unless
            you fit the optional cap screws, which means removing four finials first.
@@ -660,6 +670,26 @@ var Kumiko = (function () {
     /* All that is left of the cap over a post socket: the sockets cut up from
        the underside and the finial socket eats down from the top. */
     p.capFloor = p.capT - p.grooveD - (p.screwed ? p.finialTenonH : 0);
+    /* The screws are the only part of this lamp that is bought rather than
+       printed, so the size has to be derivable: the pilot hole gives the thread,
+       the cap floor and the blind hole give the length window.  screwLen is null
+       when no stock length fits -- a shopping problem, not a print failure, so
+       nothing refuses the build over it. */
+    p.screwName = (function (d) {
+      var m = [2, 2.5, 3, 4, 5];
+      for (var i = 0; i < m.length; i++)
+        if (Math.abs(d - m[i]) <= 0.25) return 'M' + m[i];
+      return d.toFixed(1) + ' mm';
+    })(p.screwD);
+    p.screwLenMin = p.capFloor + 2 * p.screwD;   /* two diameters of thread */
+    p.screwLenMax = p.capFloor + p.postInsertH;  /* before it bottoms out */
+    p.screwLen = (function () {
+      var stock = [6, 8, 10, 12, 14, 16, 20, 25], best = null;
+      for (var i = 0; i < stock.length; i++)
+        if (stock[i] >= p.screwLenMin - 1e-9 && stock[i] <= p.screwLenMax + 1e-9)
+          best = stock[i];
+      return best;
+    })();
     p.postWall = p.post / 2 - p.grooveD - p.postInsertD / 2;
     p.totalHeight = p.legH + p.baseT + (p.height - 2 * p.grooveD) + p.capT +
                     (p.screwed ? p.finialH : 0);
@@ -3095,6 +3125,21 @@ var Kumiko = (function () {
         out.push({ name: 'finial' + i, kind: 'post',
           tris: transform(finial, mul(trans(corners[i][0] * pc, corners[i][1] * pc, zf),
                                       rotX(180))) });
+      /* The screws themselves.  Bought, not printed, so they are drawn and
+         never listed: the finial caps hide them once assembled, which left the
+         one feature you have to buy hardware for with nothing to look at.  Head
+         bears on the finial socket floor, shank runs down into the insert. */
+      var zSeat = zb + P.height - P.grooveD + P.capT - P.finialTenonH;
+      var headH = P.screwD;                       /* ISO 4762: head height = d */
+      var shank = P.screwLen !== null ? P.screwLen : P.screwLenMax;
+      for (i = 0; i < 4; i++) {
+        var sx = corners[i][0] * pc, sy = corners[i][1] * pc;
+        var head = circleLoop(sx, sy, P.screwHeadD / 2, 16, true);
+        var body = circleLoop(sx, sy, P.screwD / 2, 12, true);
+        var tris = prismFromLoop(head, zSeat, zSeat + headH)
+          .concat(prismFromLoop(body, zSeat - shank, zSeat));
+        out.push({ name: 'screw' + i, kind: 'screw', tris: tris });
+      }
     }
     // Legs sit below z = 0, so the assembly's origin is the base underside and
     // its z-extent comes out as totalHeight.
@@ -3454,7 +3499,10 @@ var Kumiko = (function () {
   };
   var HTML_TH = {
     '.block:nth-of-type(2) .cols > div:nth-child(1) dl':'<div><dt>หัวฉีด / ความสูงชั้น</dt><dd id="s-noz">0.4 / 0.2 mm</dd></div><div><dt>จำนวนผนัง</dt><dd id="s-walls">4</dd></div><div><dt>อินฟิล</dt><dd>15% gyroid</dd></div><div><dt>ซัพพอร์ต</dt><dd>ไม่ใช้</dd></div><div><dt>ปีกยึดชิ้นงาน</dt><dd>5 mm สำหรับเสาและแผง</dd></div>',
-    '.block:nth-of-type(2) .cols > div:nth-child(2) ol':'<li>สวมเสาทั้งสี่ลงในเบ้ามุมของฐาน</li><li>เลื่อนแผงแต่ละด้านลงระหว่างเสาสองต้น โดยหันหน้าลายออก</li><li>สวมฝาบนเข้ากับปลายเสาและขอบบนของแผง</li>',
+    /* The screwing step carries its own id and stays hidden here too: this
+       string replaces the whole list, so renderModel re-applies the toggle. */
+    '.block:nth-of-type(2) .cols > div:nth-child(2) ol':'<li>สวมเสาทั้งสี่ลงในเบ้ามุมของฐาน</li><li>เลื่อนแผงแต่ละด้านลงระหว่างเสาสองต้น โดยหันหน้าลายออก</li><li>สวมฝาบนเข้ากับปลายเสาและขอบบนของแผง</li><li id="a-screw" hidden>หลอมอินเสิร์ตลงในปลายเสาแต่ละต้น ขันสกรูยึดฝาผ่านรูทั้งสี่ แล้วกดฝาครอบหัวสกรูปิดแต่ละตัว</li>',
+    '.block:nth-of-type(2) .cols > div:nth-child(2) dl':'<div><dt>สกรูยึดฝา</dt><dd id="s-screw">ไม่มี</dd></div><div><dt>อินเสิร์ตแบบหลอม</dt><dd id="s-insert">ไม่มี</dd></div>',
     '.block:nth-of-type(2) .cols > div:nth-child(2) p':'ทุกจุดเป็นการสวมแน่น และเลือกใช้สแนปแบบถอดซ้ำได้กับขาทั้งสี่และฝาครอบหัวสกรูทั้งสี่ ยกฝาออกเพื่อเปลี่ยนหลอดไฟได้ เว้นแต่ติดตั้งสกรูฝา ซึ่งต้องถอดฝาครอบทั้งสี่ก่อน หากแผงฝืด ให้เพิ่มระยะเผื่อร่องแล้วพิมพ์เฉพาะเสาใหม่',
     '.block:nth-of-type(2) .cols > div:nth-child(3) p':'ด้านหลังของแต่ละแผงมีร่องเปิดที่ขอบบน สำหรับสอดกระดาษโชจิหรือกระดาษเวลลัมก่อนปิดฝา',
     '.block:nth-of-type(2) .cols > div:nth-child(3) dl':'<div><dt>แผ่นกระจายแสง</dt><dd id="s-diff">—</dd></div><div><dt>ความลึกร่อง</dt><dd id="s-reb">—</dd></div>',
@@ -3942,7 +3990,9 @@ var Kumiko = (function () {
   }
 
   var COLORS = {
-    panel: [0.86, 0.75, 0.55], post: [0.66, 0.44, 0.21], plate: [0.49, 0.32, 0.15]
+    panel: [0.86, 0.75, 0.55], post: [0.66, 0.44, 0.21], plate: [0.49, 0.32, 0.15],
+    /* Bought hardware, so it reads as steel rather than as filament. */
+    screw: [0.55, 0.57, 0.60]
   };
   var CLEAR_MAT = { rgb: [0.80, 0.87, 0.92], a: 0.34 };
 
@@ -3961,6 +4011,9 @@ var Kumiko = (function () {
         if (part.name === 'cap') off = H * 0.34;
         /* Above the cap, or they hang where it used to be. */
         else if (part.name.indexOf('finial') === 0) off = H * 0.46;
+        /* Between the two, so the stack reads cap, screws, then the caps that
+           hide them -- which is also the order they go together in. */
+        else if (part.kind === 'screw') off = H * 0.40;
         else if (part.name === 'modern_shade') off = H * 0.24;
         else if (part.name === 'adapter') off = H * 0.10;
         else if (part.kind === 'panel') off = H * 0.12;
@@ -4405,6 +4458,32 @@ var Kumiko = (function () {
         ' mm พอดี เมื่อใช้ผนัง ' + walls + ' รอบ ซี่จึงตันโดยไม่ต้องมีอินฟิลภายใน'
       : 'Slats are ' + fmt(P.slatW) + ' mm wide, exactly ' + walls + ' × ' +
         fmt(P.nozzle, 1) + ' mm, so at ' + walls + ' wall loops they come out solid with no infill inside them.';
+    /* The fasteners.  Nothing else in the app says what to buy, and the finial
+       caps hide the screws once the lamp is together.  The step and the rows are
+       re-applied on every render because the Thai and Modern overrides replace
+       the whole list and the whole dl. */
+    var screwStep = document.getElementById('a-screw');
+    var hardware = document.getElementById('s-hardware');
+    var classicScrews = P.lanternStyle !== 'modern' && P.screwed;
+    if (screwStep) screwStep.hidden = !classicScrews;
+    if (hardware) hardware.hidden = P.lanternStyle === 'modern';
+    if (!classicScrews) {
+      document.getElementById('s-screw').textContent =
+        lang === 'th' ? 'ไม่มี — ฝาสวมแน่น' : 'none — the cap is a friction fit';
+      document.getElementById('s-insert').textContent = lang === 'th' ? 'ไม่มี' : 'none';
+    } else {
+      /* No stock length inside the window is a shopping problem, not a print
+         failure, so say what does fit instead of naming a screw that cannot
+         seat. */
+      document.getElementById('s-screw').textContent = P.screwLen !== null
+        ? '4 × ' + P.screwName + ' × ' + P.screwLen + ' mm'
+        : '4 × ' + P.screwName + (lang === 'th' ? ' ยาวไม่เกิน ' : ' up to ') +
+          fmt(P.screwLenMax, 1) + ' mm';
+      document.getElementById('s-insert').textContent =
+        '4 × ' + P.screwName + ' — ' + fmt(P.postInsertD, 1) + ' × ' +
+        fmt(P.postInsertH, 1) + ' mm' + (lang === 'th' ? ' (รู)' : ' hole');
+    }
+
     /* A printed plate does the sheet's job, so it supersedes it when fitted. */
     if (P.lanternStyle === 'modern') {
       document.getElementById('s-diff').textContent = lang === 'th' ? 'ไม่มี — เลือกใส่กระดาษเอง' : 'none — optional paper liner';
