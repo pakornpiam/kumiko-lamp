@@ -271,6 +271,18 @@ sits flush against the outer groove wall and the plate against the inner, so the
 it. `plate_t = 0` collapses `slot_w` to the un-glazed width, which is why the stock lamp
 is byte-identical with the feature present.
 
+**`socket_riser` is Classic only, and its outer diameter is not a slider.** It lifts the
+adapter counterbore on a chimney grown out of the base so the lamp holder hangs hidden
+inside it instead of standing exposed in the lantern; the tube exists to carry
+`socket_cbore` up, so its OD can only be that plus `SOCKET_RISER_WALL` either side — Ø56 at
+stock, radius 28, which fits inside the vent ring at `base_vent_r0 = 29` by one millimetre.
+Both guards are needed, because `socket_cbore` *is* a slider. `socket_seat_z` is exactly
+`base_t` when the riser is 0, so the stock base's cutters are unchanged and `stl/base.stl`
+stays byte-identical — the same trick `plate_t` uses. The Modern base prints deck-down
+under `modern_base_for_print`, so a riser above that deck would grow into the bed:
+`check_modern_fits` rejects it rather than building a base that silently ignores it, and
+`MODERN_GROUPS` does not offer the slider.
+
 Minimum-layer checks are written `x < 3 * 0.2`, and `3 * 0.2` is `0.6000000000000001` in
 both languages — subtract an epsilon if the boundary is a reachable slider stop. The same
 trap bites the insert guards: `post 18` with a 4.4 hole lands on `0.7999999999999998`

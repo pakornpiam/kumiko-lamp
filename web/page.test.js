@@ -294,6 +294,28 @@ function zipEntry(buf, wanted) {
   await page.fill('#r-cableFloor', '2'); await page.dispatchEvent('#r-cableFloor', 'input');
   await page.waitForTimeout(450);
 
+  // the socket riser: off at stock, and echoed as a flag once raised
+  check(!/--socket-riser/.test(await page.textContent('#cli')),
+        'no riser flag while the slider is at 0');
+  await page.fill('#r-socketRiser', '60');
+  await page.dispatchEvent('#r-socketRiser', 'input');
+  await page.waitForTimeout(600);
+  check(/--socket-riser 60/.test(await page.textContent('#cli')),
+        'raising the riser echoes it on the command line',
+        await page.textContent('#cli'));
+  check(!(await page.isDisabled('#dl-all')) &&
+        (await page.$$eval('#parts tr', r => r.length)) === 6,
+        'a risen lamp still builds its six parts');
+  // it rides on the counterbore, so widening that has to carry it into the vents
+  await page.fill('#r-socketCbore', '56');
+  await page.dispatchEvent('#r-socketCbore', 'input');
+  await page.waitForTimeout(500);
+  check(await page.isDisabled('#dl-all'),
+        'a riser wider than the vent ring blocks export');
+  await page.fill('#r-socketCbore', '50'); await page.dispatchEvent('#r-socketCbore', 'input');
+  await page.fill('#r-socketRiser', '0'); await page.dispatchEvent('#r-socketRiser', 'input');
+  await page.waitForTimeout(500);
+
   /* Export is a server call now, so this file can no longer produce the bytes:
      what it CAN prove offline is that the page asks for the right thing. The
      bytes themselves are checked in export.test.js against a running stack --
@@ -439,6 +461,10 @@ function zipEntry(buf, wanted) {
   check(await page.$('#r-post') === null && await page.$('#r-snapEngagement') === null &&
         await page.$('#r-modernThreadClear') !== null,
         'Modern hides Classic frame/snap controls and shows thread clearance');
+  /* The Modern base prints deck-down, so a riser above that deck would grow
+     into the bed; the slider is Classic-only rather than merely ignored. */
+  check(await page.$('#r-socketRiser') === null,
+        'Modern does not offer the socket riser');
   const modernRows = await page.$$eval('#parts .note', n =>
     n.map(x => x.textContent.split(' ')[0]));
   check(modernRows.join(',') ===

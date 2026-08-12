@@ -454,6 +454,33 @@ for (const [name, want] of Object.entries(SNAP_PY)) {
         `python ${want} (${err > 0 ? '+' : ''}${err.toFixed(2)}%)`);
 }
 
+/* The socket riser: a chimney on the base carrying the adapter seat 60 mm up,
+   so the lamp holder hangs hidden inside it.  Volume is the contract here as
+   everywhere else -- python kumiko_lamp.py --socket-riser 60 measures 578.3 --
+   and the bbox proves the tube is actually there rather than the counterbore
+   having merely moved. */
+const risen = K.buildAll({ socketRiser: 60 });
+check(risen.problems.length === 0, 'a 60 mm socket riser builds clean',
+      risen.problems.join(' | '));
+const risenBase = risen.parts.find(p => p.id === 'base');
+const RISER_PY = 578.3;
+const risenVol = risenBase.vol / 1000;
+const risenErr = (risenVol - RISER_PY) / RISER_PY * 100;
+check(Math.abs(risenErr) < 1.5, `risen base volume ${risenVol.toFixed(1)} cm3`,
+      `python ${RISER_PY} (${risenErr > 0 ? '+' : ''}${risenErr.toFixed(2)}%)`);
+check(Math.abs(risenBase.bbox.size[2] - 76) < 1e-6,
+      'risen base stands baseT + riser tall', risenBase.bbox.size[2].toFixed(1));
+check(closure(risenBase.mesh.tris).closed, 'risen base surface closed');
+/* The riser rides on the counterbore, so widening that has to carry the tube
+   into the vents -- and Modern has nowhere to put it at all. */
+check(K.buildAll({ socketRiser: 60, socketCbore: 56 }).problems
+       .some(m => /riser runs into the ventilation slots/.test(m)),
+      'a riser wider than the vent ring is refused');
+check(K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
+                   socketRiser: 60 }).problems
+       .some(m => /Classic-only/.test(m)),
+      'a riser on the Modern base is refused');
+
 console.log('\nmodern parts and assembly');
 const modern = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218 });
 check(modern.problems.length === 0 && modern.parts.length === 3,

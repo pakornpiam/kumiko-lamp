@@ -54,6 +54,13 @@ MODERN_THREAD_CLEAR = 0.30
 MODERN_CHORD_ERROR = 0.1
 MODERN_LATTICE_OVERLAP = 0.8
 
+# Wall left around the adapter counterbore when the holder is lifted on a riser.
+# Derived rather than a second slider: the tube exists to carry `socket_cbore`
+# up, so its outer diameter can only follow it.  3.0 puts the stock riser at
+# Ø56, just inside the ventilation ring at r 29 -- which check_fits enforces
+# rather than assumes, because socket_cbore is itself a slider.
+SOCKET_RISER_WALL = 3.0
+
 
 # --------------------------------------------------------------------------
 # Parameters
@@ -164,6 +171,14 @@ class Params:
     # positional layout of any of the long-standing fields above.
     modern_base_d: float | None = None
 
+    # Classic only.  Lifts the adapter counterbore on a chimney grown out of the
+    # base so the lamp holder hangs hidden inside it instead of standing exposed
+    # in the lantern.  0 disables the whole feature, the way plate_t and
+    # post_insert_d do, and the stock base stays byte-identical.  Appended for
+    # the same reason as the modern fields above: the long-standing positional
+    # layout of Params must not shift.
+    socket_riser: float = 0.0
+
     # ---- derived ---------------------------------------------------------
     @property
     def slot_w(self) -> float:
@@ -235,6 +250,26 @@ class Params:
     def snap_cavity_sz(self) -> float:
         """Square leg-tenon relief leaving four nozzle-width flexure walls."""
         return self.leg_tenon - 8 * self.nozzle
+
+    @property
+    def risen(self) -> bool:
+        """Is the lamp holder carried up on a riser?  0 switches it off."""
+        return self.socket_riser > 0
+
+    @property
+    def socket_riser_od(self) -> float:
+        """Outside of the riser tube: the counterbore plus a wall either side."""
+        return self.socket_cbore + 2.0 * SOCKET_RISER_WALL
+
+    @property
+    def socket_seat_z(self) -> float:
+        """
+        Plane the adapter counterbore is cut down from.
+
+        Exactly `base_t` when there is no riser, which is what keeps the stock
+        base's cutters -- and therefore its STL -- bit-for-bit as they were.
+        """
+        return self.base_t + self.socket_riser
 
     @property
     def screwed(self) -> bool:
@@ -1744,9 +1779,20 @@ def build_base(P: Params) -> trimesh.Trimesh:
     cutters = _joint_cutters(P, t, downward=True)
     cutters += _leg_sockets(P)
 
+    # Optional riser: a tube grown out of the plate that carries the adapter
+    # seat up, so the holder body hangs inside it out of sight.  Unioned before
+    # the cutters below so the bore and counterbore carve straight through it.
+    # Printed as exported it is a plain vertical tube off a flat plate, and the
+    # counterbore's floor is an upward-facing step resting on that tube's wall
+    # -- no overhang and no bridge anywhere in it.
+    if P.risen:
+        base = union([base, cyl(P.socket_riser_od, t - EPS, P.socket_seat_z,
+                                sections=P.arc)])
+
     # lamp holder bore + counterbore for the adapter ring
-    cutters.append(cyl(P.socket_bore, -EPS, t + EPS, sections=P.arc))
-    cutters.append(cyl(P.socket_cbore, t - P.socket_cbore_d, t + EPS,
+    seat = P.socket_seat_z          # == t exactly when there is no riser
+    cutters.append(cyl(P.socket_bore, -EPS, seat + EPS, sections=P.arc))
+    cutters.append(cyl(P.socket_cbore, seat - P.socket_cbore_d, seat + EPS,
                        sections=P.arc))
 
     # ring of tangential ventilation slots
@@ -2346,6 +2392,11 @@ def check_modern_fits(P: Params, pattern=None):
         issues.append("adapter counterbore must be wider than the holder bore")
     if P.socket_cbore_d <= 0:
         issues.append("adapter seat depth must be positive")
+    # The modern base prints deck-down, so a riser above that deck would grow
+    # into the bed.  Refuse it rather than build it and quietly drop it: with
+    # --params-json any declared field can arrive from the export service.
+    if P.socket_riser > 0:
+        issues.append("socket riser is a Classic-only feature")
     cavity_h = P.modern_base_h - P.base_t
     if P.cable_w <= 0 or P.cable_h <= 0:
         issues.append("modern cable outlet dimensions must be positive")
@@ -2407,6 +2458,19 @@ def check_fits(P: Params, pattern=None):
         issues.append("less than three layers of floor under the cord tunnel")
     if P.socket_cbore / 2 >= P.base_vent_r0:
         issues.append("adapter counterbore runs into the ventilation slots")
+    if P.socket_riser < 0:
+        issues.append("socket riser cannot be negative")
+    # 3 * 0.2 is 0.6000000000000001 and 0.6 is a reachable slider stop, so this
+    # boundary needs the epsilon or it rejects itself.
+    if 0 < P.socket_riser < 3 * 0.2 - 1e-9:
+        issues.append("socket riser is under three layers tall")
+    if P.risen and P.socket_riser_od / 2 >= P.base_vent_r0:
+        issues.append("socket riser runs into the ventilation slots")
+    # The cap's underside sits `height - 2 * groove_d` above the base's top
+    # face: place_parts puts the cap at z_base + height - groove_d, and z_base
+    # is itself base_t - groove_d.
+    if P.socket_riser >= P.height - 2 * P.groove_d:
+        issues.append("socket riser reaches the top cap")
     if P.foot / 2 <= P.post_center + P.socket_sz / 2:
         issues.append("post socket breaks out of the side of the base/cap")
     leg_socket_span = P.snap_socket_sz if P.snapped else P.leg_socket_sz
@@ -2600,6 +2664,10 @@ def main(argv=None):
     ap.add_argument("--snap-lock", nargs="?", const=0.2, type=float,
                     metavar="MM", help="reusable foot and finial snap engagement; "
                                         "bare flag uses 0.2 mm, 0 disables")
+    ap.add_argument("--socket-riser", type=float,
+                    help="Classic only: lift the adapter seat on a riser that "
+                         "covers the lamp holder (mm); 0 for none, 60 clears a "
+                         "typical E27")
     ap.add_argument("--modern-base-height", type=float,
                     help="Modern hollow base height (mm); default 90")
     ap.add_argument("--modern-base-diameter", type=float,
@@ -2679,6 +2747,7 @@ def main(argv=None):
                       ("plate_t", args.diffuser_plate),
                       ("post_insert_d", args.post_insert),
                       ("snap_engagement", args.snap_lock),
+                      ("socket_riser", args.socket_riser),
                       ("modern_base_h", args.modern_base_height),
                       ("modern_base_d", args.modern_base_diameter),
                       ("modern_thread_clear", args.thread_clearance)):
