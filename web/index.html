@@ -244,6 +244,9 @@ a { color: var(--ai); }
 }
 .viewtabs button[aria-pressed="true"] { background: var(--ai); border-color: var(--ai); color: var(--washi); }
 .viewtabs button:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+/* Assembled/Exploded are one either-or pair; this is an independent switch, so
+   it is set apart rather than read as a third member of the group. */
+.viewtabs #v-panels { margin-left: 8px; }
 
 /* The swatch and the pattern picker share one grid item: the swatch names the
    selected pattern and the picker sits right under it, so choosing and seeing
@@ -441,6 +444,10 @@ pre.cmd {
           <div class="viewtabs">
             <button id="v-asm" aria-pressed="true">Assembled</button>
             <button id="v-exp" aria-pressed="false">Exploded</button>
+            <!-- Pressed means shown.  Turning the lattice off is the only way to
+                 see what is inside the lamp: the holder, the socket riser under
+                 it, the cord run and the vent ring. -->
+            <button id="v-panels" aria-pressed="true">Panels</button>
           </div>
           <div class="hint">Drag to turn &middot; scroll to zoom</div>
         </div>
@@ -3413,7 +3420,8 @@ var Kumiko = (function () {
     '.kicker':'โคมคุมิโกะ · ปรับแต่งตามพารามิเตอร์',
     '.mast h1':'ออกแบบโคมของคุณ แล้วดาวน์โหลดไฟล์ STL',
     '.mast p':'โคมคุมิโกะสี่ด้านพร้อมรอยต่อเดือยและร่องแบบสวมเลื่อน ทุกชิ้นพิมพ์ราบได้โดยไม่ต้องใช้ซัพพอร์ตและไม่ต้องใช้กาว เมื่อปรับค่าใด ระบบจะคำนวณรอยต่อใหม่ให้อัตโนมัติ',
-    '#v-asm':'ประกอบแล้ว', '#v-exp':'แยกชิ้นส่วน', '.hint':'ลากเพื่อหมุน · เลื่อนเพื่อซูม',
+    '#v-asm':'ประกอบแล้ว', '#v-exp':'แยกชิ้นส่วน', '#v-panels':'แผงโคม',
+    '.hint':'ลากเพื่อหมุน · เลื่อนเพื่อซูม',
     '.meaning b':'ความหมาย', '.block:nth-of-type(1) h2':'รายการพิมพ์',
     '.block:nth-of-type(1) th:nth-child(1)':'ชิ้นส่วน', '.block:nth-of-type(1) th:nth-child(2)':'จำนวน',
     '.block:nth-of-type(1) th:nth-child(3)':'ขนาด (mm)', '.block:nth-of-type(1) th:nth-child(4)':'ปริมาตร',
@@ -3450,11 +3458,15 @@ var Kumiko = (function () {
   var MODERN_STATIC = {
     en: {
       '.mast p':'A two-part cylindrical lantern with a continuously wrapped Kumiko shade and a reusable printed thread. Change the proportions, pattern, holder, or thread fit and both printable bodies rebuild together.',
-      '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'Shade liner'
+      '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'Shade liner',
+      /* One wrapped lattice rather than four flat ones, and the page calls it a
+         shade everywhere else. */
+      '#v-panels':'Shade'
     },
     th: {
       '.mast p':'โคมทรงกระบอกสองชิ้นพร้อมโป๊ะลายคุมิโกะพันต่อเนื่องและเกลียวพิมพ์แบบถอดใช้ซ้ำได้ ปรับสัดส่วน ลวดลาย ขั้วหลอด หรือระยะเผื่อเกลียว แล้วระบบจะสร้างชิ้นพิมพ์ทั้งสองใหม่พร้อมกัน',
-      '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'แผ่นซับแสงโป๊ะ'
+      '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'แผ่นซับแสงโป๊ะ',
+      '#v-panels':'โป๊ะ'
     }
   };
   var MODERN_HTML = {
@@ -3508,7 +3520,11 @@ var Kumiko = (function () {
   // ---------------------------------------------------------------- state
   var state = {};
   for (var k in K.DEFAULTS) state[k] = K.DEFAULTS[k];
-  var model = null, viewMode = 'asm';
+  /* Whether the lattice is drawn.  Deliberately not per style and not part of
+     `state`: it is a way of looking at the lamp, not a property of it, so it
+     survives a rebuild, a style switch and a language switch untouched -- only
+     the button's label follows the style. */
+  var model = null, viewMode = 'asm', showPanels = true;
   /* Strict shade meshes are intentionally absent from the live model.  Cache
      their serialized export bytes by every derived value the builder reads so
      a direct STL followed by a ZIP does not rebuild the high-resolution shell. */
@@ -3950,11 +3966,17 @@ var Kumiko = (function () {
         buf.clear.push({ start: start, count: nv, c: [cx/nv, cy/nv, cz/nv] });
     }
 
+    /* Hidden panels means the glazing too: `kind` is 'panel' for the Classic
+       lattices, the clear plates behind them and the Modern shade alike, so one
+       test covers both styles -- and dropping the lattice while leaving four
+       sheets of glazing hanging in the air would be worse than either. */
+    var shown = function (p) { return showPanels || p.kind !== 'panel'; };
+
     /* Two passes, so every opaque vertex precedes every translucent one: the
        opaque pass writes depth and the blended pass then tests against it. */
-    model.assembly.forEach(function (p) { if (!p.clear) emitPart(p); });
+    model.assembly.forEach(function (p) { if (!p.clear && shown(p)) emitPart(p); });
     buf.nOpaque = pos.length / 3;
-    model.assembly.forEach(function (p) { if (p.clear) emitPart(p); });
+    model.assembly.forEach(function (p) { if (p.clear && shown(p)) emitPart(p); });
     buf.n = pos.length / 3;
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
@@ -4703,6 +4725,12 @@ var Kumiko = (function () {
       document.getElementById('v-exp').setAttribute('aria-pressed', String(viewMode === 'exp'));
       uploadScene(); draw();
     });
+  });
+
+  document.getElementById('v-panels').addEventListener('click', function () {
+    showPanels = !showPanels;
+    this.setAttribute('aria-pressed', String(showPanels));
+    uploadScene(); draw();
   });
 
   /* The CSS cap is calc(100vh - 32px), which is right once the rail has been
