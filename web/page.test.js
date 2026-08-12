@@ -294,6 +294,80 @@ function zipEntry(buf, wanted) {
   await page.fill('#r-cableFloor', '2'); await page.dispatchEvent('#r-cableFloor', 'input');
   await page.waitForTimeout(450);
 
+  // the socket riser: off at stock, and echoed as a flag once raised
+  check(!/--socket-riser/.test(await page.textContent('#cli')),
+        'no riser flag while the slider is at 0');
+  await page.fill('#r-socketRiser', '60');
+  await page.dispatchEvent('#r-socketRiser', 'input');
+  await page.waitForTimeout(600);
+  check(/--socket-riser 60/.test(await page.textContent('#cli')),
+        'raising the riser echoes it on the command line',
+        await page.textContent('#cli'));
+  check(!(await page.isDisabled('#dl-all')) &&
+        (await page.$$eval('#parts tr', r => r.length)) === 6,
+        'a risen lamp still builds its six parts');
+  /* The counterbore slider reaches 74 and every bit of that has to build: the
+     vent ring steps outward to clear the holder -- and the riser tube around it
+     -- rather than refusing to share the room. */
+  await page.fill('#r-socketCbore', '74');
+  await page.dispatchEvent('#r-socketCbore', 'input');
+  await page.waitForTimeout(600);
+  check(!(await page.isDisabled('#dl-all')) && !(await page.$('#problems .problems')),
+        'the counterbore reaches its full 74 mm with a riser fitted');
+  await page.fill('#r-socketRiser', '0'); await page.dispatchEvent('#r-socketRiser', 'input');
+  await page.waitForTimeout(600);
+  check(!(await page.isDisabled('#dl-all')) &&
+        (await page.$$eval('#parts tr', r => r.length)) === 6,
+        'and on its own, still six parts');
+  await page.fill('#r-socketCbore', '50'); await page.dispatchEvent('#r-socketCbore', 'input');
+  await page.waitForTimeout(500);
+
+  /* The panel toggle is a way of looking at the lamp, not a property of it: the
+     render has to change and the print list must not. Sampled off the canvas
+     rather than trusted from a flag -- the whole point is what is drawn. */
+  const sampleView = () => page.evaluate(() => {
+    const c = document.getElementById('gl');
+    const gl = c.getContext('webgl');
+    const px = new Uint8Array(c.width * c.height * 4);
+    gl.readPixels(0, 0, c.width, c.height, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    const rows = [];
+    for (let i = 0; i < px.length; i += 4 * 97)
+      rows.push(px[i] + ',' + px[i + 1] + ',' + px[i + 2]);
+    return { rows: rows, colours: new Set(rows).size };
+  });
+  const differing = (a, b) =>
+    a.rows.reduce((n, v, i) => n + (v === b.rows[i] ? 0 : 1), 0) / a.rows.length;
+
+  const withPanels = await sampleView();
+  check(await page.getAttribute('#v-panels', 'aria-pressed') === 'true',
+        'panels start shown');
+  await page.click('#v-panels');
+  await page.waitForTimeout(350);
+  const without = await sampleView();
+  check(await page.getAttribute('#v-panels', 'aria-pressed') === 'false',
+        'the toggle records itself as off');
+  check(differing(withPanels, without) > 0.1,
+        'hiding the panels visibly changes the render',
+        (differing(withPanels, without) * 100).toFixed(1) + '% of samples');
+  check(without.colours > 8, 'the frame, base and cap are still drawn',
+        `${without.colours} distinct sampled colours`);
+  check(!(await page.isDisabled('#dl-all')) &&
+        (await page.$$eval('#parts tr', r => r.length)) === 6,
+        'hiding panels changes nothing about what prints');
+  /* A view setting, so a style switch must not quietly put them back: only the
+     label follows the style. */
+  await page.click('button[data-lantern-style="modern"]');
+  await page.waitForTimeout(700);
+  const heldInModern = await page.getAttribute('#v-panels', 'aria-pressed') === 'false';
+  await page.click('button[data-lantern-style="classic"]');
+  await page.waitForTimeout(700);
+  check(heldInModern && await page.getAttribute('#v-panels', 'aria-pressed') === 'false',
+        'hidden panels survive a style round trip');
+  await page.click('#v-panels');
+  await page.waitForTimeout(350);
+  check(differing(withPanels, await sampleView()) === 0,
+        'switching them back restores the view exactly');
+
   /* Export is a server call now, so this file can no longer produce the bytes:
      what it CAN prove offline is that the page asks for the right thing. The
      bytes themselves are checked in export.test.js against a running stack --
@@ -439,6 +513,10 @@ function zipEntry(buf, wanted) {
   check(await page.$('#r-post') === null && await page.$('#r-snapEngagement') === null &&
         await page.$('#r-modernThreadClear') !== null,
         'Modern hides Classic frame/snap controls and shows thread clearance');
+  /* The Modern base prints deck-down, so a riser above that deck would grow
+     into the bed; the slider is Classic-only rather than merely ignored. */
+  check(await page.$('#r-socketRiser') === null,
+        'Modern does not offer the socket riser');
   const modernRows = await page.$$eval('#parts .note', n =>
     n.map(x => x.textContent.split(' ')[0]));
   check(modernRows.join(',') ===
@@ -577,11 +655,18 @@ function zipEntry(buf, wanted) {
   check(await page.getAttribute('#v-exp', 'aria-pressed') === 'true',
         'Modern exploded view activates');
   await page.click('#v-asm');
+  /* One wrapped lattice here, and the page calls it a shade everywhere else. */
+  check((await page.textContent('#v-panels')).trim() === 'Shade',
+        'Modern labels the lattice toggle Shade',
+        (await page.textContent('#v-panels')).trim());
   await page.click('#lang-label'); await page.waitForTimeout(250);
   check((await page.textContent('.styletabs')).includes('โมเดิร์น') &&
         (await page.textContent('.block:nth-of-type(2) .cols > div:nth-child(2) p'))
           .includes('ระยะเผื่อเกลียว'),
         'Modern controls and assembly guidance localize to Thai');
+  check((await page.textContent('#v-panels')).trim() === 'โป๊ะ',
+        'the lattice toggle localizes to Thai in Modern',
+        (await page.textContent('#v-panels')).trim());
   const thaiManifoldCopy = await page.textContent(
     '.block:nth-of-type(3) .cols > div:nth-child(1)');
   check(thaiManifoldCopy.includes('float32') &&

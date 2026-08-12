@@ -244,6 +244,9 @@ a { color: var(--ai); }
 }
 .viewtabs button[aria-pressed="true"] { background: var(--ai); border-color: var(--ai); color: var(--washi); }
 .viewtabs button:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+/* Assembled/Exploded are one either-or pair; this is an independent switch, so
+   it is set apart rather than read as a third member of the group. */
+.viewtabs #v-panels { margin-left: 8px; }
 
 /* The swatch and the pattern picker share one grid item: the swatch names the
    selected pattern and the picker sits right under it, so choosing and seeing
@@ -441,6 +444,10 @@ pre.cmd {
           <div class="viewtabs">
             <button id="v-asm" aria-pressed="true">Assembled</button>
             <button id="v-exp" aria-pressed="false">Exploded</button>
+            <!-- Pressed means shown.  Turning the lattice off is the only way to
+                 see what is inside the lamp: the holder, the socket riser under
+                 it, the cord run and the vent ring. -->
+            <button id="v-panels" aria-pressed="true">Panels</button>
           </div>
           <div class="hint">Drag to turn &middot; scroll to zoom</div>
         </div>
@@ -588,6 +595,7 @@ var Kumiko = (function () {
     postInsertD: 0, postInsertH: 6.5, finialH: 8, finialTenonH: 2,
     holderType: 'e27',
     socketBore: 40, socketCbore: 50, socketCboreD: 4, socketNeck: 26.5,
+    socketRiser: 0,
     cableW: 9, cableH: 5, cableFloor: 2,
     baseVents: 16, baseVentR0: 29, baseVentR1: 37,
     capVentD: 70, capGrilleF: 0.75,
@@ -622,6 +630,27 @@ var Kumiko = (function () {
     /* The whole top fixing hangs off one number, the way plateT does for the
        plate.  postInsertD is the insert's pilot hole, and a heat-set insert
        runs about a millimetre over its thread, so 4.0 is M3. */
+    /* Classic only, and off at 0 like plateT and postInsertD.  The riser is a
+       chimney on the base that carries the adapter seat up so the lamp holder
+       hangs hidden inside it; its outside can only follow the counterbore it
+       has to carry, so the wall is fixed rather than a second slider.  seatZ is
+       exactly baseT when the riser is off, which is what keeps the stock base
+       identical to Python's. */
+    p.socketRiserWall = 3;
+    p.risen = p.socketRiser > 0;
+    p.socketRiserOd = p.socketCbore + 2 * p.socketRiserWall;
+    p.socketSeatZ = p.baseT + p.socketRiser;
+    /* The ventilation ring stands clear of the holder rather than refusing to
+       share the room with it: baseVentR0 is its minimum radius, not its answer.
+       The counterbore is a slider reaching Ø74 and a ring pinned at r29 would
+       reject most of that range with no control in the app able to move it. At
+       stock the holder wants 27 and the ring is already at 29, so nothing
+       shifts and every existing part is unchanged. */
+    p.holderVentGap = 2;
+    p.holderOuterR = Math.max(p.socketCbore / 2,
+                              p.risen ? p.socketRiserOd / 2 : 0);
+    p.ventR0 = Math.max(p.baseVentR0, p.holderOuterR + p.holderVentGap);
+    p.ventR1 = p.ventR0 + (p.baseVentR1 - p.baseVentR0);
     p.screwed = p.postInsertD > 0;
     p.screwD = p.postInsertD - 1;
     p.capScrewD = p.screwD + 0.4;            /* 3.4 at M3: the standard hole */
@@ -673,10 +702,10 @@ var Kumiko = (function () {
     p.modernFemaleThreadR = p.modernThreadCoreR + p.modernThreadClear;
     p.modernThreadWall = p.modernOuterR -
                          (p.modernThreadCrestR + p.modernThreadClear);
-    var modernVentRm = (p.baseVentR0 + p.baseVentR1) / 2;
+    var modernVentRm = (p.ventR0 + p.ventR1) / 2;
     p.modernVentHalfLen = p.baseVents > 0
       ? Math.PI * modernVentRm / p.baseVents * 0.60 : Infinity;
-    p.modernVentCornerR = Math.hypot(p.baseVentR1, p.modernVentHalfLen);
+    p.modernVentCornerR = Math.hypot(p.ventR1, p.modernVentHalfLen);
     if (p.lanternStyle === 'modern') {
       p.foot = p.modernFootprint;
       p.totalHeight = p.modernBaseH + p.height - p.modernThreadEngagement;
@@ -755,8 +784,9 @@ var Kumiko = (function () {
         bad('Modern base needs at least three ventilation slots.');
       if (P.modernThreadCoreR <= P.socketCbore / 2 + 2 * P.nozzle)
         bad('Modern neck has insufficient wall outside the holder deck.');
-      if (P.socketCbore / 2 >= P.baseVentR0)
-        bad('Adapter counterbore runs into the ventilation slots.');
+      /* The ring clears the holder by construction, so a wide counterbore can no
+         longer run into it -- what it can do is push the ring into the neck, and
+         the neck follows the shade diameter rather than the base's. */
       if (P.baseVentR0 > 0 && P.baseVentR1 > P.baseVentR0 && P.baseVents >= 3 &&
           P.modernVentCornerR >= P.modernThreadCoreR - 2 * P.nozzle)
         bad('Modern ventilation slots run into the threaded neck wall.');
@@ -767,6 +797,11 @@ var Kumiko = (function () {
         bad('Adapter counterbore must be wider than the holder bore.');
       if (P.socketCboreD <= 0)
         bad('Adapter seat depth must be positive.');
+      /* The modern base prints deck-down, so a riser above that deck would
+         grow into the bed.  Refuse it rather than silently ignore it: the
+         export service passes whatever the caller sends. */
+      if (P.socketRiser > 0)
+        bad('Socket riser is a Classic-only feature.');
       if (P.cableW <= 0 || P.cableH <= 0)
         bad('Modern cable outlet dimensions must be positive.');
       if (P.cableW >= P.modernBaseDiameter - 2 * P.modernWall)
@@ -813,8 +848,24 @@ var Kumiko = (function () {
       bad('Panel frame is narrower than its groove engagement.');
     if (P.rebateLip >= P.panelBorder)
       bad('Diffuser rebate eats the whole frame lip.');
-    if (P.socketCbore / 2 >= P.baseVentR0)
-      bad('Adapter counterbore runs into the ventilation slots.');
+    /* The ring steps clear of the holder, so nothing here can run into it; what
+       still has to hold is that the ring is a ring.  Not a slider in either app,
+       but --params-json reaches these. */
+    if (!(P.baseVentR0 > 0 && P.baseVentR1 > P.baseVentR0))
+      bad('Vent radii must satisfy 0 < inner < outer.');
+    if (P.baseVents < 3)
+      bad('Base needs at least three ventilation slots.');
+    if (P.socketRiser < 0)
+      bad('Socket riser cannot be negative.');
+    /* 3 * 0.2 is 0.6000000000000001 and 0.6 is a reachable slider stop, so
+       this boundary needs the epsilon or it rejects itself. */
+    if (P.socketRiser > 0 && P.socketRiser < 3 * 0.2 - 1e-9)
+      bad('Socket riser is under three layers tall.');
+    /* The cap's underside sits height - 2 * grooveD above the base's top face:
+       assemble puts the cap at zBase + height - grooveD, and zBase is itself
+       baseT - grooveD. */
+    if (P.socketRiser >= P.height - 2 * P.grooveD)
+      bad('Socket riser reaches the top cap.');
     if (P.foot / 2 <= P.postCenter + P.socketSz / 2)
       bad('Post socket breaks out of the side of the base and cap.');
     var legSocketSpan = P.snapped ? P.snapSocketSz : P.legSocketSz;
@@ -857,7 +908,9 @@ var Kumiko = (function () {
       bad('Leg tenon is not narrower than the leg, so it has no shoulder.');
     if (P.postCenter + P.leg / 2 > P.foot / 2)
       bad('Leg overhangs the edge of the base.');
-    if (P.postCenter - legSocketSpan / 2 <= P.baseVentR1)
+    /* Against the ring where it actually ends up: this is the outward limit a
+       growing holder eventually reaches, and the honest refusal for it. */
+    if (P.postCenter - legSocketSpan / 2 <= P.ventR1)
       bad('Leg socket runs into the ventilation slots.');
     if (P.legH < 3 * 0.2)
       bad('Leg is under three layers tall.');
@@ -2246,8 +2299,10 @@ var Kumiko = (function () {
     return v;
   }
 
+  /* Placed on the derived radii, so the ring rides outward with a wide holder
+     instead of colliding with it. */
   function ventVoids(P) {
-    var v = [], rm = (P.baseVentR0 + P.baseVentR1) / 2;
+    var v = [], rm = (P.ventR0 + P.ventR1) / 2;
     var half = Math.PI * rm / P.baseVents * 0.6;
     for (var j = 0; j < P.baseVents; j++) {
       var ang = 2 * Math.PI * j / P.baseVents;
@@ -2255,7 +2310,7 @@ var Kumiko = (function () {
       var tx = -Math.sin(ang), ty = Math.cos(ang);
       v.push(slatLoop([cx - tx * half, cy - ty * half],
                       [cx + tx * half, cy + ty * half],
-                      P.baseVentR1 - P.baseVentR0, false));
+                      P.ventR1 - P.ventR0, false));
     }
     return v;
   }
@@ -2801,7 +2856,10 @@ var Kumiko = (function () {
                           -P.socketBore / 2 + P.cableW, false);
 
     var zTunnel0 = P.cableFloor, zTunnel1 = P.cableFloor + P.cableH;
-    var zJoin = t - P.grooveD, zCbore = t - P.socketCboreD;
+    /* With a riser the adapter seat moves up onto the tube, and the filter
+       below then drops this breakpoint out of the plate's own cut list -- so
+       every plate layer falls through to the plain bore with no further test. */
+    var zJoin = t - P.grooveD, zCbore = P.socketSeatZ - P.socketCboreD;
     var zSnap0 = P.legTenonH - SNAP_TIP - SNAP_BAND_H;
     var zSnap1 = zSnap0 + SNAP_BAND_H;
     var cuts = [0, ch, zTunnel0, zTunnel1, P.legTenonH, zJoin, zCbore, t - ch, t]
@@ -2822,6 +2880,22 @@ var Kumiko = (function () {
       layers.push({ loops: [outerAt(z0)].concat(rest),
                     loopsTop: ch > 0 ? [outerAt(z1)].concat(rest) : undefined,
                     z0: z0, z1: z1 });
+    }
+
+    /* The riser tube, stacked straight on top of the plate: two more bands at
+       most, so extrudeStack barely notices it.  Its counterbore floor is an
+       upward-facing step carried on the tube wall -- nothing here overhangs. */
+    if (P.risen) {
+      var riser = circleLoop(0, 0, P.socketRiserOd / 2, n, true);
+      var rc = [t, zCbore, P.socketSeatZ]
+        .filter(function (z) { return z > t - TOL; })
+        .sort(function (a, b) { return a - b; });
+      for (var j = 0; j < rc.length - 1; j++) {
+        var r0 = rc[j], r1 = rc[j + 1];
+        if (r1 - r0 < TOL) continue;
+        layers.push({ loops: [riser, (r0 + r1) / 2 >= zCbore ? cbore : bore],
+                      z0: r0, z1: r1 });
+      }
     }
     return { tris: extrudeStack(layers), manifold: true };
   }
@@ -3293,6 +3367,7 @@ var Kumiko = (function () {
     'Tenon clearance':'ระยะเผื่อเดือย', 'Groove clearance':'ระยะเผื่อร่อง',
     'Panel width clearance':'ระยะเผื่อความกว้างแผง', 'Post socket clearance':'ระยะเผื่อเบ้าเสา',
     'Bore':'รูขั้ว', 'Counterbore':'รูบ่าขั้ว', 'Adapter ring bore':'รูวงแหวนแปลง',
+    'Socket riser':'ความสูงปลอกครอบขั้ว',
     'Cord tunnel width':'ความกว้างช่องสายไฟ', 'Cord tunnel height':'ความสูงช่องสายไฟ',
     'Cord tunnel floor':'พื้นช่องสายไฟ', 'Bed X':'พื้นที่พิมพ์ X', 'Bed Y':'พื้นที่พิมพ์ Y',
     'Bed Z':'พื้นที่พิมพ์ Z', 'Nozzle':'หัวฉีด', 'Kumiko':'คุมิโกะ', 'Lai Thai':'ลายไทย',
@@ -3364,7 +3439,8 @@ var Kumiko = (function () {
     '.kicker':'โคมคุมิโกะ · ปรับแต่งตามพารามิเตอร์',
     '.mast h1':'ออกแบบโคมของคุณ แล้วดาวน์โหลดไฟล์ STL',
     '.mast p':'โคมคุมิโกะสี่ด้านพร้อมรอยต่อเดือยและร่องแบบสวมเลื่อน ทุกชิ้นพิมพ์ราบได้โดยไม่ต้องใช้ซัพพอร์ตและไม่ต้องใช้กาว เมื่อปรับค่าใด ระบบจะคำนวณรอยต่อใหม่ให้อัตโนมัติ',
-    '#v-asm':'ประกอบแล้ว', '#v-exp':'แยกชิ้นส่วน', '.hint':'ลากเพื่อหมุน · เลื่อนเพื่อซูม',
+    '#v-asm':'ประกอบแล้ว', '#v-exp':'แยกชิ้นส่วน', '#v-panels':'แผงโคม',
+    '.hint':'ลากเพื่อหมุน · เลื่อนเพื่อซูม',
     '.meaning b':'ความหมาย', '.block:nth-of-type(1) h2':'รายการพิมพ์',
     '.block:nth-of-type(1) th:nth-child(1)':'ชิ้นส่วน', '.block:nth-of-type(1) th:nth-child(2)':'จำนวน',
     '.block:nth-of-type(1) th:nth-child(3)':'ขนาด (mm)', '.block:nth-of-type(1) th:nth-child(4)':'ปริมาตร',
@@ -3401,11 +3477,15 @@ var Kumiko = (function () {
   var MODERN_STATIC = {
     en: {
       '.mast p':'A two-part cylindrical lantern with a continuously wrapped Kumiko shade and a reusable printed thread. Change the proportions, pattern, holder, or thread fit and both printable bodies rebuild together.',
-      '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'Shade liner'
+      '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'Shade liner',
+      /* One wrapped lattice rather than four flat ones, and the page calls it a
+         shade everywhere else. */
+      '#v-panels':'Shade'
     },
     th: {
       '.mast p':'โคมทรงกระบอกสองชิ้นพร้อมโป๊ะลายคุมิโกะพันต่อเนื่องและเกลียวพิมพ์แบบถอดใช้ซ้ำได้ ปรับสัดส่วน ลวดลาย ขั้วหลอด หรือระยะเผื่อเกลียว แล้วระบบจะสร้างชิ้นพิมพ์ทั้งสองใหม่พร้อมกัน',
-      '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'แผ่นซับแสงโป๊ะ'
+      '.block:nth-of-type(2) .cols > div:nth-child(3) h3':'แผ่นซับแสงโป๊ะ',
+      '#v-panels':'โป๊ะ'
     }
   };
   var MODERN_HTML = {
@@ -3459,7 +3539,11 @@ var Kumiko = (function () {
   // ---------------------------------------------------------------- state
   var state = {};
   for (var k in K.DEFAULTS) state[k] = K.DEFAULTS[k];
-  var model = null, viewMode = 'asm';
+  /* Whether the lattice is drawn.  Deliberately not per style and not part of
+     `state`: it is a way of looking at the lamp, not a property of it, so it
+     survives a rebuild, a style switch and a language switch untouched -- only
+     the button's label follows the style. */
+  var model = null, viewMode = 'asm', showPanels = true;
   /* Strict shade meshes are intentionally absent from the live model.  Cache
      their serialized export bytes by every derived value the builder reads so
      a direct STL followed by a ZIP does not rebuild the high-resolution shell. */
@@ -3557,6 +3641,11 @@ var Kumiko = (function () {
       ['socketBore', 'Bore', 20, 60, 0.5, 'mm'],
       ['socketCbore', 'Counterbore', 26, 74, 0.5, 'mm'],
       ['socketNeck', 'Adapter ring bore', 10, 52, 0.5, 'mm'],
+      /* 0 is no riser and the base stays the plain plate it always was; above
+         that the adapter seat rides up a chimney and the holder hangs hidden
+         inside it.  Classic only — the Modern base prints deck-down, so this
+         slider is deliberately absent from MODERN_GROUPS. */
+      ['socketRiser', 'Socket riser', 0, 90, 0.5, 'mm'],
       ['cableW', 'Cord tunnel width', 5, 16, 0.5, 'mm'],
       ['cableH', 'Cord tunnel height', 3, 12, 0.5, 'mm'],
       /* Exposed because it caps the edge chamfer: at the stock 2 mm floor the
@@ -3896,11 +3985,17 @@ var Kumiko = (function () {
         buf.clear.push({ start: start, count: nv, c: [cx/nv, cy/nv, cz/nv] });
     }
 
+    /* Hidden panels means the glazing too: `kind` is 'panel' for the Classic
+       lattices, the clear plates behind them and the Modern shade alike, so one
+       test covers both styles -- and dropping the lattice while leaving four
+       sheets of glazing hanging in the air would be worse than either. */
+    var shown = function (p) { return showPanels || p.kind !== 'panel'; };
+
     /* Two passes, so every opaque vertex precedes every translucent one: the
        opaque pass writes depth and the blended pass then tests against it. */
-    model.assembly.forEach(function (p) { if (!p.clear) emitPart(p); });
+    model.assembly.forEach(function (p) { if (!p.clear && shown(p)) emitPart(p); });
     buf.nOpaque = pos.length / 3;
-    model.assembly.forEach(function (p) { if (p.clear) emitPart(p); });
+    model.assembly.forEach(function (p) { if (p.clear && shown(p)) emitPart(p); });
     buf.n = pos.length / 3;
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
@@ -4202,7 +4297,12 @@ var Kumiko = (function () {
       'Less than three layers of floor under the cord tunnel.':'พื้นใต้ช่องสายไฟบางกว่าสามชั้นพิมพ์',
       'Panel frame is narrower than its groove engagement.':'กรอบแผงแคบกว่าระยะที่สวมเข้าในร่อง',
       'Diffuser rebate eats the whole frame lip.':'ร่องแผ่นกระจายแสงกินขอบกรอบทั้งหมด',
-      'Adapter counterbore runs into the ventilation slots.':'รูบ่าวงแหวนแปลงชนช่องระบายอากาศ',
+      'Vent radii must satisfy 0 < inner < outer.':'รัศมีช่องระบายอากาศต้องเป็น 0 < ด้านใน < ด้านนอก',
+      'Base needs at least three ventilation slots.':'ฐานต้องมีช่องระบายอากาศอย่างน้อยสามช่อง',
+      'Socket riser cannot be negative.':'ความสูงปลอกครอบขั้วต้องไม่ติดลบ',
+      'Socket riser is under three layers tall.':'ปลอกครอบขั้วสูงน้อยกว่าสามชั้นพิมพ์',
+      'Socket riser reaches the top cap.':'ปลอกครอบขั้วชนฝาบน',
+      'Socket riser is a Classic-only feature.':'ปลอกครอบขั้วใช้ได้เฉพาะแบบคลาสสิก',
       'Post socket breaks out of the side of the base and cap.':'เบ้าเสาทะลุด้านข้างของฐานและฝา',
       'Adapter ring bore is larger than the ring itself.':'รูวงแหวนแปลงใหญ่กว่าตัววงแหวน',
       'Lamp holder bore is not smaller than its counterbore.':'รูขั้วหลอดต้องเล็กกว่ารูบ่า',
@@ -4344,7 +4444,8 @@ var Kumiko = (function () {
     [['size','--size'],['height','--height'],['grid','--grid'],['slatW','--slat'],
      ['panelT','--panel-thickness'],
      ['edgeChamfer','--edge-chamfer'],
-     ['plateT','--diffuser-plate'],['postInsertD','--post-insert']].forEach(function (f) {
+     ['plateT','--diffuser-plate'],['postInsertD','--post-insert'],
+     ['socketRiser','--socket-riser']].forEach(function (f) {
       if (Math.abs(state[f[0]] - d[f[0]]) > 1e-9) flags.push(f[1] + ' ' + state[f[0]]);
     });
     var neckPreset = K.HOLDER_PRESETS[state.holderType];
@@ -4601,7 +4702,8 @@ var Kumiko = (function () {
       postInsertD: 'post_insert_d', postInsertH: 'post_insert_h', finialH: 'finial_h',
       finialTenonH: 'finial_tenon_h', socketBore: 'socket_bore',
       socketCbore: 'socket_cbore', socketCboreD: 'socket_cbore_d',
-      socketNeck: 'socket_neck', cableW: 'cable_w', cableH: 'cable_h',
+      socketNeck: 'socket_neck', socketRiser: 'socket_riser',
+      cableW: 'cable_w', cableH: 'cable_h',
       cableFloor: 'cable_floor', baseVents: 'base_vents', baseVentR0: 'base_vent_r0',
       baseVentR1: 'base_vent_r1', capVentD: 'cap_vent_d', capGrilleF: 'cap_grille_f',
       arc: 'arc', nozzle: 'nozzle', modernBaseH: 'modern_base_h',
@@ -4642,6 +4744,12 @@ var Kumiko = (function () {
       document.getElementById('v-exp').setAttribute('aria-pressed', String(viewMode === 'exp'));
       uploadScene(); draw();
     });
+  });
+
+  document.getElementById('v-panels').addEventListener('click', function () {
+    showPanels = !showPanels;
+    this.setAttribute('aria-pressed', String(showPanels));
+    uploadScene(); draw();
   });
 
   /* The CSS cap is calc(100vh - 32px), which is right once the rail has been

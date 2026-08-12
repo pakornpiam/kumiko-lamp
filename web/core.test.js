@@ -454,6 +454,68 @@ for (const [name, want] of Object.entries(SNAP_PY)) {
         `python ${want} (${err > 0 ? '+' : ''}${err.toFixed(2)}%)`);
 }
 
+/* The socket riser: a chimney on the base carrying the adapter seat 60 mm up,
+   so the lamp holder hangs hidden inside it.  Volume is the contract here as
+   everywhere else -- python kumiko_lamp.py --socket-riser 60 measures 578.3 --
+   and the bbox proves the tube is actually there rather than the counterbore
+   having merely moved. */
+const risen = K.buildAll({ socketRiser: 60 });
+check(risen.problems.length === 0, 'a 60 mm socket riser builds clean',
+      risen.problems.join(' | '));
+const risenBase = risen.parts.find(p => p.id === 'base');
+const RISER_PY = 578.3;
+const risenVol = risenBase.vol / 1000;
+const risenErr = (risenVol - RISER_PY) / RISER_PY * 100;
+check(Math.abs(risenErr) < 1.5, `risen base volume ${risenVol.toFixed(1)} cm3`,
+      `python ${RISER_PY} (${risenErr > 0 ? '+' : ''}${risenErr.toFixed(2)}%)`);
+check(Math.abs(risenBase.bbox.size[2] - 76) < 1e-6,
+      'risen base stands baseT + riser tall', risenBase.bbox.size[2].toFixed(1));
+check(closure(risenBase.mesh.tris).closed, 'risen base surface closed');
+check(K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
+                   socketRiser: 60 }).problems
+       .some(m => /Classic-only/.test(m)),
+      'a riser on the Modern base is refused');
+
+/* The vent ring is a floor, not a fixture: a wide counterbore -- or the riser
+   tube around it -- pushes the whole ring outward instead of being refused for
+   sharing the room with slots no control in the app can move.  The counterbore
+   slider reaches 74, so all of that range has to build. */
+check(K.derive({}).ventR0 === 29 && K.derive({}).ventR1 === 37,
+      'stock leaves the ring exactly where it was',
+      `${K.derive({}).ventR0}-${K.derive({}).ventR1}`);
+const wide = K.derive({ socketCbore: 74 });
+check(wide.ventR0 === 39 && wide.ventR1 === 47,
+      'a Ø74 counterbore steps the ring out, keeping its width',
+      `${wide.ventR0}-${wide.ventR1}`);
+const wideRisen = K.derive({ socketCbore: 74, socketRiser: 60 });
+check(wideRisen.ventR0 === wideRisen.socketRiserOd / 2 + 2,
+      'with a riser the ring clears the tube, not just the pocket',
+      `${wideRisen.ventR0}-${wideRisen.ventR1}`);
+const cbore74 = K.buildAll({ socketCbore: 74 });
+check(cbore74.problems.length === 0, 'a Ø74 counterbore builds clean',
+      cbore74.problems.join(' | '));
+const CBORE74_PY = 491.8;   /* python kumiko_lamp.py --params-json {socket_cbore:74} */
+const cboreBase = cbore74.parts.find(p => p.id === 'base');
+const cboreVol = cboreBase.vol / 1000;
+const cboreErr = (cboreVol - CBORE74_PY) / CBORE74_PY * 100;
+check(Math.abs(cboreErr) < 1.5, `Ø74 base volume ${cboreVol.toFixed(1)} cm3`,
+      `python ${CBORE74_PY} (${cboreErr > 0 ? '+' : ''}${cboreErr.toFixed(2)}%)`);
+check(closure(cboreBase.mesh.tris).closed, 'Ø74 base surface closed');
+check(K.buildAll({ socketCbore: 74, socketRiser: 60 }).problems.length === 0,
+      'a Ø74 counterbore and a riser build together');
+/* Pushed far enough out the ring does run out of base, and says so. */
+check(K.buildAll({ size: 120, socketCbore: 74, socketRiser: 60 }).problems
+       .some(m => /Leg socket runs into the ventilation slots/.test(m)),
+      'on a small lamp the moved ring reaches the leg sockets, and reports it');
+/* Modern's neck follows the shade diameter, so Ø74 needs a wider shade. */
+check(K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
+                   socketCbore: 74 }).problems
+       .some(m => /threaded neck wall/.test(m)),
+      'Ø74 under the stock Modern shade is refused by the neck wall');
+check(K.buildAll({ lanternStyle: 'modern', size: 150, height: 218,
+                   socketCbore: 74 }).problems.length === 0,
+      'a wider Modern shade takes the Ø74 counterbore');
+
 console.log('\nmodern parts and assembly');
 const modern = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218 });
 check(modern.problems.length === 0 && modern.parts.length === 3,
