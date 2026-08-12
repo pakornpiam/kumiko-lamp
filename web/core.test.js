@@ -575,6 +575,18 @@ check(K.buildAll({ legChamfer: 6, leg: 12 }).problems
        .some(m => /chamfers meet through the leg/.test(m)),
       'chamfers that would meet are refused');
 
+/* The rebuild runs on the main thread 40 ms after every slider tick, so a slow
+   build is a frozen page.  This configuration -- about 7000 slats -- took 5.6 s
+   when the slat loops appended with `tris = tris.concat(...)`, which copies the
+   whole array every iteration.  The ceiling is deliberately loose: it is here to
+   catch a reintroduced quadratic, not to benchmark the machine. */
+const heavy0 = Date.now();
+const heavy = K.buildAll({ pattern: 'seigaiha', grid: 12, size: 230 });
+const heavyMs = Date.now() - heavy0;
+check(heavy.problems.length === 0 && heavyMs < 2000,
+      `the heaviest reachable panel builds in ${heavyMs} ms`,
+      `${heavy.slats} slats, ceiling 2000 ms (was 5569 ms with concat)`);
+
 console.log('\nmodern parts and assembly');
 const modern = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218 });
 check(modern.problems.length === 0 && modern.parts.length === 3,
