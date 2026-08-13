@@ -635,6 +635,12 @@ function zipEntry(buf, wanted) {
         await page.inputValue('#r-height') === '218' &&
         await page.inputValue('#r-modernBaseH') === '90',
         'Modern preset restores diameter, shade height, and base height');
+  const modernGroupOrder = await page.$$eval('#rail details.grp > summary', s =>
+    s.map(x => x.textContent.trim()));
+  check(modernGroupOrder.slice(0, 3).join(',') === 'Lantern,Pattern,Lamp holder',
+        'Modern pins Lamp holder directly after Pattern', modernGroupOrder.slice(0, 3).join(','));
+  check(await page.$eval('#r-socketNeck', x => x.closest('details').classList.contains('fixed') &&
+        x.closest('details').open), 'Modern lamp-holder controls start pinned open');
   check(await page.$('#r-post') === null && await page.$('#r-snapEngagement') === null &&
         await page.$('#r-modernThreadClear') !== null,
         'Modern hides Classic frame/snap controls and shows thread clearance');
@@ -707,9 +713,23 @@ function zipEntry(buf, wanted) {
         'the E14 preset reaches the server as a neck dimension, not a label',
         lastExportRequest && lastExportRequest.params &&
         String(lastExportRequest.params.socket_neck));
+  await page.fill('#r-socketNeck', '27.5');
+  await page.dispatchEvent('#r-socketNeck', 'input');
+  await page.waitForFunction(() => /--socket-neck 27\.5/.test(
+    document.getElementById('cli').textContent), null, { timeout: 10000 });
+  const [customRingDl] = await Promise.all([
+    page.waitForEvent('download', { timeout: 20000 }),
+    page.click('#parts tr:last-child button.dl')
+  ]);
+  check(customRingDl.suggestedFilename() === 'socket_adapter_ring.stl' &&
+        lastExportRequest && lastExportRequest.params.socket_neck === 27.5,
+        'Modern manual holder bore reaches CLI and export',
+        `${await page.textContent('#cli')} / ${lastExportRequest.params.socket_neck}`);
   await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
   await page.click('button[data-holder="e27"]');
   await page.waitForTimeout(550);
+  check(await page.inputValue('#r-socketNeck') === '26.5',
+        'Modern E27 selector restores its holder preset');
   await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
 
   await page.fill('#r-size', '110'); await page.dispatchEvent('#r-size', 'input');
@@ -901,10 +921,11 @@ function zipEntry(buf, wanted) {
   check(sq.bottom <= sq.vh, 'the whole preview fits on screen',
         `bottom ${sq.bottom} vs viewport ${sq.vh}`);
 
-  // Lantern and Pattern are permanently open -- a click must not collapse them,
-  // and neither must a style or a language switch
+  // Fixed cards are permanently open -- a click must not collapse them, and
+  // neither may a style or language switch. Classic has two; Modern adds Holder.
   const fixedOpen = () => page.$$eval('details.grp.fixed',
-    d => ({ n: d.length, allOpen: d.every(x => x.open),
+    d => ({ n: d.length, names: d.map(x => x.querySelector('summary').textContent.trim()),
+            allOpen: d.every(x => x.open),
             marker: d.every(x => getComputedStyle(x.querySelector('summary'), '::after')
                                    .content === 'none') }));
   await page.click('details.grp.fixed > summary');
@@ -918,15 +939,25 @@ function zipEntry(buf, wanted) {
   check(fx.n === 2 && fx.allOpen, 'fixed groups survive a language switch');
   await page.click('#lang-label'); await page.waitForTimeout(400);
   await page.click('button[data-lantern-style="modern"]'); await page.waitForTimeout(900);
+  await page.$eval('#r-socketNeck', x => x.closest('details').querySelector('summary').click());
+  await page.waitForTimeout(200);
   fx = await fixedOpen();
-  check(fx.n === 2 && fx.allOpen, 'fixed groups survive a style switch');
+  check(fx.n === 3 && fx.allOpen && fx.names.join(',') === 'Lantern,Pattern,Lamp holder',
+        'Modern adds a fixed holder card that cannot be collapsed',
+        `${fx.n} fixed: ${fx.names.join(',')}`);
+  await page.click('#lang-label'); await page.waitForTimeout(400);
+  fx = await fixedOpen();
+  check(fx.n === 3 && fx.allOpen, 'Modern fixed holder survives a language switch');
+  await page.click('#lang-label'); await page.waitForTimeout(400);
   await page.click('button[data-lantern-style="classic"]'); await page.waitForTimeout(900);
   await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
 
   // screenshots, both themes -- collapse the rail back to its default state.
   // window.scrollTo does not reset the rail now that it scrolls independently.
   await page.evaluate(() => {
-    document.querySelectorAll('details.grp').forEach((d, i) => { d.open = i < 2; });
+    document.querySelectorAll('details.grp').forEach(d => {
+      d.open = d.classList.contains('fixed');
+    });
     document.getElementById('rail').scrollTop = 0;
     window.scrollTo(0, 0);
   });
@@ -966,17 +997,29 @@ function zipEntry(buf, wanted) {
   check(cut.length === 0, 'no pinned Classic control below the rail fold at 1366x768',
         cut.join(', '));
 
-  /* Modern's Lantern carries four sliders to Classic's two, so its pinned pair
-     is 546px against this rail's 524 and Lattice depth is still ~22px under.
-     1536x864 is the first size that clears it -- asserted here rather than at
-     1366 so the suite states what actually ships. */
+  /* Modern intentionally has a third pinned card. It cannot all fit above the
+     fold, so prove the rail owns that scroll and the holder's last control is
+     reachable without moving the document or collapsing the card. */
   await page.click('button[data-lantern-style="modern"]');
   await page.waitForTimeout(1000);
   await page.setViewportSize({ width: 1536, height: 864 });
   await page.waitForTimeout(500);
-  cut = await belowFold();
-  check(cut.length === 0, 'no pinned Modern control below the rail fold at 1536x864',
-        cut.join(', '));
+  const holderReach = await page.evaluate(() => {
+    const rail = document.getElementById('rail');
+    const input = document.getElementById('r-cableH');
+    const group = input.closest('details');
+    const pageY = window.scrollY;
+    input.scrollIntoView({ block: 'nearest' });
+    const rb = rail.getBoundingClientRect(), ib = input.getBoundingClientRect();
+    return { scrollable: rail.scrollHeight > rail.clientHeight,
+      inRail: ib.top >= rb.top - 1 && ib.bottom <= rb.bottom + 1,
+      pageStill: window.scrollY === pageY, open: group.open,
+      fixed: group.classList.contains('fixed') };
+  });
+  check(holderReach.scrollable && holderReach.inRail && holderReach.pageStill &&
+        holderReach.open && holderReach.fixed,
+        'expanded Modern holder stays reachable in the rail scroll',
+        JSON.stringify(holderReach));
 
   // the picker follows the style switch: Modern wraps kumiko only
   const modernPicker = await page.evaluate(() => ({
@@ -986,9 +1029,6 @@ function zipEntry(buf, wanted) {
   check(modernPicker.n === 11 && modernPicker.rail === 0,
         'the picker rebuilds beside the preview on a style switch',
         `${modernPicker.n} in the picker, ${modernPicker.rail} in the rail`);
-  await page.click('button[data-lantern-style="classic"]');
-  await page.waitForTimeout(1000);
-
   /* Below 940px the bench is one column and the rail spans the page.  As a flex
      column that stretched every card to full width -- an 820px tablet gave a
      772px card with a 742px slider, a label at the far left and its value at the
@@ -1000,13 +1040,70 @@ function zipEntry(buf, wanted) {
              card: Math.round(cards[0].width),
              cols: new Set(cards.map(c => Math.round(c.left))).size };
   });
+  /* Each card in a packed column must follow the previous card by the ordinary
+     10px rail gap.  The old shared-row grid produced gaps over 100px here when
+     the pinned holder sat beside Pattern or Thread. */
+  const packedRail = () => page.evaluate(() => {
+    const byX = new Map();
+    document.querySelectorAll('#rail details.grp').forEach(d => {
+      const r = d.getBoundingClientRect(), x = Math.round(r.left);
+      if (!byX.has(x)) byX.set(x, []);
+      byX.get(x).push({ name: d.querySelector('summary').textContent.trim(),
+                       top: r.top, bottom: r.bottom });
+    });
+    const gaps = [];
+    byX.forEach(cards => {
+      cards.sort((a, b) => a.top - b.top);
+      for (let i = 1; i < cards.length; i++)
+        gaps.push({ pair: cards[i - 1].name + '/' + cards[i].name,
+                    gap: cards[i].top - cards[i - 1].bottom });
+    });
+    const bottoms = [...byX.values()].map(cards => Math.max(...cards.map(c => c.bottom)));
+    return { cols: byX.size, maxGap: gaps.length ? Math.max(...gaps.map(g => g.gap)) : 0,
+             bottomSpread: bottoms.length ? Math.max(...bottoms) - Math.min(...bottoms) : 0,
+             gaps: gaps };
+  });
   await page.setViewportSize({ width: 820, height: 1180 });
   await page.waitForTimeout(500);
   let rg = await railGrid();
-  check(rg.cols > 1, 'the rail tiles into columns when it goes full width',
+  check(rg.cols > 1, 'the expanded Modern rail tiles on a tablet',
         `${rg.cols} columns of ${rg.card}px in ${rg.rail}px`);
   check(rg.card <= rg.rail * 0.6, 'a tiled card is not a full-width bar',
         `${rg.card} of ${rg.rail}`);
+  let packed = await packedRail();
+  check(packed.cols === 2 && packed.maxGap <= 12,
+        'two-column customization cards have no empty grid holes',
+        JSON.stringify(packed));
+  check(packed.bottomSpread <= 35,
+        'two-column customization cards leave no large empty tail',
+        JSON.stringify(packed));
+
+  await page.locator('#rail details.grp').filter({ hasText: /^Thread/ }).locator('summary').click();
+  await page.locator('#rail details.grp').filter({ hasText: /^Printer/ }).locator('summary').click();
+  await page.waitForTimeout(300);
+  packed = await packedRail();
+  check(packed.maxGap <= 12, 'expanded cards repack without gaps', JSON.stringify(packed));
+
+  await page.click('#lang-label'); await page.waitForTimeout(400);
+  packed = await packedRail();
+  check(packed.maxGap <= 12, 'translated customization cards remain packed', JSON.stringify(packed));
+  await page.click('#lang-label'); await page.waitForTimeout(400);
+  await page.click('button[data-lantern-style="classic"]'); await page.waitForTimeout(700);
+  packed = await packedRail();
+  check(packed.cols === 2 && packed.maxGap <= 12 && packed.bottomSpread <= 35,
+        'Classic customization cards also stay compact and balanced', JSON.stringify(packed));
+  await page.click('button[data-lantern-style="modern"]'); await page.waitForTimeout(900);
+  packed = await packedRail();
+  check(packed.cols === 2 && packed.maxGap <= 12,
+        'style rebuild keeps customization cards packed', JSON.stringify(packed));
+
+  await page.setViewportSize({ width: 940, height: 1180 });
+  await page.waitForTimeout(400);
+  packed = await packedRail();
+  check(packed.cols === 3 && packed.maxGap <= 12,
+        'three-column customization cards have no empty grid holes', JSON.stringify(packed));
+  check(packed.bottomSpread <= 90,
+        'three-column customization cards balance their total height', JSON.stringify(packed));
 
   // narrow viewport must not scroll sideways
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
@@ -1018,7 +1115,7 @@ function zipEntry(buf, wanted) {
         `${rg.cols} columns of ${rg.card}px in ${rg.rail}px`);
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  check(overflow <= 1, 'no horizontal overflow at 420px', `${overflow}px`);
+  check(overflow <= 1, 'expanded Modern rail has no horizontal overflow at 420px', `${overflow}px`);
   await page.screenshot({ path: `${OUT}/app-narrow.png`, fullPage: false });
   await page.click('#lang-label');
   await page.waitForTimeout(250);

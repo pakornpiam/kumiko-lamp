@@ -107,12 +107,17 @@ a { color: var(--ai); }
    3 around 911px -- which is where a maximised 1366 window lands at 150%
    Windows scaling, and is why this looked like a desktop bug.
 
-   align-items:start or a grid item stretches to its row, and one expanded group
-   would pad out every card beside it -- the trap .view hit going square. */
+   Equal-height grid rows leave a hole below every short card beside an expanded
+   one.  One-pixel implicit rows plus a measured row span remove those holes;
+   the packing helper also balances the total height of the columns. */
 @media (max-width: 940px) {
   .rail {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-auto-flow: row dense;
+    grid-auto-rows: 1px;
+    column-gap: 10px;
+    row-gap: 0;
     align-items: start;
   }
 }
@@ -160,10 +165,12 @@ a { color: var(--ai); }
 .grp > summary::after { content: "+"; font-size: 15px; color: var(--sumi-3); }
 .grp[open] > summary::after { content: "\2212"; }
 .grp > summary:hover { color: var(--sumi); }
-/* Lantern and Pattern are the two you always want, so they are permanently
-   open: no marker, no pointer, no hover -- a heading rather than a control.
-   Still a <details open>, because every test drives group state through the
-   .open property and that keeps working whatever the click handler does. */
+/* Cards marked fixed are permanently open: no marker, no pointer, no hover --
+   a heading rather than a control.  Both styles pin Lantern and Pattern;
+   Modern also pins its lamp-holder controls so its E27/E14 fit is not hidden in
+   a collapsed advanced section.  Still a <details open>, because every test
+   drives group state through the .open property and that keeps working whatever
+   the click handler does. */
 .grp.fixed > summary { cursor: default; }
 .grp.fixed > summary::after { content: none; }
 .grp.fixed > summary:hover { color: var(--sumi-2); }
@@ -3777,15 +3784,15 @@ var Kumiko = (function () {
       ['slatW', 'Slat width', 0.8, 3.2, 0.4, 'mm'],
       ['panelT', 'Lattice depth', 2, 7, 0.2, 'mm']
     ]},
-    { name: 'Thread', items: [
-      ['modernThreadClear', 'Thread clearance', 0.1, 0.8, 0.05, 'mm']
-    ]},
-    { name: 'Lamp holder', holder: true, items: [
+    { name: 'Lamp holder', open: true, fixed: true, holder: true, items: [
       ['socketBore', 'Bore', 20, 60, 0.5, 'mm'],
       ['socketCbore', 'Counterbore', 26, 74, 0.5, 'mm'],
       ['socketNeck', 'Adapter ring bore', 10, 52, 0.5, 'mm'],
       ['cableW', 'Cord tunnel width', 5, 16, 0.5, 'mm'],
       ['cableH', 'Cord tunnel height', 3, 12, 0.5, 'mm']
+    ]},
+    { name: 'Thread', items: [
+      ['modernThreadClear', 'Thread clearance', 0.1, 0.8, 0.05, 'mm']
     ]},
     { name: 'Printer', items: [
       ['bedX', 'Bed X', 150, 400, 1, 'mm'],
@@ -3881,6 +3888,68 @@ var Kumiko = (function () {
     paint();
     host.appendChild(tabs);
     host.appendChild(wrap);
+  }
+
+  /* At the tablet breakpoint the rail becomes a multi-column grid.  CSS Grid's
+     ordinary shared rows use the tallest card's height, leaving a large blank
+     hole under a short neighbour.  Give every card a one-pixel row span equal
+     to its own rendered height plus the normal 10px card gap, then find the
+     height-balanced column assignment.  There are at most nine cards and three
+     columns, so testing every canonical assignment is small and deterministic.
+     DOM/tab order is untouched; flex layout above 940px ignores these rules. */
+  function packRail() {
+    var rail = document.getElementById('rail');
+    if (!rail) return;
+    var cards = Array.prototype.slice.call(rail.querySelectorAll('details.grp'));
+    cards.forEach(function (d) {
+      d.style.gridColumnStart = '';
+      d.style.gridRowEnd = '';
+    });
+
+    if (getComputedStyle(rail).display !== 'grid') return;
+    var columns = getComputedStyle(rail).gridTemplateColumns.split(/\s+/).length;
+    columns = Math.min(columns, cards.length);
+    var spans = cards.map(function (d) {
+      return Math.ceil(d.getBoundingClientRect().height + 10);
+    });
+    var best = null, bestScore = null;
+    var assignment = new Array(cards.length);
+    var totals = new Array(columns).fill(0);
+
+    function search(i, used) {
+      if (i === cards.length) {
+        if (used !== columns) return;
+        var high = Math.max.apply(null, totals);
+        var low = Math.min.apply(null, totals);
+        var squares = totals.reduce(function (sum, n) { return sum + n * n; }, 0);
+        var score = [high, high - low, squares];
+        if (!bestScore || score[0] < bestScore[0] ||
+            (score[0] === bestScore[0] && score[1] < bestScore[1]) ||
+            (score[0] === bestScore[0] && score[1] === bestScore[1] && score[2] < bestScore[2])) {
+          bestScore = score;
+          best = assignment.slice();
+        }
+        return;
+      }
+      /* Columns are interchangeable.  Only introduce the next unused column,
+         which avoids evaluating the same layout again with renamed columns. */
+      var last = Math.min(used, columns - 1);
+      for (var column = 0; column <= last; column++) {
+        var nextUsed = used + (column === used ? 1 : 0);
+        totals[column] += spans[i];
+        if (!bestScore || totals[column] <= bestScore[0]) {
+          assignment[i] = column;
+          search(i + 1, nextUsed);
+        }
+        totals[column] -= spans[i];
+      }
+    }
+
+    search(0, 0);
+    cards.forEach(function (d, i) {
+      d.style.gridColumnStart = String(best[i] + 1);
+      d.style.gridRowEnd = 'span ' + spans[i];
+    });
   }
 
   function buildRail() {
@@ -4004,7 +4073,11 @@ var Kumiko = (function () {
       });
       d.appendChild(body);
       rail.appendChild(d);
+      d.addEventListener('toggle', function () {
+        requestAnimationFrame(packRail);
+      });
     });
+    packRail();
     /* Every rebuild -- style switch, language switch -- can change the
        masthead, so refit here rather than at each call site. */
     fitLayout();
@@ -5077,7 +5150,7 @@ var Kumiko = (function () {
     if (view) view.style.maxHeight = Math.max(470, avail) + 'px';
   }
 
-  window.addEventListener('resize', function () { fitLayout(); drawFlat(); draw(); });
+  window.addEventListener('resize', function () { packRail(); fitLayout(); drawFlat(); draw(); });
 
   /* The view's height is now a function of its own width and of the viewport
      cap, so it changes on paths a window resize listener does not see.  draw()
