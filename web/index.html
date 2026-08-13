@@ -222,14 +222,12 @@ a { color: var(--ai); }
   position: relative; background: var(--stage);
   border: 1px solid var(--edge); border-radius: 3px; overflow: hidden;
   min-height: 470px; box-shadow: var(--shadow);
-  /* Square: a lamp is tall, and the old 810x470 letterbox was mostly air.
-     align-self is load-bearing -- a grid item stretches to the row height by
-     default, and stretch overrides aspect-ratio.  Starting it instead keeps the
-     height definite, which is also what lets the canvas resolve height: 100%.
-     fitLayout() caps it to the window so a square box cannot push its own
-     bottom below the fold; if that cap ever drops under min-height, min wins
-     and the preview letterboxes rather than collapsing. */
-  aspect-ratio: 1; align-self: start;
+  /* Square is the natural minimum: a lamp is tall, and the old 810x470
+     letterbox was mostly air.  When the adjacent picker/swatch column is taller,
+     grid stretch extends the complete interactive preview to the same bottom
+     instead of leaving a blank block beneath it.  In the one-column phone
+     layout each item owns its own row, so the ratio remains unchanged there. */
+  aspect-ratio: 1; align-self: stretch;
   /* min-height is transferred back through the ratio: on a column narrower than
      470 the clamped height becomes a 470px WIDTH and the page scrolls sideways.
      max-width pins the width to the column and lets the box go portrait instead,
@@ -5136,27 +5134,24 @@ var Kumiko = (function () {
      is stable whatever the page is currently scrolled to. */
   function fitLayout() {
     var rail = document.getElementById('rail');
-    var view = document.querySelector('.view');
     if (rail) rail.style.maxHeight = '';
-    if (view) view.style.maxHeight = '';
-    if (!rail && !view) return;
+    if (!rail) return;
     if (window.matchMedia && !window.matchMedia('(min-width: 941px)').matches) return;
-    /* The rail and the view share a top offset -- both start at the bench row --
-       so one measurement caps both.  A square view is 340px taller than the old
-       letterbox and would otherwise push its own bottom below the fold. */
-    var top = (rail || view).getBoundingClientRect().top + window.scrollY;
+    /* Only the control rail is viewport-capped.  The preview shares its grid
+       row with the picker/swatch column and must be free to reach that column's
+       bottom, even when the row itself is taller than a short viewport. */
+    var top = rail.getBoundingClientRect().top + window.scrollY;
     var avail = window.innerHeight - top - 24;
     if (rail) rail.style.maxHeight = Math.max(320, avail) + 'px';
-    if (view) view.style.maxHeight = Math.max(470, avail) + 'px';
   }
 
   window.addEventListener('resize', function () { packRail(); fitLayout(); drawFlat(); draw(); });
 
-  /* The view's height is now a function of its own width and of the viewport
-     cap, so it changes on paths a window resize listener does not see.  draw()
-     only re-syncs the canvas backing store when it runs, and a stale store is a
-     stretched image and a wrong projection aspect.  Neither callback changes
-     layout, so this cannot loop. */
+  /* The view's height is now a function of both its own width and the adjacent
+     side column, so it changes on paths a window resize listener does not see.
+     draw() only re-syncs the canvas backing store when it runs, and a stale
+     store is a stretched image and a wrong projection aspect.  Neither callback
+     changes layout, so this cannot loop. */
   if (window.ResizeObserver) {
     var viewBox = document.querySelector('.view');
     if (viewBox) new ResizeObserver(function () { drawFlat(); draw(); }).observe(viewBox);

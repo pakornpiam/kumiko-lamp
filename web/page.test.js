@@ -904,7 +904,8 @@ function zipEntry(buf, wanted) {
   check(stillTop === 0, 'scrolling to the last slider does not move the page',
         `scrollY ${stillTop}`);
 
-  // the preview is square, and its backing store tracks its box
+  // The square ratio remains the preview's natural minimum. Its backing store
+  // must track the real box even when the Pattern column later stretches it.
   const sq = await page.evaluate(() => {
     const v = document.querySelector('.view').getBoundingClientRect();
     const c = document.getElementById('gl');
@@ -918,8 +919,6 @@ function zipEntry(buf, wanted) {
   check(sq.bw === sq.cw * sq.dpr && sq.bh === sq.ch * sq.dpr,
         'the canvas backing store matches its box',
         `${sq.bw}x${sq.bh} for ${sq.cw}x${sq.ch} at dpr ${sq.dpr}`);
-  check(sq.bottom <= sq.vh, 'the whole preview fits on screen',
-        `bottom ${sq.bottom} vs viewport ${sq.vh}`);
 
   // Fixed cards are permanently open -- a click must not collapse them, and
   // neither may a style or language switch. Classic has two; Modern adds Holder.
@@ -1105,11 +1104,72 @@ function zipEntry(buf, wanted) {
   check(packed.bottomSpread <= 90,
         'three-column customization cards balance their total height', JSON.stringify(packed));
 
+  /* Above 760px the Pattern panel and preview share one grid row.  The panel is
+     taller at these constrained widths, so the interactive canvas must reach
+     the same bottom instead of leaving a blank rectangle beneath it. */
+  const previewFit = () => page.evaluate(() => {
+    const view = document.querySelector('.view').getBoundingClientRect();
+    const side = document.querySelector('.side').getBoundingClientRect();
+    const stage = document.querySelector('.stage').getBoundingClientRect();
+    const canvas = document.getElementById('gl');
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    return { viewBottom: view.bottom, sideBottom: side.bottom, stageBottom: stage.bottom,
+      viewWidth: Math.round(view.width), viewHeight: Math.round(view.height),
+      cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight,
+      storeWidth: canvas.width, storeHeight: canvas.height, dpr: dpr,
+      viewportHeight: window.innerHeight };
+  });
+  for (const style of ['classic', 'modern']) {
+    await page.click(`button[data-lantern-style="${style}"]`);
+    await page.waitForTimeout(800);
+    for (const width of [761, 820, 940, 941, 1024, 1366]) {
+      await page.setViewportSize({ width, height: width === 1366 ? 768 : 1180 });
+      await page.waitForTimeout(250);
+      const fit = await previewFit();
+      check(Math.abs(fit.viewBottom - fit.sideBottom) <= 1 &&
+            Math.abs(fit.viewBottom - fit.stageBottom) <= 1,
+            `${style} preview fills the Pattern-panel row at ${width}px`, JSON.stringify(fit));
+      check(fit.storeWidth === fit.cssWidth * fit.dpr &&
+            fit.storeHeight === fit.cssHeight * fit.dpr,
+            `${style} stretched canvas backing store matches at ${width}px`, JSON.stringify(fit));
+      if (width === 1366 && style === 'modern')
+        check(fit.viewBottom > fit.viewportHeight,
+              'the short desktop viewport allows the preview to fill below the fold',
+              JSON.stringify(fit));
+    }
+  }
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.click('#lang-label'); await page.waitForTimeout(400);
+  let fit = await previewFit();
+  check(Math.abs(fit.viewBottom - fit.sideBottom) <= 1,
+        'translated preview still fills the Pattern-panel row', JSON.stringify(fit));
+  await page.click('#lang-label'); await page.waitForTimeout(400);
+  const stretchedRender = await page.evaluate(() => {
+    const c = document.getElementById('gl'), gl = c.getContext('webgl');
+    const px = new Uint8Array(c.width * c.height * 4);
+    gl.readPixels(0, 0, c.width, c.height, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    const seen = new Set();
+    for (let i = 0; i < px.length; i += 4 * 997)
+      seen.add(px[i] + ',' + px[i + 1] + ',' + px[i + 2]);
+    return seen.size;
+  });
+  check(stretchedRender > 8, 'the stretched preview still renders the lamp',
+        `${stretchedRender} distinct sampled colours`);
+
   // narrow viewport must not scroll sideways
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
   await page.setViewportSize({ width: 420, height: 900 });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(400);
+  const phoneStage = await page.evaluate(() => {
+    const stage = document.querySelector('.stage');
+    const view = document.querySelector('.view').getBoundingClientRect();
+    const side = document.querySelector('.side').getBoundingClientRect();
+    return { columns: getComputedStyle(stage).gridTemplateColumns.split(/\s+/).length,
+      gap: side.top - view.bottom, viewWidth: view.width, viewHeight: view.height };
+  });
+  check(phoneStage.columns === 1 && phoneStage.gap >= 15 && phoneStage.gap <= 17,
+        'the phone keeps separate stacked preview and Pattern rows', JSON.stringify(phoneStage));
   rg = await railGrid();
   check(rg.cols === 1, 'a phone still gets a single column',
         `${rg.cols} columns of ${rg.card}px in ${rg.rail}px`);
