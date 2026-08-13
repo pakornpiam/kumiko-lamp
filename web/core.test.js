@@ -586,6 +586,11 @@ const heavyMs = Date.now() - heavy0;
 check(heavy.problems.length === 0 && heavyMs < 2000,
       `the heaviest reachable panel builds in ${heavyMs} ms`,
       `${heavy.slats} slats, ceiling 2000 ms (was 5569 ms with concat)`);
+const heavyPart = heavy.parts[0].mesh.tris.length;
+const heavyView = heavy.assembly.find(p => p.name === 'panel0').tris.length;
+check(heavyPart > heavyView * 3,
+      'dense assembly preview is lighter while its printable mesh stays complete',
+      `${heavyPart / 9} printable vs ${heavyView / 9} preview triangles`);
 
 console.log('\nmodern parts and assembly');
 const modern = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218 });

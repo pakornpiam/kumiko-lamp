@@ -2305,12 +2305,20 @@ var Kumiko = (function () {
     }
 
     var segs = latticeSegments(P, pattern, P.openW, P.openH, 1.0);
+    var previewTris = segs.length > 2000 ? tris.slice() : null;
     for (i = 0; i < segs.length; i++) {
       var p = [segs[i][0][0], segs[i][0][1] + cy];
       var q = [segs[i][1][0], segs[i][1][1] + cy];
-      pushTris(tris, prismFromLoop(slatLoop(p, q, P.slatW), 0, zm));
+      var slat = prismFromLoop(slatLoop(p, q, P.slatW), 0, zm);
+      pushTris(tris, slat);
+      /* At very fine pitch the slats are sub-pixel in the assembled view.  Keep
+         their front and back faces there but omit eight invisible edge triangles;
+         the printable part above remains the complete twelve-triangle prism. */
+      if (previewTris)
+        for (var si = 0; si < 18; si++) previewTris.push(slat[si]);
     }
-    return { tris: tris, slats: segs.length, manifold: false };
+    return { tris: tris, previewTris: previewTris,
+             slats: segs.length, manifold: false };
   }
 
   /* A clear plate sharing each groove with the lattice panel, behind it, where
@@ -3388,8 +3396,9 @@ var Kumiko = (function () {
     }
     return {
       P: P, problems: [], parts: parts, slats: panel.slats,
-      assembly: assemble(P, panel.tris, plate && plate.tris,
-                         post.tris, base.tris, cap.tris, leg.tris,
+       assembly: assemble(P, panel.previewTris || panel.tris,
+                          plate && plate.tris,
+                          post.tris, base.tris, cap.tris, leg.tris,
                          finial && finial.tris)
     };
   }
@@ -4021,7 +4030,7 @@ var Kumiko = (function () {
         e.preventDefault();
       }, false);
       canvas.addEventListener('webglcontextrestored', function () {
-        if (initGL() && model && model.parts) { uploadScene(); draw(); }
+        if (initGL() && model && model.parts) refreshScene();
       }, false);
     }
     gl = canvas.getContext('webgl',
@@ -4084,18 +4093,28 @@ var Kumiko = (function () {
   };
   var CLEAR_MAT = { rgb: [0.80, 0.87, 0.92], a: 0.34 };
 
-  function uploadScene() {
-    if (!gl || !model || !model.parts) return;
-    var pos = [], nor = [], col = [];
-    var H = model.P.totalHeight;
-    buf.clear = [];          // one draw range per clear plate, for the blend pass
+  /* Pure CPU half of uploadScene, shared with the model worker.  Dense patterns
+     contain hundreds of thousands of vertices, so this work must not accompany
+     a worker result on the UI thread. */
+  function buildSceneArrays(source, mode, panels, palette, clearMat) {
+    var shown = function (p) { return panels || p.kind !== 'panel'; };
+    var nVerts = 0;
+    source.assembly.forEach(function (p) {
+      if (shown(p)) nVerts += p.tris.length / 3;
+    });
+    var pos = new Float32Array(nVerts * 3);
+    var nor = new Float32Array(nVerts * 3);
+    var col = new Float32Array(nVerts * 4);
+    var nextVert = 0;
+    var H = source.P.totalHeight;
+    var clear = [];          // one draw range per clear plate, for the blend pass
 
     function emitPart(part) {
       var isClear = !!part.clear;
-      var c = isClear ? CLEAR_MAT.rgb : (COLORS[part.kind] || COLORS.panel);
-      var alpha = isClear ? CLEAR_MAT.a : 1;
+      var c = isClear ? clearMat.rgb : (palette[part.kind] || palette.panel);
+      var alpha = isClear ? clearMat.a : 1;
       var off = 0;
-      if (viewMode === 'exp') {
+      if (mode === 'exp') {
         if (part.name === 'cap') off = H * 0.34;
         /* Above the cap, or they hang where it used to be. */
         else if (part.name.indexOf('finial') === 0) off = H * 0.46;
@@ -4109,7 +4128,7 @@ var Kumiko = (function () {
         else if (part.name === 'adapter') off = H * 0.10;
         else if (part.kind === 'panel') off = H * 0.12;
       }
-      var t = part.tris, start = pos.length / 3;
+      var t = part.tris, start = nextVert;
       var cx = 0, cy = 0, cz = 0, nv = 0;
       for (var i = 0; i < t.length; i += 9) {
         var ux = t[i+3]-t[i], uy = t[i+4]-t[i+1], uz = t[i+5]-t[i+2];
@@ -4119,34 +4138,51 @@ var Kumiko = (function () {
         nx /= L; ny /= L; nz /= L;
         for (var v = 0; v < 3; v++) {
           var px = t[i+v*3], py = t[i+v*3+1], pz = t[i+v*3+2] + off;
-          pos.push(px, py, pz);
-          nor.push(nx, ny, nz);
-          col.push(c[0], c[1], c[2], alpha);
+          var po = nextVert * 3, co = nextVert * 4;
+          pos[po] = px; pos[po+1] = py; pos[po+2] = pz;
+          nor[po] = nx; nor[po+1] = ny; nor[po+2] = nz;
+          col[co] = c[0]; col[co+1] = c[1]; col[co+2] = c[2]; col[co+3] = alpha;
+          nextVert++;
           cx += px; cy += py; cz += pz; nv++;
         }
       }
       if (isClear && nv)
-        buf.clear.push({ start: start, count: nv, c: [cx/nv, cy/nv, cz/nv] });
+        clear.push({ start: start, count: nv, c: [cx/nv, cy/nv, cz/nv] });
     }
 
     /* Hidden panels means the glazing too: `kind` is 'panel' for the Classic
-       lattices, the clear plates behind them and the Modern shade alike, so one
-       test covers both styles -- and dropping the lattice while leaving four
-       sheets of glazing hanging in the air would be worse than either. */
-    var shown = function (p) { return showPanels || p.kind !== 'panel'; };
-
+       lattices, the clear plates behind them and the Modern shade alike. */
     /* Two passes, so every opaque vertex precedes every translucent one: the
        opaque pass writes depth and the blended pass then tests against it. */
-    model.assembly.forEach(function (p) { if (!p.clear && shown(p)) emitPart(p); });
-    buf.nOpaque = pos.length / 3;
-    model.assembly.forEach(function (p) { if (p.clear && shown(p)) emitPart(p); });
-    buf.n = pos.length / 3;
+    source.assembly.forEach(function (p) { if (!p.clear && shown(p)) emitPart(p); });
+    var nOpaque = nextVert;
+    source.assembly.forEach(function (p) { if (p.clear && shown(p)) emitPart(p); });
+    return { pos: pos, nor: nor, col: col, nOpaque: nOpaque, n: nextVert, clear: clear };
+  }
+
+  function uploadPreparedScene(scene) {
+    buf.clear = scene.clear;
+    buf.nOpaque = scene.nOpaque;
+    buf.n = scene.n;
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, scene.pos, gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.nor);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(nor), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, scene.nor, gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.col);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(col), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, scene.col, gl.STATIC_DRAW);
+  }
+
+  function uploadScene() {
+    if (!gl || !model || !model.parts || !model.assembly) return;
+    uploadPreparedScene(buildSceneArrays(model, viewMode, showPanels, COLORS, CLEAR_MAT));
+  }
+
+  /* Worker-built models intentionally return ready WebGL buffers instead of a
+     duplicate assembly mesh.  A view-only change asks the worker for fresh
+     buffers; the synchronous fallback can still reuse its local assembly. */
+  function refreshScene() {
+    if (model && model.assembly) { uploadScene(); draw(); }
+    else rebuild();
   }
 
   function mul4(a, b) {
@@ -4640,22 +4676,115 @@ var Kumiko = (function () {
 
   // ---------------------------------------------------------------- loop
   var pending = null;
+  var buildVersion = 0, buildBusy = false, queuedBuild = null;
+  var buildWorker = null, buildWorkerURL = null;
+
+  /* buildAll is pure geometry, so run it away from the UI thread.  Keeping only
+     one active job and one latest queued job means a fast drag cannot build a
+     backlog of obsolete slider positions.  Triangle arrays are transferred as
+     Float32Array buffers: WebGL consumes float32 anyway, and transfer avoids a
+     large structured-clone copy on dense patterns. */
+  function makeBuildWorker() {
+    if (!window.Worker || !window.Blob || !window.URL) return null;
+    var core = document.getElementById('kumiko-core');
+    if (!core) return null;
+    function workerMain() {
+      function packModel(model) {
+        /* Downloads are server-built, while the table already carries volume,
+           bbox and triangle count.  The UI never reads printable meshes after a
+           build, so do not transfer those multi-megabyte arrays back alongside
+           the purpose-built assembly preview. */
+        if (model.parts) model.parts.forEach(function (p) { delete p.mesh; });
+        delete model.assembly; // scene buffers below are the only UI consumer
+        return [];
+      }
+      self.onmessage = function (e) {
+        try {
+          var model = Kumiko.buildAll(e.data.state);
+          var scene = model.parts ? buildSceneArrays(model, e.data.viewMode,
+            e.data.showPanels, e.data.colors, e.data.clearMat) : null;
+          var transfers = packModel(model);
+          if (scene) transfers.push(scene.pos.buffer, scene.nor.buffer, scene.col.buffer);
+          self.postMessage({ version: e.data.version, model: model, scene: scene }, transfers);
+        } catch (err) {
+          self.postMessage({ version: e.data.version,
+            error: String(err && (err.stack || err.message) || err) });
+        }
+      };
+    }
+    try {
+      buildWorkerURL = URL.createObjectURL(new Blob([
+        core.textContent, '\nvar buildSceneArrays=', buildSceneArrays.toString(),
+        ';\n(', workerMain.toString(), ')();'
+      ], { type: 'text/javascript' }));
+      return new Worker(buildWorkerURL);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function applyModel(next, version, scene) {
+    if (version !== buildVersion) return;
+    model = next;
+    renderProblems();
+    renderMeta();
+    drawFlat();
+    if (model.parts) {
+      renderParts();
+      if (!cam.dist) cam.dist = model.P.totalHeight * 2.05;
+      if (scene) uploadPreparedScene(scene);
+      else uploadScene();
+      draw();
+    } else {
+      document.getElementById('parts').textContent = '';
+    }
+  }
+
+  function runBuild(job) {
+    if (!buildWorker) {
+      applyModel(K.buildAll(job.state), job.version);
+      return;
+    }
+    buildBusy = true;
+    buildWorker.postMessage(job);
+  }
+
+  buildWorker = makeBuildWorker();
+  if (buildWorker) {
+    buildWorker.onmessage = function (e) {
+      buildBusy = false;
+      if (!e.data.error) applyModel(e.data.model, e.data.version, e.data.scene);
+      else {
+        /* A geometry exception should not leave the preview permanently stuck;
+           fall back to the same visible error behaviour as the old sync path. */
+        setTimeout(function () { throw new Error(e.data.error); }, 0);
+      }
+      var next = queuedBuild;
+      queuedBuild = null;
+      if (next && next.version === buildVersion) runBuild(next);
+    };
+    buildWorker.onerror = function () {
+      /* Blob workers can be disallowed by an embedding page's CSP.  Preserve a
+         functional configurator there, even though that fallback may be slower. */
+      buildWorker.terminate();
+      buildWorker = null;
+      buildBusy = false;
+      if (buildWorkerURL) URL.revokeObjectURL(buildWorkerURL);
+      queuedBuild = null;
+      runBuild({ state: copyState(state), version: buildVersion,
+        viewMode: viewMode, showPanels: showPanels, colors: COLORS, clearMat: CLEAR_MAT });
+    };
+  }
+
   function rebuild() {
+    var version = ++buildVersion;
     if (pending) clearTimeout(pending);
     pending = setTimeout(function () {
       pending = null;
-      model = K.buildAll(state);
-      renderProblems();
-      renderMeta();
-      drawFlat();
-      if (model.parts) {
-        renderParts();
-        if (!cam.dist) cam.dist = model.P.totalHeight * 2.05;
-        uploadScene();
-        draw();
-      } else {
-        document.getElementById('parts').textContent = '';
-      }
+      var job = { state: copyState(state), version: version,
+        viewMode: viewMode, showPanels: showPanels, colors: COLORS, clearMat: CLEAR_MAT };
+      if (buildBusy) queuedBuild = job;
+      else runBuild(job);
     }, 40);
   }
 
@@ -4916,14 +5045,14 @@ var Kumiko = (function () {
       viewMode = id === 'v-asm' ? 'asm' : 'exp';
       document.getElementById('v-asm').setAttribute('aria-pressed', String(viewMode === 'asm'));
       document.getElementById('v-exp').setAttribute('aria-pressed', String(viewMode === 'exp'));
-      uploadScene(); draw();
+      refreshScene();
     });
   });
 
   document.getElementById('v-panels').addEventListener('click', function () {
     showPanels = !showPanels;
     this.setAttribute('aria-pressed', String(showPanels));
-    uploadScene(); draw();
+    refreshScene();
   });
 
   /* The CSS cap is calc(100vh - 32px), which is right once the rail has been

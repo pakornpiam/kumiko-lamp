@@ -248,6 +248,60 @@ function zipEntry(buf, wanted) {
         `${where.picker} in the picker, ${where.rail} in the rail`);
   check(where.tabs === 1, 'the family tabs moved with the buttons', String(where.tabs));
 
+  /* A worst-case reachable slider change used to run buildAll, four assembly
+     transforms and the WebGL upload on the main thread.  The 60 ms timer then
+     arrived hundreds of milliseconds late, which is the preview/input freeze
+     a person feels while dragging.  Model completion is checked separately so
+     a responsive no-op cannot satisfy this regression. */
+  await page.click('button[data-pattern="seigaiha"]');
+  await page.waitForTimeout(300);
+  const sliderRun = await page.evaluate(() => new Promise(resolve => {
+    const size = document.getElementById('r-size');
+    const grid = document.getElementById('r-grid');
+    const dimensions = document.getElementById('d-overall');
+    const started = performance.now();
+    let last = started, maxGap = 0, done = false;
+    const sample = () => {
+      const now = performance.now();
+      maxGap = Math.max(maxGap, now - last);
+      last = now;
+    };
+    const pulse = setInterval(sample, 16);
+    const finish = completed => {
+      if (done) return;
+      done = true;
+      setTimeout(() => {
+        sample(); clearInterval(pulse); observer.disconnect();
+        resolve({ maxGap, total: performance.now() - started, completed });
+      }, 32);
+    };
+    const observer = new MutationObserver(() => {
+      if (dimensions.textContent.trim() === '240 × 240 × 236 mm') finish(true);
+    });
+    observer.observe(dimensions, { childList: true, characterData: true, subtree: true });
+    size.value = '230'; grid.value = '12';
+    size.dispatchEvent(new Event('input', { bubbles: true }));
+    grid.dispatchEvent(new Event('input', { bubbles: true }));
+    setTimeout(() => finish(false), 10000);
+  }));
+  /* Loose enough for shared CI machines, but well below the 500+ ms main-thread
+     stall this exact interaction produced before the worker path. */
+  check(sliderRun.maxGap < 300, 'dense slider changes keep the UI responsive',
+        `${sliderRun.maxGap.toFixed(0)} ms longest event-loop gap`);
+  check(sliderRun.completed && (await page.textContent('#sw-name')).trim() === 'Seigaiha',
+        'the responsive slider change still completes the preview rebuild',
+        `${sliderRun.total.toFixed(0)} ms total`);
+
+  /* Restore the setup expected by the dimension checks below. */
+  await page.evaluate(() => {
+    const size = document.getElementById('r-size');
+    const grid = document.getElementById('r-grid');
+    size.value = '180'; grid.value = '28';
+    size.dispatchEvent(new Event('input', { bubbles: true }));
+    grid.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(500);
+
   await page.click('button[data-pattern="kikkou"]');
   await page.waitForTimeout(400);
 
@@ -469,7 +523,8 @@ function zipEntry(buf, wanted) {
   check(await page.$('#r-postInsertD') === null,
         'the insert hole is a choice, not a slider');
   await page.click('button[data-cap-screws="m3"]');
-  await page.waitForTimeout(700);
+  await page.waitForFunction(() => document.querySelectorAll('#parts tr').length === 7,
+    null, { timeout: 10000 });
   /* The toggle rebuilds the rail, which puts every group back to collapsed. */
   await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => { d.open = true; }));
   check(await page.getAttribute('button[data-cap-screws="m3"]', 'aria-pressed') === 'true' &&
@@ -512,7 +567,8 @@ function zipEntry(buf, wanted) {
   await page.waitForTimeout(200);
   await page.fill('#r-snapEngagement', '0.2');
   await page.dispatchEvent('#r-snapEngagement', 'input');
-  await page.waitForTimeout(600);
+  await page.waitForFunction(() => /--snap-lock 0\.2/.test(
+    document.getElementById('cli').textContent), null, { timeout: 10000 });
   check((await page.textContent('#parts tr:nth-child(6) .part')).trim() ===
         'Screw-head finial cap', 'finial is presented as the screw-head cap');
   check(/--snap-lock 0.2/.test(await page.textContent('#cli')),
@@ -523,14 +579,16 @@ function zipEntry(buf, wanted) {
      slider nobody would choose. */
   await page.fill('#r-post', '17');
   await page.dispatchEvent('#r-post', 'input');
-  await page.waitForTimeout(500);
+  await page.waitForFunction(() => /leaves under two walls/.test(
+    document.getElementById('problems').textContent), null, { timeout: 10000 });
   check(/leaves under two walls/.test(await page.textContent('#problems')) &&
         await page.isDisabled('#dl-all'),
         'a post too slim for the insert blocks export, and says which wall',
         (await page.textContent('#problems')).replace(/\s+/g, ' ').slice(0, 90));
   await page.fill('#r-post', '18');
   await page.dispatchEvent('#r-post', 'input');
-  await page.waitForTimeout(500);
+  await page.waitForFunction(() => !document.getElementById('dl-all').disabled,
+    null, { timeout: 10000 });
   check(!(await page.isDisabled('#dl-all')), 'the stock post carries it again');
   await page.click('button[data-cap-screws="off"]');
   await page.waitForTimeout(700);
