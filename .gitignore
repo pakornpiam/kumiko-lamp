@@ -5,3 +5,6 @@ node_modules/
 debug.log
 dist/
 .wrangler/
+
+# desktop packaging build output
+build/
