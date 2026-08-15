@@ -33,6 +33,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 GENERATOR = ROOT / "kumiko_lamp.py"
 
+# A frozen desktop build has no python.exe and no kumiko_lamp.py on disk --
+# sys.executable is the application itself.  It re-enters through these
+# sentinels and dispatches to the generator, so the subprocess boundary that
+# keeps one entry point authoritative survives packaging instead of being
+# quietly traded for an in-process import.  Unfrozen, both commands below are
+# character-for-character the ones this always ran.
+FROZEN = getattr(sys, "frozen", False)
+GENERATOR_SENTINEL = "--kumiko-generator"
+PATTERNS_SENTINEL = "--kumiko-patterns"
+
+
+def generator_argv():
+    """The command that runs the generator as a child process."""
+    if FROZEN:
+        return [sys.executable, GENERATOR_SENTINEL]
+    return [sys.executable, str(GENERATOR)]
+
 # A curved pattern at the finest pitch and the largest body measured 21 s, and
 # that is the worst case reachable from the sliders.  Triple it: past that
 # something is wrong, and a stuck child must not hold a worker thread forever.
@@ -64,8 +81,10 @@ def _load_offered():
     probe = ("import json, kumiko_lamp as k; "
              "print(json.dumps({'classic': list(k.pattern_names()), "
              "'modern': list(k.kumiko_pattern_names())}))")
+    cmd = ([sys.executable, PATTERNS_SENTINEL] if FROZEN
+           else [sys.executable, "-c", probe])
     try:
-        out = subprocess.run([sys.executable, "-c", probe], cwd=str(ROOT),
+        out = subprocess.run(cmd, cwd=str(ROOT),
                              capture_output=True, text=True, timeout=120)
         if out.returncode == 0:
             return json.loads(out.stdout)
@@ -106,7 +125,7 @@ def build(params, pattern, style, part=None):
     try:
         pjson = work / "params.json"
         pjson.write_text(json.dumps(params), "utf-8")
-        argv = [sys.executable, str(GENERATOR),
+        argv = [*generator_argv(),
                 "--pattern", pattern, "--style", style,
                 "--params-json", str(pjson), "--out", str(work)]
         try:
