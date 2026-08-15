@@ -240,6 +240,17 @@ a { color: var(--ai); }
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
   color: var(--sumi-2); opacity: .75; pointer-events: none; text-transform: uppercase;
 }
+/* Top-left: the tabs own the top-right and the hint the bottom-left.  No
+   display declaration here on purpose -- an author `display` would beat the UA
+   [hidden] rule and the badge could never be turned off. */
+.stale {
+  position: absolute; left: 10px; top: 10px; max-width: calc(100% - 150px);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+  text-transform: uppercase; padding: 5px 9px; border-radius: 2px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--washi) 88%, transparent);
+  border: 1px solid var(--bengara); color: var(--bengara);
+}
 .viewtabs { position: absolute; right: 10px; top: 10px; display: flex; gap: 4px; }
 .viewtabs button {
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
@@ -455,6 +466,10 @@ pre.cmd {
             <button id="v-panels" aria-pressed="true">Panels</button>
           </div>
           <div class="hint">Drag to turn &middot; scroll to zoom</div>
+          <!-- Shown while checkFits is failing: the preview keeps the last
+               buildable lamp so there is still something to turn, and this is
+               what stops that reading as a frozen viewport. -->
+          <div class="stale" id="stale" hidden>Last lamp that fits &middot; fix the problems below</div>
         </div>
         <!-- Picker above swatch: Modern's swatch is 636px tall, so the column
              outgrows the preview and its tail falls below the fold.  Better the
@@ -3503,6 +3518,8 @@ var Kumiko = (function () {
     'Sign in to download the print-ready files.':'เข้าสู่ระบบเพื่อดาวน์โหลดไฟล์พร้อมพิมพ์',
     'A subscription is needed to download.':'ต้องสมัครสมาชิกจึงจะดาวน์โหลดได้',
     'This lamp cannot be built:':'ไม่สามารถสร้างโคมนี้ได้:',
+    'Last lamp that fits · fix the problems below':
+      'โคมล่าสุดที่ประกอบได้ · แก้ปัญหาด้านล่างก่อน',
     'The download failed. Please try again.':'ดาวน์โหลดไม่สำเร็จ กรุณาลองใหม่',
     'Could not reach the export service.':'ไม่สามารถเชื่อมต่อบริการสร้างไฟล์ได้'
   };
@@ -4099,6 +4116,10 @@ var Kumiko = (function () {
       glListeners = true;
       canvas.addEventListener('webglcontextlost', function (e) {
         e.preventDefault();
+        /* The uploaded scene went with the context, and draw() trusts buf.n as
+           its "there is something to paint" test -- leaving it set would let a
+           restore with no valid model to rebuild from paint empty buffers. */
+        buf.n = 0;
       }, false);
       canvas.addEventListener('webglcontextrestored', function () {
         if (initGL() && model && model.parts) refreshScene();
@@ -4178,6 +4199,11 @@ var Kumiko = (function () {
     var col = new Float32Array(nVerts * 4);
     var nextVert = 0;
     var H = source.P.totalHeight;
+    /* Travels with the buffers rather than being read off the live model at
+       draw time: a build that fails checkFits uploads nothing, so the scene on
+       screen can outlive the parameters that produced it. */
+    var bulbZ = source.P.lanternStyle === 'modern'
+      ? source.P.modernBaseH + 35 : source.P.baseT + 45;
     var clear = [];          // one draw range per clear plate, for the blend pass
 
     function emitPart(part) {
@@ -4228,13 +4254,20 @@ var Kumiko = (function () {
     source.assembly.forEach(function (p) { if (!p.clear && shown(p)) emitPart(p); });
     var nOpaque = nextVert;
     source.assembly.forEach(function (p) { if (p.clear && shown(p)) emitPart(p); });
-    return { pos: pos, nor: nor, col: col, nOpaque: nOpaque, n: nextVert, clear: clear };
+    return { pos: pos, nor: nor, col: col, nOpaque: nOpaque, n: nextVert,
+             clear: clear, H: H, bulbZ: bulbZ };
   }
 
   function uploadPreparedScene(scene) {
     buf.clear = scene.clear;
     buf.nOpaque = scene.nOpaque;
     buf.n = scene.n;
+    buf.H = scene.H;
+    buf.bulbZ = scene.bulbZ;
+    /* Framing belongs to the geometry being shown, so it is set here rather
+       than in applyModel -- a style switch zeroes cam.dist, and the new style
+       may fail to build before anything replaces the scene on screen. */
+    if (!cam.dist) cam.dist = scene.H * 2.05;
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
     gl.bufferData(gl.ARRAY_BUFFER, scene.pos, gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.nor);
@@ -4267,7 +4300,13 @@ var Kumiko = (function () {
   }
 
   function draw() {
-    if (!gl || !model || !model.parts || !buf.n) return;
+    /* Deliberately not gated on model.parts.  What this paints is whatever was
+       last uploaded, which is a different question from whether the current
+       slider set builds: checkFits failing returns parts: null, so gating here
+       froze the camera on the stale scene -- drag and scroll became no-ops and
+       the preview read as hung.  buf.n is the honest test of "there is
+       something to draw"; #stale is what says it is out of date. */
+    if (!gl || !buf.n) return;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var w = canvas.clientWidth, h = canvas.clientHeight;
     if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
@@ -4281,7 +4320,11 @@ var Kumiko = (function () {
                   m ? parseInt(m[3], 16) / 255 : 0.73, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    var H = model.P.totalHeight, cz = H * 0.5;
+    var H = buf.H, cz = H * 0.5;
+    /* A style switch zeroes cam.dist and rebuilds; if that build fails nothing
+       uploads, so the framing never gets set and every orbit would resolve to
+       an eye sitting at the centre.  Frame against the buffers instead. */
+    if (!cam.dist) cam.dist = H * 2.05;
     var d = cam.dist;
     var ex = d * Math.cos(cam.el) * Math.sin(cam.az);
     var ey = -d * Math.cos(cam.el) * Math.cos(cam.az);
@@ -4305,8 +4348,7 @@ var Kumiko = (function () {
       0, 0, (2 * far * near) / (near - far), 0
     ]);
     gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'uMVP'), false, mul4(proj, view));
-    gl.uniform3f(gl.getUniformLocation(prog, 'uBulb'), 0, 0,
-      model.P.lanternStyle === 'modern' ? model.P.modernBaseH + 35 : model.P.baseT + 45);
+    gl.uniform3f(gl.getUniformLocation(prog, 'uBulb'), 0, 0, buf.bulbZ);
     gl.uniform3f(gl.getUniformLocation(prog, 'uKey'), 0.45, -0.8, 0.75);
 
     [['aPos', buf.pos, 3], ['aNor', buf.nor, 3], ['aCol', buf.col, 4]]
@@ -4629,6 +4671,12 @@ var Kumiko = (function () {
   function renderProblems() {
     var box = document.getElementById('problems');
     box.textContent = '';
+    /* Only claim staleness when there is actually an older lamp being shown --
+       buf.n is 0 before the first successful build, where the viewport is empty
+       and the problem list is already the whole story. */
+    var stale = document.getElementById('stale');
+    stale.textContent = t('Last lamp that fits · fix the problems below');
+    stale.hidden = !(model.problems.length && buf.n);
     if (!model.problems.length) return;
     var d = el('div', 'problems');
     d.appendChild(el('h3', null, t('This lamp will not go together')));
@@ -4802,12 +4850,17 @@ var Kumiko = (function () {
     drawFlat();
     if (model.parts) {
       renderParts();
-      if (!cam.dist) cam.dist = model.P.totalHeight * 2.05;
       if (scene) uploadPreparedScene(scene);
       else uploadScene();
       draw();
     } else {
+      /* Nothing new to upload, but the last buildable lamp is still in the GPU
+         buffers and stays on screen -- clearing it would throw away the only
+         picture of what the user is editing towards.  Redraw so a resize or an
+         orbit during the invalid state still lands, and let renderProblems'
+         #stale badge say the picture is behind the sliders. */
       document.getElementById('parts').textContent = '';
+      draw();
     }
   }
 
