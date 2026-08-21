@@ -60,6 +60,14 @@ panel-sized artwork and cannot be wrapped periodically, so Modern rejects them i
 substituting another design. Modern has no generated diffuser; add a paper or vellum liner
 inside the shade if you want softer light.
 
+Modern **Seigaiha** is the exception to the normal swept-slat construction. It preserves
+the four signed contours from `reference/seigaiha-blue.svg` as a filled 2 × grid by
+1 × grid repeat: coloured regions print and white regions remain light openings. At the
+reference 1.6 mm material setting it matches the source; Material width offsets that
+region thinner or thicker. A fit guard rejects any rounded opening whose estimated roof
+bridge exceeds 9 mm, and the repeat-boundary tips are normalized so every row welds.
+Classic Seigaiha remains the original three-arc line pattern.
+
 ---
 
 ## Print list
@@ -107,11 +115,9 @@ stay stable at `modern_base.stl`, `modern_shade_<pattern>.stl` and
 `kumiko-lamp-modern-shade100mm-base140mm-<pattern>.zip`.
 
 **Seigaiha** (青海波, "blue sea wave") is the odd one among the kumiko: a field of curves
-rather than a straight lattice. Rows of overlapping fans, three concentric arcs apiece,
-each row offset half a fan from the one below — the wave pattern that has been on Japanese
-textiles and maps since the Heian period. A fan is 1.5 × the pattern pitch, so it reads
-coarser than its `--grid` number suggests, and the arcs are deliberately faceted at 14
-chords: finer is not better here (see CLAUDE.md).
+rather than a straight lattice. Classic uses rows of overlapping three-arc fans, each row
+offset half a fan from the one below. Modern instead uses the imported filled repeat
+described above, with its wave ends joined for one support-free cylindrical shell.
 
 **Masu** (枡格子) and **Senbon** (千本格子) are the plain ones: a bare square grid, and
 close-set vertical bars crossed by a rail every third bar. Senbon's bars run at a third of
@@ -445,7 +451,10 @@ winding-rule slab decomposition, with T-junctions welded afterwards. The result:
 |---|---|
 | `base`, `post`, `leg`, `socket_adapter_ring`, `modern_base` | Single **watertight** shell, volume matched to the Python part |
 | Downloaded `modern_shade_*` | Single **watertight** periodic cell-complex shell, including the female thread |
-| `panel_*`, `top_cap` and the lightweight live Modern preview | Closed lattice solids, overlapping where slats cross |
+| `panel_*`, `top_cap` and lightweight line-pattern Modern previews | Closed lattice solids, overlapping where slats cross |
+
+The Modern Seigaiha live preview uses the filled periodic cell shell too, at a coarser
+responsive grid; its strict download uses the normal sub-millimetre export grid.
 
 There are **no open edges** in the lightweight lattices — every edge is shared by an even
 number of faces. But at their crossings the shared ones sit on four faces rather than two,
@@ -472,7 +481,8 @@ strict mesh is checked separately against the Python volume.
   the cord tunnel does not break into the groove above it, post sockets do not burst out
   of the side of the Classic base. Modern additionally checks its thread walls, clearance,
   engagement, mounting deck, holder spacing, independently selected shade/base diameters,
-  the 45° transition between them and each circular bed footprint.
+  the 45° transition between them and each circular bed footprint. Modern Seigaiha also
+  rejects a rounded roof bridge over 9 mm.
 - **Every exported part, reloaded from its STL** — not the mesh in memory. Watertight,
   consistent winding, a single connected body, and inside the build volume. The round-trip
   through float32 with no shared-vertex index is exactly where defects show up.
@@ -483,7 +493,7 @@ The configurator is checked the same way, headlessly: its geometry core runs in 
 is compared against the Python generator's measured volumes (`base` and `leg` match to
 0.00%, `post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat,
 across all eleven offered segment patterns. Modern adds wrapped-seam, thread, volume and
-placement comparisons across its eleven supported Kumiko patterns. The page
+placement comparisons across its ten swept patterns and the filled Seigaiha region. The page
 itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
 a deliberately unassemblable configuration to confirm it blocks rather than exports,
 Classic/Modern state switching, linked-until-edited Modern diameters, English/Thai labels,

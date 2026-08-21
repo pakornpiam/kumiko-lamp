@@ -301,6 +301,64 @@ check(K.capPattern('kranok_kan_khot') === 'kikkou', 'cap falls back off the comp
 check(K.capPattern('dok_phut_tan') === 'kikkou', 'Phut Tan cap falls back off the composition');
 check(K.capPattern('thai_rosette') === 'kikkou', 'rosette cap falls back off the composition');
 
+console.log('');
+console.log('Modern filled Seigaiha source tile');
+const seigaihaAreas = K.SEIGAIHA_TILE_LOOPS.map(flat => {
+  let a = 0;
+  for (let i = 0; i < flat.length; i += 2) {
+    const j = (i + 2) % flat.length;
+    a += flat[i] * flat[j + 1] - flat[j] * flat[i + 1];
+  }
+  return a / 2;
+});
+check(K.SEIGAIHA_TILE_LOOPS.length === 4,
+      'source tile has four contours');
+check(seigaihaAreas[0] > 0 && seigaihaAreas[1] < 0 &&
+      seigaihaAreas[2] < 0 && seigaihaAreas[3] > 0,
+      'source tile preserves +--+ winding hierarchy',
+      seigaihaAreas.map(a => a.toFixed(5)).join(','));
+check(K.SEIGAIHA_TILE_LOOPS[0][0] === -0.4171 &&
+      K.SEIGAIHA_TILE_LOOPS[1].includes(0.08111) &&
+      K.SEIGAIHA_TILE_LOOPS[3].includes(-0.25),
+      'source tile keeps representative artwork coordinates');
+const tileCopies = K.modernSeigaihaContours(56, 28, 28);
+check(tileCopies.length === 100 &&
+      Math.abs(tileCopies[4][0][0] - tileCopies[0][0][0] - 56) < 1e-9,
+      'filled tile repeats at 2 x grid by 1 x grid');
+for (const grid of [12, 20, 28, 36, 45]) {
+  for (const slatW of [0.8, 1.6, 2.4, 3.2]) {
+    const fit = K.derive({ lanternStyle: 'modern', pattern: 'seigaiha',
+                           size: 100, height: 218, grid, slatW });
+    check(K.modernSeigaihaBridgeSpan(grid, slatW) <= K.SEIGAIHA_MAX_BRIDGE &&
+          K.checkFits(fit).length === 0,
+          `support-free Seigaiha grid ${grid} / material ${slatW}`);
+  }
+}
+const unsafeSeigaiha = K.derive({ lanternStyle: 'modern', pattern: 'seigaiha',
+                                  size: 100, height: 218, grid: 140, slatW: 0.8 });
+check(K.checkFits(unsafeSeigaiha).some(m => /support-free limit/.test(m)),
+      'oversize rounded roof is rejected by the 9 mm bridge guard');
+for (const sample of [[0, 0], [3.2, 5.1], [-17.9, 11.7]]) {
+  const fit = K.derive({ lanternStyle: 'modern', pattern: 'seigaiha',
+                         size: 100, height: 218, grid: 28, slatW: 1.6 });
+  check(K.modernPointInSeigaiha(sample[0], sample[1], fit) ===
+        K.modernPointInSeigaiha(sample[0] + 56, sample[1] + 28, fit),
+        `filled-region classification repeats at ${sample.join(',')}`);
+}
+const signedParity = [
+  [[0, 0], 0.056],
+  [[3.2, 5.1], -1.4770538373],
+  [[-17.9, 11.7], -0.3586158958],
+  [[9, -6], -0.5541290057]
+];
+for (const [sample, pythonValue] of signedParity) {
+  const fit = K.derive({ lanternStyle: 'modern', pattern: 'seigaiha',
+                         size: 100, height: 218, grid: 28, slatW: 1.6 });
+  check(Math.abs(K.modernSeigaihaSignedDistance(sample[0], sample[1], fit) -
+                 pythonValue) < 1e-8,
+        `browser/Python filled-region parity at ${sample.join(',')}`);
+}
+
 /* Region patterns: imported artwork, a filled outer contour plus holes rather
    than swept slats.  There is no slat count to compare, so the contract with
    Python is the contour count and the fact that it resolves to one piece. */
@@ -630,7 +688,7 @@ const STRICT_MODERN_PY = {
   asanoha: 117.61, mitsukude: 72.03, kikkou: 55.91,
   kawari_asanoha: 103.79, kagome: 69.60, masu: 52.14,
   masu_tsunagi: 90.65, senbon: 77.37, goma_gara: 111.33,
-  bishamon_kikkou: 69.76, seigaiha: 98.80
+  bishamon_kikkou: 69.76, seigaiha: 165.90
 };
 /* Mean distance from each boundary grid vertex to the true slat outline, in the
    developed plane.  A pure cell raster leaves this at roughly a quarter cell
@@ -639,7 +697,7 @@ const STRICT_MODERN_PY = {
 function strictBoundaryError(K, P, pattern, raster) {
   const { mask, nu, nz, du, zs, C, shiftU, shiftZ } = raster;
   const grow = 0.8, zShift = P.height / 2, ring = P.modernRingH;
-  const segs = K.clipRect(K.PATTERNS[pattern](C, P.modernOpenH, P.grid),
+  const segs = pattern === 'seigaiha' ? [] : K.clipRect(K.PATTERNS[pattern](C, P.modernOpenH, P.grid),
     -C / 2, -P.modernOpenH / 2 - grow, C / 2, P.modernOpenH / 2 + grow)
     .map(s => [[s[0][0] + C / 2, s[0][1] + zShift],
                [s[1][0] + C / 2, s[1][1] + zShift]]);
@@ -654,6 +712,13 @@ function strictBoundaryError(K, P, pattern, raster) {
       const k = j * nu + i;
       const u = i * du + shiftU[k], z = zs[j] + shiftZ[k];
       let best = Infinity;
+      if (pattern === 'seigaiha') {
+        const delta = (P.slatW - K.SEIGAIHA_TILE_REFERENCE_SLAT) / 2;
+        const art = K.modernSeigaihaSignedDistance(u - C / 2,
+                                                   z - zShift, P) - delta;
+        const seam = Math.min(Math.abs(u), Math.abs(C - u)) - P.slatW / 2;
+        best = Math.min(art, seam);
+      }
       for (const [p, q] of segs) {
         const dx = q[0] - p[0], dz = q[1] - p[1], len = Math.hypot(dx, dz);
         if (len < 1e-9) continue;
@@ -756,13 +821,18 @@ check(K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
       'Modern export blocks when the shade exceeds build height');
 const modernCounts = { asanoha:982, mitsukude:348, kikkou:221,
   kawari_asanoha:774, kagome:600, masu:18, masu_tsunagi:706, senbon:40,
-  goma_gara:422, bishamon_kikkou:512, seigaiha:2416 };
+  goma_gara:422, bishamon_kikkou:512 };
 for (const [name, count] of Object.entries(modernCounts)) {
   const r = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
                          pattern: name });
   check(r.problems.length === 0 && r.slats === count,
         `Modern wraps ${name}: ${r.slats} slats`, `expected ${count}`);
 }
+const modernSeigaiha = K.buildAll({ lanternStyle: 'modern', size: 100,
+                                    height: 218, pattern: 'seigaiha' });
+check(modernSeigaiha.problems.length === 0 &&
+      modernSeigaiha.parts[0].mesh.filledRepeat === true,
+      'Modern Seigaiha reports a filled continuously wrapped repeat');
 
 console.log('\nvariations');
 for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },

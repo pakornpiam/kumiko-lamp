@@ -235,6 +235,21 @@ async function exportZip(payload) {
         'the Modern shade carries no more zero-area facets than the generator always has',
         `${shadeTop.degenerate} of ${shadeTop.triangles}`);
 
+  const seigaiha = await exportZip({ pattern: 'seigaiha', style: 'modern',
+                                     params: { size: 100, height: 218 } });
+  check(seigaiha.status === 200, 'filled Modern Seigaiha export succeeds',
+        String(seigaiha.status));
+  const seigaihaParts = zipEntries(Buffer.from(await seigaiha.arrayBuffer()));
+  const seigaihaShade = seigaihaParts.get('modern_shade_seigaiha.stl');
+  const seigaihaTop = stlTopology(seigaihaShade);
+  check(seigaihaTop.nonTwo === 0 && seigaihaTop.sameDirection === 0 &&
+        seigaihaTop.components === 1 && seigaihaTop.signedVolume > 0,
+        'filled Modern Seigaiha export is one positive float32-watertight body',
+        JSON.stringify(seigaihaTop));
+  check(Math.abs(seigaihaTop.signedVolume / 1000 - 166.0) < 1.0,
+        'filled Modern Seigaiha export volume matches the Python manifold',
+        `${(seigaihaTop.signedVolume / 1000).toFixed(2)} cm3`);
+
   // --- refusals ----------------------------------------------------------
   const bad = await exportZip({ pattern: 'asanoha', style: 'classic', params: { grid: 12 } });
   const badBody = await bad.json();

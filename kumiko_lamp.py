@@ -1112,6 +1112,116 @@ def pat_seigaiha(w, h, s):
     return ss.segs
 
 
+# The exact 100 x 50 repeat tile imported from reference/seigaiha-blue.svg.
+# Coordinates are normalised by the source's 500-unit width, hence x spans
+# -0.5..0.5 and y spans -0.25..0.25.  This is Modern-only: Classic continues
+# to use pat_seigaiha above and keeps its historical generated artifacts.
+_SEIGAIHA_TILE_LOOPS = [
+    [-0.4171,-0.25,-0.3814,-0.25,-0.3308,-0.25,-0.3229,-0.2395,-0.3109,-0.2256,-0.293,-0.207,-0.2671,-0.1831,-0.2395,-0.1617,-0.2103,-0.1428,-0.1797,-0.1264,-0.1478,-0.1127,-0.1147,-0.1016,-0.08065,-0.09335,-0.0457,-0.08789,-0.01839,-0.08629,0.01437,-0.08653,0.04677,-0.08842,0.073,-0.09176,0.09775,-0.09709,0.1215,-0.1035,0.1443,-0.1112,0.1664,-0.1201,0.1879,-0.1302,0.2089,-0.1418,0.2295,-0.1548,0.25,-0.1693,0.2689,-0.1847,0.2898,-0.204,0.309,-0.2234,0.3229,-0.2395,0.3308,-0.25,0.3814,-0.25,0.4171,-0.25,0.432,-0.249,0.427,-0.24,0.4234,-0.2335,0.4224,-0.228,0.4239,-0.2216,0.428,-0.2126,0.4327,-0.2045,0.4384,-0.1971,0.4449,-0.1905,0.4522,-0.1845,0.4602,-0.1795,0.4689,-0.1752,0.4781,-0.172,0.4878,-0.1697,0.5,-0.1676,0.5,-0.1257,0.5,-0.0838,0.4875,-0.0851,0.4714,-0.08739,0.4562,-0.09086,0.4417,-0.09554,0.428,-0.1014,0.415,-0.1086,0.4025,-0.1171,0.3907,-0.1269,0.3793,-0.138,0.3683,-0.1493,0.3629,-0.154,0.3453,-0.1387,0.3165,-0.1133,0.3077,-0.1055,0.304,-0.1007,0.305,-0.09805,0.3079,-0.0939,0.3176,-0.08255,0.3305,-0.0696,0.3437,-0.058,0.3589,-0.0467,0.3744,-0.03674,0.3903,-0.02809,0.4066,-0.02072,0.4234,-0.01461,0.4408,-0.009719,0.4588,-0.006023,0.4775,-0.003495,0.5,-0.001194,0.5,0.0404,0.5,0.06977,0.4985,0.08198,0.473,0.07987,0.4469,0.07662,0.4215,0.07152,0.3969,0.06456,0.3731,0.05572,0.3499,0.045,0.3275,0.03239,0.3059,0.01789,0.2848,0.00149,0.2737,-0.008352,0.2627,-0.01926,0.235,-0.05047,0.2304,-0.05594,0.2128,-0.04769,0.1752,-0.03187,0.1608,-0.02599,0.1545,-0.02248,0.1555,-0.01946,0.1592,-0.01365,0.1723,0.003707,0.1896,0.02435,0.207,0.04302,0.2322,0.06631,0.259,0.08727,0.2873,0.1058,0.3168,0.122,0.3476,0.1356,0.3795,0.1467,0.4124,0.1552,0.4463,0.161,0.4667,0.1631,0.4844,0.164,0.5,0.164,0.5,0.207,0.5,0.25,0.4895,0.25,0.4572,0.2479,0.4402,0.2468,0.4359,0.2471,0.434,0.248,0.4303,0.2489,0.4205,0.25,0.3823,0.25,0.3319,0.249,0.3393,0.2384,0.344,0.2304,0.345,0.2277,0.3448,0.2263,0.325,0.2181,0.2884,0.2028,0.2764,0.1972,0.2725,0.1961,0.2691,0.1966,0.2657,0.1988,0.2615,0.203,0.2485,0.2185,0.2357,0.2328,0.2253,0.2429,0.2166,0.25,0.0001606,0.25,-0.2163,0.25,-0.2233,0.2446,-0.2391,0.229,-0.2643,0.2003,-0.2696,0.1941,-0.2883,0.2028,-0.325,0.2181,-0.3448,0.2263,-0.345,0.2277,-0.344,0.2304,-0.3393,0.2384,-0.3319,0.249,-0.3823,0.25,-0.4205,0.25,-0.4303,0.2489,-0.434,0.248,-0.4359,0.2471,-0.4402,0.2468,-0.4572,0.2479,-0.4895,0.25,-0.5,0.25,-0.5,0.2073,-0.5,0.1646,-0.4745,0.1634,-0.456,0.1621,-0.4376,0.1599,-0.4193,0.1568,-0.4012,0.1528,-0.3832,0.148,-0.3655,0.1423,-0.348,0.1359,-0.3308,0.1286,-0.3139,0.1205,-0.2973,0.1117,-0.2812,0.1021,-0.2654,0.0917,-0.25,0.0806,-0.2352,0.06878,-0.2208,0.05626,-0.207,0.04304,-0.1896,0.02435,-0.1723,0.003702,-0.1592,-0.01366,-0.1555,-0.01946,-0.1545,-0.02248,-0.1608,-0.02599,-0.1752,-0.03187,-0.2125,-0.04753,-0.2267,-0.05347,-0.2304,-0.05406,-0.2325,-0.05331,-0.2491,-0.03424,-0.2664,-0.01527,-0.2858,0.002482,-0.3071,0.01884,-0.3298,0.03364,-0.3538,0.0467,-0.3787,0.05784,-0.4043,0.0669,-0.4302,0.07371,-0.465,0.07895,-0.4985,0.08198,-0.5,0.06977,-0.5,0.0404,-0.5,-0.001194,-0.4775,-0.003495,-0.4588,-0.006023,-0.4408,-0.009719,-0.4234,-0.01461,-0.4066,-0.02072,-0.3903,-0.02809,-0.3744,-0.03674,-0.3589,-0.0467,-0.3437,-0.058,-0.3305,-0.0696,-0.3176,-0.08255,-0.3079,-0.0939,-0.305,-0.09805,-0.304,-0.1007,-0.3077,-0.1055,-0.3165,-0.1133,-0.3453,-0.1387,-0.3629,-0.154,-0.3683,-0.1493,-0.3793,-0.138,-0.3907,-0.1269,-0.4025,-0.1171,-0.415,-0.1086,-0.428,-0.1014,-0.4417,-0.09554,-0.4562,-0.09086,-0.4714,-0.08739,-0.4875,-0.0851,-0.5,-0.0838,-0.5,-0.1257,-0.5,-0.1676,-0.4878,-0.1697,-0.4781,-0.172,-0.4689,-0.1752,-0.4602,-0.1795,-0.4522,-0.1845,-0.4449,-0.1905,-0.4384,-0.1971,-0.4327,-0.2045,-0.428,-0.2126,-0.4239,-0.2216,-0.4224,-0.228,-0.4234,-0.2335,-0.427,-0.24,-0.432,-0.249],
+    [-0.02898,-0.001445,-0.04952,-0.002515,-0.06403,-0.004031,-0.07102,0.006889,-0.07595,0.01571,-0.078,0.02158,-0.07594,0.02925,-0.07066,0.03957,-0.06352,0.05022,-0.0559,0.0589,-0.04977,0.06411,-0.0433,0.06862,-0.02953,0.07556,-0.01496,0.07972,0,0.08111,0.01496,0.07972,0.02953,0.07556,0.0433,0.06862,0.04977,0.06411,0.0559,0.0589,0.06352,0.05022,0.07066,0.03957,0.07594,0.02925,0.078,0.02158,0.07595,0.01571,0.07102,0.006889,0.06403,-0.004031,0.04952,-0.002515,0.02898,-0.001445,0,-0.001],
+    [-0.131,0.1018,-0.1377,0.09609,-0.156,0.1123,-0.1845,0.1375,-0.1926,0.1447,-0.196,0.1492,-0.195,0.1519,-0.1922,0.1561,-0.1824,0.1674,-0.1696,0.1804,-0.1563,0.192,-0.1362,0.2065,-0.1152,0.2189,-0.09343,0.2291,-0.07101,0.2371,-0.04809,0.2429,-0.02477,0.2464,-0.001198,0.2476,0.0225,0.2464,0.04118,0.2439,0.05917,0.2403,0.07653,0.2354,0.09333,0.2293,0.1096,0.2219,0.1255,0.2133,0.1411,0.2033,0.1563,0.192,0.1695,0.1804,0.1824,0.1674,0.1921,0.1561,0.195,0.1519,0.196,0.1493,0.1923,0.1445,0.1835,0.1367,0.1547,0.1113,0.1374,0.096,0.1167,0.1155,0.1009,0.1299,0.08559,0.1411,0.06961,0.1498,0.05192,0.1568,0.03526,0.1614,0.01829,0.1641,0.001169,0.1651,-0.01598,0.1643,-0.03301,0.1617,-0.04978,0.1573,-0.06616,0.1512,-0.082,0.1434,-0.08983,0.1385,-0.09815,0.1323,-0.1167,0.1155],
+    [-0.21,-0.2439,-0.217,-0.25,0,-0.25,0.217,-0.25,0.21,-0.2438,0.1979,-0.2344,0.1818,-0.2236,0.1642,-0.2129,0.1479,-0.2039,0.1303,-0.1958,0.1123,-0.1887,0.09409,-0.1827,0.07558,-0.1778,0.05686,-0.1739,0.03799,-0.1712,0.01902,-0.1696,0,-0.169,-0.01902,-0.1696,-0.03799,-0.1712,-0.05686,-0.1739,-0.07558,-0.1778,-0.09409,-0.1827,-0.1123,-0.1887,-0.1303,-0.1958,-0.1479,-0.2039,-0.164,-0.2127,-0.1814,-0.2234,-0.1976,-0.2344,-0.21,-0.2439],
+]
+_SEIGAIHA_TILE_REFERENCE_SLAT = 1.6
+_SEIGAIHA_MAX_BRIDGE = 9.0
+
+
+def _flat_loop_area(flat):
+    a = 0.0
+    for i in range(0, len(flat), 2):
+        j = (i + 2) % len(flat)
+        a += flat[i] * flat[j + 1] - flat[j] * flat[i + 1]
+    return a / 2.0
+
+
+def modern_seigaiha_contours(w, h, s):
+    """Repeat the imported 2:1 filled Seigaiha tile over a developed field."""
+    tile_w, tile_h = 2.0 * s, s
+    i0 = int(math.floor((-w / 2.0) / tile_w)) - 1
+    i1 = int(math.ceil((w / 2.0) / tile_w)) + 1
+    j0 = int(math.floor((-h / 2.0) / tile_h)) - 1
+    j1 = int(math.ceil((h / 2.0) / tile_h)) + 1
+    out = []
+    for j in range(j0, j1 + 1):
+        for i in range(i0, i1 + 1):
+            ox, oy = i * tile_w, j * tile_h
+            for flat in _SEIGAIHA_TILE_LOOPS:
+                out.append([(ox + flat[k] * tile_w,
+                             oy + flat[k + 1] * tile_w)
+                            for k in range(0, len(flat), 2)])
+    return out
+
+
+def _polygon_roof_span(loop, scale, layer=0.2):
+    """Width of a hole one layer below its crown, our bridge estimate."""
+    pts = [(loop[k] * scale, loop[k + 1] * scale)
+           for k in range(0, len(loop), 2)]
+    y = max(p[1] for p in pts) - layer
+    xs = []
+    for p, q in zip(pts, pts[1:] + pts[:1]):
+        if (p[1] <= y < q[1]) or (q[1] <= y < p[1]):
+            xs.append(p[0] + (y - p[1]) * (q[0] - p[0]) / (q[1] - p[1]))
+    return max(xs) - min(xs) if len(xs) >= 2 else 0.0
+
+
+def modern_seigaiha_bridge_span(grid, slat_w):
+    """Worst rounded-roof bridge in the imported tile at a 0.2 mm layer."""
+    # The baked polyline is certified through the 45 mm tested pitch.  Beyond
+    # that, its last chord would otherwise make the crown width appear to stop
+    # growing; continue the smooth-curve sqrt(scale) law conservatively so
+    # out-of-range CLI pitches cannot evade the bridge guard.
+    certified_grid = min(grid, 45.0)
+    scale = 2.0 * certified_grid
+    crown_growth = math.sqrt(max(1.0, grid / certified_grid))
+    # The two negative contours are the enclosed white openings.  Offsetting
+    # positive material by delta retracts each hole by the same amount.
+    delta = (slat_w - _SEIGAIHA_TILE_REFERENCE_SLAT) / 2.0
+    holes = [lp for lp in _SEIGAIHA_TILE_LOOPS
+             if _flat_loop_area(lp) < 0]
+    return max(max(0.0, _polygon_roof_span(lp, scale) * crown_growth -
+                   2.0 * delta)
+               for lp in holes)
+
+
+def _seigaiha_tile_sample(x, y):
+    """Return Positive-fill membership and contour distance in tile units."""
+    winding, best = 0, math.inf
+    for flat in _SEIGAIHA_TILE_LOOPS:
+        pts = list(zip(flat[::2], flat[1::2]))
+        for p, q in zip(pts, pts[1:] + pts[:1]):
+            if p[1] <= y:
+                if (q[1] > y and
+                        (q[0] - p[0]) * (y - p[1]) -
+                        (x - p[0]) * (q[1] - p[1]) > 0):
+                    winding += 1
+            elif (q[1] <= y and
+                  (q[0] - p[0]) * (y - p[1]) -
+                  (x - p[0]) * (q[1] - p[1]) < 0):
+                winding -= 1
+            dx, dy = q[0] - p[0], q[1] - p[1]
+            den = dx * dx + dy * dy
+            t = 0.0 if den == 0 else max(
+                0.0, min(1.0, ((x - p[0]) * dx +
+                               (y - p[1]) * dy) / den))
+            best = min(best, math.hypot(
+                x - (p[0] + t * dx), y - (p[1] + t * dy)))
+    return winding > 0, best
+
+
+def modern_seigaiha_signed_distance(u, z, grid):
+    """Periodic signed distance; negative values are printed material."""
+    tile_w, tile_h = 2.0 * grid, grid
+    x = (u + tile_w / 2.0) % tile_w - tile_w / 2.0
+    y = (z + tile_h / 2.0) % tile_h - tile_h / 2.0
+    inside, distance = _seigaiha_tile_sample(x / tile_w, y / tile_w)
+    return (-1.0 if inside else 1.0) * distance * tile_w
+
+
+def modern_point_in_seigaiha(u, z, grid, slat_w):
+    delta = (slat_w - _SEIGAIHA_TILE_REFERENCE_SLAT) / 2.0
+    return modern_seigaiha_signed_distance(u, z, grid) <= delta
+
+
 # --------------------------------------------------------------------------
 # Lai Thai (ลายไทย) patterns
 #
@@ -1518,7 +1628,7 @@ def pattern_names():
 
 
 def kumiko_pattern_names():
-    """The eleven line patterns that can wrap around a modern shade."""
+    """The eleven Kumiko names that can wrap around a modern shade."""
     return sorted(name for name in PATTERNS if name not in LAITHAI)
 
 
@@ -2131,9 +2241,23 @@ def _wrapped_pattern_shell(P: Params, pattern: str) -> trimesh.Trimesh:
     circumference = 2.0 * math.pi * r_out
     lattice_h = P.modern_lattice_h
     grow = MODERN_LATTICE_OVERLAP
-    segs = PATTERNS[pattern](circumference, lattice_h, P.grid)
-    contours = [_flat_slat_contour(p, q, P.slat_w) for p, q in segs]
-    field = manifold3d.CrossSection(contours, manifold3d.FillRule.Positive)
+    if pattern == "seigaiha":
+        # The reference artwork is a filled region, not a family of stroked
+        # centre lines.  Preserve its signed contour hierarchy and offset the
+        # material about the approved 1.6 mm reference weight.
+        contours = modern_seigaiha_contours(
+            circumference, lattice_h + 2 * grow, P.grid)
+        field = manifold3d.CrossSection(
+            contours, manifold3d.FillRule.Positive)
+        delta = (P.slat_w - _SEIGAIHA_TILE_REFERENCE_SLAT) / 2.0
+        if abs(delta) > 1e-9:
+            field = field.offset(delta, manifold3d.JoinType.Round,
+                                 circular_segments=max(12, P.arc // 4))
+    else:
+        segs = PATTERNS[pattern](circumference, lattice_h, P.grid)
+        contours = [_flat_slat_contour(p, q, P.slat_w) for p, q in segs]
+        field = manifold3d.CrossSection(contours,
+                                        manifold3d.FillRule.Positive)
 
     # Reserve one ordinary slat width for a deliberate seam rail.  The pattern
     # overlaps each half by 0.2 mm so there can be no tangent-only attachment.
@@ -2202,7 +2326,7 @@ def _wrapped_pattern_shell(P: Params, pattern: str) -> trimesh.Trimesh:
 def build_modern_shade(P: Params, pattern: str) -> trimesh.Trimesh:
     """One threaded cylindrical shade with a continuously wrapped lattice."""
     if pattern not in kumiko_pattern_names():
-        raise ValueError("modern lantern supports Kumiko line patterns only")
+        raise ValueError("modern lantern supports Kumiko patterns only")
 
     wrapped = _wrapped_pattern_shell(P, pattern)
     # The main shell stops at the common lattice/ring inner radius.  This lower
@@ -2465,7 +2589,7 @@ def check_modern_fits(P: Params, pattern=None):
     """Modern-only guards for the shade, thread, deck and hollow base."""
     issues = []
     if pattern is not None and pattern not in kumiko_pattern_names():
-        issues.append("modern lantern supports Kumiko line patterns only")
+        issues.append("modern lantern supports Kumiko patterns only")
     if P.modern_base_diameter <= 2 * (MODERN_BODY_WALL + P.nozzle):
         issues.append("modern base diameter is too small for its 5 mm body wall")
     if P.modern_base_r < P.modern_thread_crest_r - 1e-9:
@@ -2498,6 +2622,12 @@ def check_modern_fits(P: Params, pattern=None):
         issues.append(f"slat width {P.slat_w} is not a multiple of the nozzle")
     if P.grid <= P.slat_w:
         issues.append("modern pattern pitch must be wider than its slats")
+    if pattern == "seigaiha":
+        bridge = modern_seigaiha_bridge_span(P.grid, P.slat_w)
+        if bridge > _SEIGAIHA_MAX_BRIDGE + 1e-9:
+            issues.append(
+                f"modern Seigaiha rounded roof bridge {bridge:.1f} mm "
+                f"exceeds the {_SEIGAIHA_MAX_BRIDGE:.1f} mm support-free limit")
     if P.modern_thread_clear < 0.1 - 1e-9:
         issues.append("thread clearance is under the 0.10 mm radial minimum")
     if P.modern_thread_wall < 2 * P.nozzle - 1e-9:
@@ -2948,8 +3078,14 @@ def main(argv=None):
         shades = {}
         for name in patterns:
             print(f"  building modern shade: {name} ...", flush=True)
-            shades[name] = emit(f"modern_shade_{name}",
-                                build_modern_shade(P, name))
+            part_name = f"modern_shade_{name}"
+            emit(part_name, build_modern_shade(P, name))
+            # Assemble the same float32-round-tripped shell that was validated
+            # and shipped.  At the thinnest filled offset the pre-STL manifold
+            # can retain sub-float seam pairs even though its deliverable welds
+            # exactly; reusing that transient mesh made only the non-printable
+            # preview fail and incorrectly refused an otherwise valid export.
+            shades[name] = trimesh.load(stl / f"{part_name}.stl")
 
         print("  building modern base ...", flush=True)
         base = build_modern_base(P)
@@ -2961,6 +3097,14 @@ def main(argv=None):
         print("  assembling ...", flush=True)
         asm, parts = build_modern_assembly(P, shades[args.pattern], base,
                                            socket_ring)
+        # Keep the shade at its validated 0..height float32 coordinates in the
+        # non-printable preview.  Moving a heavily offset contour shell upward
+        # before STL quantisation can collapse micron-scale edges at thin
+        # material settings; a global origin shift preserves all relative
+        # assembly positions and the exact overall extents.
+        asm.apply_translation((0.0, 0.0,
+                               -(P.modern_base_h -
+                                 MODERN_THREAD_ENGAGEMENT)))
         emit("assembly_preview", asm, bodies=len(parts), printable=False)
         clearance_names = ("modern_base", "modern_shade",
                            "socket_adapter_ring")

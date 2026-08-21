@@ -215,9 +215,10 @@ footprint follow `modern_base_d`. The 45° shoulder spans from that body radius 
 shade-sized thread root. The base
 has a 5 mm wall, circularly adapted ventilation, the existing Ø40/50 mm holder bore and
 counterbore, and a bottom cable outlet. The shade has 10 mm upper and lower rings and wraps
-the selected periodic line pattern around the circumference. Subdivide mapped segments as
-needed to keep the cylindrical chord error at or below 0.1 mm, split at the angular seam
-and weld the seam vertices. Only patterns whose family is `kumiko` are valid: the three
+the selected periodic Kumiko field around the circumference. Ten patterns map segments;
+Modern Seigaiha maps its filled contours. Subdivide as needed to keep the cylindrical chord
+error at or below 0.1 mm, split at the angular seam and weld the seam vertices. Only
+patterns whose family is `kumiko` are valid: the three
 panel-sized Lai Thai compositions
 must produce a validation error, never a fallback pattern.
 
@@ -458,20 +459,28 @@ the tab strip in the rail, which is generated, so a new family needs no UI code)
 `check_part` requires one body; a lattice always survives that, a curve need not. Name a
 pattern in `CAP_UNSAFE` and `cap_pattern()` / `capPattern()` swaps in `CAP_FALLBACK`.
 
-`PATTERN_FAMILY` also gates Modern: only `kumiko` segment patterns can wrap around the
+`PATTERN_FAMILY` also gates Modern: only `kumiko` patterns can wrap around the
 cylinder. A `laithai` selection in Modern is an invalid configuration, not a request to
 use `CAP_FALLBACK`. A new Kumiko pattern must therefore pass both the flat Classic panel
 and cylindrical seam tests. Subdivide the circumferential mapping for 0.1 mm maximum chord
 error, clip/split at the seam and weld after tessellation so the exported shade has no open
 edge there.
 
-**A curve pattern can still be a tile.** `seigaiha` is the first: a periodic field of arcs
+**A curve pattern can still be a tile.** Classic `seigaiha` is a periodic field of arcs
 rather than a lattice, so it overshoots and clips like any tile, and it is cap-safe. What
 holds it together is worth knowing, because concentric arcs never touch each other — two
 circles of radius `r1`, `r2` with centres `a` apart cross only where
 `|r1 - r2| < a < r1 + r2`, so **every radius must be large enough to reach its neighbour**
 or that arc is a separate body. Seigaiha's three radii all clear it, which turns each row
 into one chain running off both sides into the frame.
+
+Modern `seigaiha` deliberately takes a different path: it repeats the first unique path
+from `reference/seigaiha-blue.svg` as a filled four-contour 2:1 tile. The baked +--+
+winding is evaluated with Positive fill in both runtimes. Nominal repeat-boundary values
+within the curve tolerance are snapped to the exact edge; without that normalization the
+wave tips miss by about 0.006 mm and become separate bodies. `slat_w == 1.6` is the source
+weight, and other values offset the region by `(slat_w - 1.6) / 2`. Keep the seam rail and
+the 9 mm rounded-roof bridge guard when changing this path; do not route Classic through it.
 
 **Not every pattern is a tile.** `kranok_kan_khot` and `dok_phut_tan` are single panel-sized
 compositions laid out as fractions of the opening. Two things follow:
@@ -510,6 +519,11 @@ core feeds them straight to `extrudeStack`, whose winding rule (`> 0`) matches
 rectangle clockwise produces a *hole*: the rosette's struts did exactly that and cut the
 border into pieces instead of tying the artwork to it, giving 8 disconnected components.
 `CrossSection.decompose()` is the fastest way to count them in 2D before paying for a build.
+
+Modern Seigaiha is a Modern-only filled region but remains registered as the same Kumiko
+name so Classic selection, CLI flags and filenames do not change. Its contour table and
+periodic signed-distance helpers sit beside the Classic segment generator rather than in
+`PATTERN_REGIONS`, which would change Classic into a filled panel too.
 
 **Contours are baked, never parsed at runtime.** `web/index.html` has no file access and both
 implementations must emit identical geometry. Regenerate with `tools/svg2pattern.py` and
@@ -565,14 +579,15 @@ watertight for free, and what made every diagonal member a **staircase** up to h
 off the true edge.
 
 `modernStrictRaster` therefore also computes a per-grid-vertex shift that snaps **boundary
-vertices only** onto the slat outline, which `modernStrictMesh` applies inside its vertex
+vertices only** onto the slat outline—or the Seigaiha signed-contour boundary—which
+`modernStrictMesh` applies inside its vertex
 cache. The mask, the cell topology and the shared-vertex cache are untouched, so
 watertightness still follows from the same argument; only positions move. Three rules:
 
 - **The union's distance is the smallest *signed* distance, not the smallest magnitude.**
   Picking by magnitude lets a vertex deep inside one slat be claimed by a barely-missed
-  neighbour and snapped the wrong way. That erodes every crossing, and it cost seigaiha
-  −0.86% → −3.68% against Python before it was caught.
+  neighbour and snapped the wrong way. For the filled tile, take the minimum of the
+  artwork's periodic signed distance and the seam-rail distance before snapping.
 - **Clamp the shift under half a cell per axis**, or two neighbouring vertices can swap
   order and fold a cell.
 - **Leave the ring rows alone.** Their outline is the ring itself, `z = ring` is the
@@ -602,7 +617,9 @@ there. `core.test.js`'s `strictBoundaryError` measures the boundary directly ins
 - The browser's non-manifold Classic/live-preview lattices are a **measured trade**, not a
   bug: a slab decomposition of the crossings costs ~18x the triangles and seconds per
   slider move. Modern downloads solve that separately with the periodic cell-complex
-  exporter; `kumiko_lamp.py` remains the exact CSG path.
+  exporter. Filled Seigaiha also uses that shell for its live preview at a 1.6 mm cell,
+  while strict export keeps the normal finer grid; `kumiko_lamp.py` remains the exact CSG
+  path.
 
 ## Generated artifacts
 
@@ -612,7 +629,9 @@ at a temporary directory, then bring back **only** `modern_base.stl` and the ele
 `modern_shade_<pattern>.stl` files. Its stable adapter ring should match the existing file,
 and its style-specific `assembly_preview.stl` is for inspection, not for replacing the
 checked-in Classic preview. Do not hand-edit generated files. Verify all stock Classic
-hashes are unchanged and the twelve checked-in Modern STLs byte-match fresh output.
+hashes are unchanged. A change scoped to one Modern motif should replace only that motif's
+shade STL; a deliberate whole-Modern regeneration must still prove the base and all
+unaffected shade STLs byte-match fresh output.
 
 ## Git Rules (Important — Follow every time)
 

@@ -665,6 +665,33 @@ function zipEntry(buf, wanted) {
   check(modernFamilies.join(',') === 'Kumiko' &&
         await page.$('button[data-family="laithai"]') === null,
         'Modern offers the eleven Kumiko patterns only', modernFamilies.join(','));
+  const seigaihaStarted = Date.now();
+  await page.click('button[data-pattern="seigaiha"]');
+  await page.waitForFunction(() =>
+    document.getElementById('sw-meta').textContent ===
+      'filled repeat · continuously wrapped', null, { timeout: 10000 });
+  check((await page.textContent('#sw-meta')).trim() ===
+        'filled repeat · continuously wrapped',
+        'Modern Seigaiha swatch describes filled artwork, not slats');
+  check((await page.textContent('#parts tr:first-child .note')).includes(
+          'modern_shade_seigaiha.stl'),
+        'Modern filled Seigaiha keeps its stable shade filename');
+  check(Date.now() - seigaihaStarted < 10000,
+        'Modern filled Seigaiha live preview remains responsive',
+        `${Date.now() - seigaihaStarted} ms`);
+  const swatchInk = await page.$eval('#flat', c => {
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    const colours = new Set();
+    for (let i = 0; i < d.length; i += 64)
+      colours.add(`${d[i]},${d[i + 1]},${d[i + 2]},${d[i + 3]}`);
+    return colours.size;
+  });
+  check(swatchInk > 2, 'Modern Seigaiha swatch contains filled material and openings',
+        `${swatchInk} sampled colours`);
+  await page.click('button[data-pattern="asanoha"]');
+  await page.waitForFunction(() =>
+    document.querySelector('#parts tr:first-child .note').textContent.includes(
+      'modern_shade_asanoha.stl'), null, { timeout: 10000 });
   check((await page.textContent('.block:nth-of-type(2) .cols > div:nth-child(2) p'))
           .includes('0.30 mm thread clearance'),
         'Modern assembly copy explains thread tuning');
@@ -815,6 +842,18 @@ function zipEntry(buf, wanted) {
   check((await page.textContent('#v-panels')).trim() === 'โป๊ะ',
         'the lattice toggle localizes to Thai in Modern',
         (await page.textContent('#v-panels')).trim());
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
+  await page.click('button[data-pattern="seigaiha"]');
+  await page.waitForFunction(() =>
+    document.getElementById('sw-meta').textContent ===
+      'ลายทึบซ้ำ · พันรอบต่อเนื่อง', null, { timeout: 10000 });
+  check((await page.textContent('#sw-meta')).trim() ===
+        'ลายทึบซ้ำ · พันรอบต่อเนื่อง',
+        'Modern filled-repeat metadata localizes to Thai');
+  await page.click('button[data-pattern="asanoha"]');
+  await page.waitForFunction(() =>
+    document.querySelector('#parts tr:first-child .note').textContent.includes(
+      'modern_shade_asanoha.stl'), null, { timeout: 10000 });
   const thaiManifoldCopy = await page.textContent(
     '.block:nth-of-type(3) .cols > div:nth-child(1)');
   check(thaiManifoldCopy.includes('float32') &&

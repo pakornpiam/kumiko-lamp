@@ -827,6 +827,13 @@ var Kumiko = (function () {
         bad('Modern lattice depth is under two extrusions.');
       if (P.grid <= P.slatW)
         bad('Modern pattern pitch must be wider than its slats.');
+      if (P.pattern === 'seigaiha') {
+        var bridge = modernSeigaihaBridgeSpan(P.grid, P.slatW);
+        if (bridge > SEIGAIHA_MAX_BRIDGE + 1e-9)
+          bad('Modern Seigaiha rounded roof bridge ' + bridge.toFixed(1) +
+              ' mm exceeds the ' + SEIGAIHA_MAX_BRIDGE.toFixed(1) +
+              ' mm support-free limit.');
+      }
       if (P.modernThreadClear < 0.1 - 1e-9)
         bad('Thread clearance is under the 0.10 mm radial minimum.');
       if (P.modernThreadWall < 2 * P.nozzle - 1e-9)
@@ -1335,6 +1342,109 @@ var Kumiko = (function () {
     }
     return ss.segs;
   }
+
+  /* Exact 100 x 50 filled repeat imported from reference/seigaiha-blue.svg.
+     Modern-only: the Classic panel keeps patSeigaiha and its existing output. */
+  var SEIGAIHA_TILE_LOOPS = [
+    [-0.4171,-0.25,-0.3814,-0.25,-0.3308,-0.25,-0.3229,-0.2395,-0.3109,-0.2256,-0.293,-0.207,-0.2671,-0.1831,-0.2395,-0.1617,-0.2103,-0.1428,-0.1797,-0.1264,-0.1478,-0.1127,-0.1147,-0.1016,-0.08065,-0.09335,-0.0457,-0.08789,-0.01839,-0.08629,0.01437,-0.08653,0.04677,-0.08842,0.073,-0.09176,0.09775,-0.09709,0.1215,-0.1035,0.1443,-0.1112,0.1664,-0.1201,0.1879,-0.1302,0.2089,-0.1418,0.2295,-0.1548,0.25,-0.1693,0.2689,-0.1847,0.2898,-0.204,0.309,-0.2234,0.3229,-0.2395,0.3308,-0.25,0.3814,-0.25,0.4171,-0.25,0.432,-0.249,0.427,-0.24,0.4234,-0.2335,0.4224,-0.228,0.4239,-0.2216,0.428,-0.2126,0.4327,-0.2045,0.4384,-0.1971,0.4449,-0.1905,0.4522,-0.1845,0.4602,-0.1795,0.4689,-0.1752,0.4781,-0.172,0.4878,-0.1697,0.5,-0.1676,0.5,-0.1257,0.5,-0.0838,0.4875,-0.0851,0.4714,-0.08739,0.4562,-0.09086,0.4417,-0.09554,0.428,-0.1014,0.415,-0.1086,0.4025,-0.1171,0.3907,-0.1269,0.3793,-0.138,0.3683,-0.1493,0.3629,-0.154,0.3453,-0.1387,0.3165,-0.1133,0.3077,-0.1055,0.304,-0.1007,0.305,-0.09805,0.3079,-0.0939,0.3176,-0.08255,0.3305,-0.0696,0.3437,-0.058,0.3589,-0.0467,0.3744,-0.03674,0.3903,-0.02809,0.4066,-0.02072,0.4234,-0.01461,0.4408,-0.009719,0.4588,-0.006023,0.4775,-0.003495,0.5,-0.001194,0.5,0.0404,0.5,0.06977,0.4985,0.08198,0.473,0.07987,0.4469,0.07662,0.4215,0.07152,0.3969,0.06456,0.3731,0.05572,0.3499,0.045,0.3275,0.03239,0.3059,0.01789,0.2848,0.00149,0.2737,-0.008352,0.2627,-0.01926,0.235,-0.05047,0.2304,-0.05594,0.2128,-0.04769,0.1752,-0.03187,0.1608,-0.02599,0.1545,-0.02248,0.1555,-0.01946,0.1592,-0.01365,0.1723,0.003707,0.1896,0.02435,0.207,0.04302,0.2322,0.06631,0.259,0.08727,0.2873,0.1058,0.3168,0.122,0.3476,0.1356,0.3795,0.1467,0.4124,0.1552,0.4463,0.161,0.4667,0.1631,0.4844,0.164,0.5,0.164,0.5,0.207,0.5,0.25,0.4895,0.25,0.4572,0.2479,0.4402,0.2468,0.4359,0.2471,0.434,0.248,0.4303,0.2489,0.4205,0.25,0.3823,0.25,0.3319,0.249,0.3393,0.2384,0.344,0.2304,0.345,0.2277,0.3448,0.2263,0.325,0.2181,0.2884,0.2028,0.2764,0.1972,0.2725,0.1961,0.2691,0.1966,0.2657,0.1988,0.2615,0.203,0.2485,0.2185,0.2357,0.2328,0.2253,0.2429,0.2166,0.25,0.0001606,0.25,-0.2163,0.25,-0.2233,0.2446,-0.2391,0.229,-0.2643,0.2003,-0.2696,0.1941,-0.2883,0.2028,-0.325,0.2181,-0.3448,0.2263,-0.345,0.2277,-0.344,0.2304,-0.3393,0.2384,-0.3319,0.249,-0.3823,0.25,-0.4205,0.25,-0.4303,0.2489,-0.434,0.248,-0.4359,0.2471,-0.4402,0.2468,-0.4572,0.2479,-0.4895,0.25,-0.5,0.25,-0.5,0.2073,-0.5,0.1646,-0.4745,0.1634,-0.456,0.1621,-0.4376,0.1599,-0.4193,0.1568,-0.4012,0.1528,-0.3832,0.148,-0.3655,0.1423,-0.348,0.1359,-0.3308,0.1286,-0.3139,0.1205,-0.2973,0.1117,-0.2812,0.1021,-0.2654,0.0917,-0.25,0.0806,-0.2352,0.06878,-0.2208,0.05626,-0.207,0.04304,-0.1896,0.02435,-0.1723,0.003702,-0.1592,-0.01366,-0.1555,-0.01946,-0.1545,-0.02248,-0.1608,-0.02599,-0.1752,-0.03187,-0.2125,-0.04753,-0.2267,-0.05347,-0.2304,-0.05406,-0.2325,-0.05331,-0.2491,-0.03424,-0.2664,-0.01527,-0.2858,0.002482,-0.3071,0.01884,-0.3298,0.03364,-0.3538,0.0467,-0.3787,0.05784,-0.4043,0.0669,-0.4302,0.07371,-0.465,0.07895,-0.4985,0.08198,-0.5,0.06977,-0.5,0.0404,-0.5,-0.001194,-0.4775,-0.003495,-0.4588,-0.006023,-0.4408,-0.009719,-0.4234,-0.01461,-0.4066,-0.02072,-0.3903,-0.02809,-0.3744,-0.03674,-0.3589,-0.0467,-0.3437,-0.058,-0.3305,-0.0696,-0.3176,-0.08255,-0.3079,-0.0939,-0.305,-0.09805,-0.304,-0.1007,-0.3077,-0.1055,-0.3165,-0.1133,-0.3453,-0.1387,-0.3629,-0.154,-0.3683,-0.1493,-0.3793,-0.138,-0.3907,-0.1269,-0.4025,-0.1171,-0.415,-0.1086,-0.428,-0.1014,-0.4417,-0.09554,-0.4562,-0.09086,-0.4714,-0.08739,-0.4875,-0.0851,-0.5,-0.0838,-0.5,-0.1257,-0.5,-0.1676,-0.4878,-0.1697,-0.4781,-0.172,-0.4689,-0.1752,-0.4602,-0.1795,-0.4522,-0.1845,-0.4449,-0.1905,-0.4384,-0.1971,-0.4327,-0.2045,-0.428,-0.2126,-0.4239,-0.2216,-0.4224,-0.228,-0.4234,-0.2335,-0.427,-0.24,-0.432,-0.249],
+    [-0.02898,-0.001445,-0.04952,-0.002515,-0.06403,-0.004031,-0.07102,0.006889,-0.07595,0.01571,-0.078,0.02158,-0.07594,0.02925,-0.07066,0.03957,-0.06352,0.05022,-0.0559,0.0589,-0.04977,0.06411,-0.0433,0.06862,-0.02953,0.07556,-0.01496,0.07972,0,0.08111,0.01496,0.07972,0.02953,0.07556,0.0433,0.06862,0.04977,0.06411,0.0559,0.0589,0.06352,0.05022,0.07066,0.03957,0.07594,0.02925,0.078,0.02158,0.07595,0.01571,0.07102,0.006889,0.06403,-0.004031,0.04952,-0.002515,0.02898,-0.001445,0,-0.001],
+    [-0.131,0.1018,-0.1377,0.09609,-0.156,0.1123,-0.1845,0.1375,-0.1926,0.1447,-0.196,0.1492,-0.195,0.1519,-0.1922,0.1561,-0.1824,0.1674,-0.1696,0.1804,-0.1563,0.192,-0.1362,0.2065,-0.1152,0.2189,-0.09343,0.2291,-0.07101,0.2371,-0.04809,0.2429,-0.02477,0.2464,-0.001198,0.2476,0.0225,0.2464,0.04118,0.2439,0.05917,0.2403,0.07653,0.2354,0.09333,0.2293,0.1096,0.2219,0.1255,0.2133,0.1411,0.2033,0.1563,0.192,0.1695,0.1804,0.1824,0.1674,0.1921,0.1561,0.195,0.1519,0.196,0.1493,0.1923,0.1445,0.1835,0.1367,0.1547,0.1113,0.1374,0.096,0.1167,0.1155,0.1009,0.1299,0.08559,0.1411,0.06961,0.1498,0.05192,0.1568,0.03526,0.1614,0.01829,0.1641,0.001169,0.1651,-0.01598,0.1643,-0.03301,0.1617,-0.04978,0.1573,-0.06616,0.1512,-0.082,0.1434,-0.08983,0.1385,-0.09815,0.1323,-0.1167,0.1155],
+    [-0.21,-0.2439,-0.217,-0.25,0,-0.25,0.217,-0.25,0.21,-0.2438,0.1979,-0.2344,0.1818,-0.2236,0.1642,-0.2129,0.1479,-0.2039,0.1303,-0.1958,0.1123,-0.1887,0.09409,-0.1827,0.07558,-0.1778,0.05686,-0.1739,0.03799,-0.1712,0.01902,-0.1696,0,-0.169,-0.01902,-0.1696,-0.03799,-0.1712,-0.05686,-0.1739,-0.07558,-0.1778,-0.09409,-0.1827,-0.1123,-0.1887,-0.1303,-0.1958,-0.1479,-0.2039,-0.164,-0.2127,-0.1814,-0.2234,-0.1976,-0.2344,-0.21,-0.2439],
+];
+  var SEIGAIHA_TILE_REFERENCE_SLAT = 1.6;
+  var SEIGAIHA_MAX_BRIDGE = 9.0;
+
+  function modernSeigaihaContours(w, h, s) {
+    var tw = 2 * s, th = s, out = [];
+    var i0 = Math.floor((-w / 2) / tw) - 1, i1 = Math.ceil((w / 2) / tw) + 1;
+    var j0 = Math.floor((-h / 2) / th) - 1, j1 = Math.ceil((h / 2) / th) + 1;
+    for (var j = j0; j <= j1; j++) for (var i = i0; i <= i1; i++) {
+      var ox = i * tw, oy = j * th;
+      for (var n = 0; n < SEIGAIHA_TILE_LOOPS.length; n++) {
+        var flat = SEIGAIHA_TILE_LOOPS[n], lp = [];
+        for (var k = 0; k < flat.length; k += 2)
+          lp.push([ox + flat[k] * tw, oy + flat[k + 1] * tw]);
+        out.push(lp);
+      }
+    }
+    return out;
+  }
+
+  function flatLoopArea(flat) {
+    var a = 0;
+    for (var i = 0; i < flat.length; i += 2) {
+      var j = (i + 2) % flat.length;
+      a += flat[i] * flat[j + 1] - flat[j] * flat[i + 1];
+    }
+    return a / 2;
+  }
+
+  function polygonRoofSpan(flat, scale, layer) {
+    var ymax = -Infinity, i;
+    for (i = 1; i < flat.length; i += 2) ymax = Math.max(ymax, flat[i] * scale);
+    var y = ymax - (layer || 0.2), xs = [];
+    for (i = 0; i < flat.length; i += 2) {
+      var j = (i + 2) % flat.length;
+      var x1 = flat[i] * scale, y1 = flat[i + 1] * scale;
+      var x2 = flat[j] * scale, y2 = flat[j + 1] * scale;
+      if ((y1 <= y && y < y2) || (y2 <= y && y < y1))
+        xs.push(x1 + (y - y1) * (x2 - x1) / (y2 - y1));
+    }
+    if (xs.length < 2) return 0;
+    return Math.max.apply(null, xs) - Math.min.apply(null, xs);
+  }
+
+  function modernSeigaihaBridgeSpan(grid, slatW) {
+    var certifiedGrid = Math.min(grid, 45);
+    var scale = 2 * certifiedGrid;
+    var crownGrowth = Math.sqrt(Math.max(1, grid / certifiedGrid));
+    var delta = (slatW - SEIGAIHA_TILE_REFERENCE_SLAT) / 2;
+    var worst = 0;
+    for (var i = 0; i < SEIGAIHA_TILE_LOOPS.length; i++)
+      if (flatLoopArea(SEIGAIHA_TILE_LOOPS[i]) < 0)
+        worst = Math.max(worst, Math.max(0,
+          polygonRoofSpan(SEIGAIHA_TILE_LOOPS[i], scale, 0.2) * crownGrowth -
+          2 * delta));
+    return worst;
+  }
+
+  function seigaihaTileSample(x, y) {
+    var winding = 0, minD2 = Infinity;
+    for (var n = 0; n < SEIGAIHA_TILE_LOOPS.length; n++) {
+      var flat = SEIGAIHA_TILE_LOOPS[n];
+      for (var i = 0; i < flat.length; i += 2) {
+        var j = (i + 2) % flat.length;
+        var x1 = flat[i], y1 = flat[i + 1];
+        var x2 = flat[j], y2 = flat[j + 1];
+        if (y1 <= y) {
+          if (y2 > y && (x2 - x1) * (y - y1) -
+              (x - x1) * (y2 - y1) > 0) winding++;
+        } else if (y2 <= y && (x2 - x1) * (y - y1) -
+                   (x - x1) * (y2 - y1) < 0) winding--;
+        var dx = x2 - x1, dy = y2 - y1;
+        var den = dx * dx + dy * dy;
+        var t = den ? ((x - x1) * dx + (y - y1) * dy) / den : 0;
+        t = Math.max(0, Math.min(1, t));
+        var rx = x - (x1 + t * dx), ry = y - (y1 + t * dy);
+        minD2 = Math.min(minD2, rx * rx + ry * ry);
+      }
+    }
+    return { inside: winding > 0, distance: Math.sqrt(minD2) };
+  }
+
+  function modernSeigaihaSignedDistance(u, z, P) {
+    var tw = 2 * P.grid, th = P.grid;
+    var x = ((u + tw / 2) % tw + tw) % tw - tw / 2;
+    var y = ((z + th / 2) % th + th) % th - th / 2;
+    var sample = seigaihaTileSample(x / tw, y / tw);
+    return (sample.inside ? -1 : 1) * sample.distance * tw;
+  }
+
+  function modernPointInSeigaiha(u, z, P) {
+    var delta = (P.slatW - SEIGAIHA_TILE_REFERENCE_SLAT) / 2;
+    return modernSeigaihaSignedDistance(u, z, P) <= delta;
+  }
+
 
   // ------------------------------------------------------------------
   // Lai Thai (ลายไทย) — curvilinear, so stroked as polylines rather than
@@ -2414,6 +2524,14 @@ var Kumiko = (function () {
   function buildModernShade(P, pattern) {
     if (PATTERN_FAMILY[pattern] !== 'kumiko')
       throw new Error('Modern lanterns support Kumiko patterns only.');
+    if (pattern === 'seigaiha') {
+      /* The filled artwork needs one shared occupancy shell, not overlapping
+         swept slats.  A coarser live grid keeps controls responsive; downloads
+         use buildStrictModernShade's normal sub-millimetre grid. */
+      var exact = buildStrictModernShade(P, pattern, { cell: 1.6 });
+      exact.filledRepeat = true;
+      return exact;
+    }
     var R = P.modernOuterR, ri = R - P.panelT, H = P.height;
     var ring = P.modernRingH, n = P.arc, tris = [];
     /* The lower ring carries the female thread.  Its varying inner radius is
@@ -2517,13 +2635,31 @@ var Kumiko = (function () {
     /* Pattern generators carry generous construction padding.  Clip it before
        using periodic column indices; wrapping the padding itself would fold
        neighbouring construction tiles onto the shade. */
-    var grow = 0.8;
-    var segs = clipRect(PATTERNS[pattern](C, P.modernOpenH, P.grid),
-      -C / 2, -P.modernOpenH / 2 - grow,
-       C / 2,  P.modernOpenH / 2 + grow);
+    var grow = 0.8, exactSeigaiha = pattern === 'seigaiha';
+    var segs = exactSeigaiha ? [] :
+      clipRect(PATTERNS[pattern](C, P.modernOpenH, P.grid),
+        -C / 2, -P.modernOpenH / 2 - grow,
+         C / 2,  P.modernOpenH / 2 + grow);
     var half = P.slatW / 2;
     var endGrow = Math.min(P.slatW * 0.20, 0.25);
     var zShift = P.height / 2;
+    var artDelta = (P.slatW - SEIGAIHA_TILE_REFERENCE_SLAT) / 2;
+    function seigaihaFieldDistance(u, z) {
+      var art = modernSeigaihaSignedDistance(u - C / 2, z - zShift, P) - artDelta;
+      var seam = Math.min(Math.abs(u), Math.abs(C - u)) - half;
+      return Math.min(art, seam);
+    }
+    if (exactSeigaiha) {
+      for (i = 0; i < nu; i++) {
+        var eum = (i + 0.5) * du;
+        for (j = 0; j < nz; j++) {
+          zm = (zs[j] + zs[j + 1]) / 2;
+          if (zm < ring || zm > P.height - ring) continue;
+          if (seigaihaFieldDistance(eum, zm) <= 0)
+            mask[index(i, j)] = 1;
+        }
+      }
+    }
     for (var s = 0; s < segs.length; s++) {
       var raw = segs[s];
       var p = [raw[0][0] + C / 2, raw[0][1] + zShift];
@@ -2593,6 +2729,27 @@ var Kumiko = (function () {
        which erodes every crossing -- worst on the chained arcs of seigaiha. */
     var bestSigned = new Float32Array(nv).fill(Infinity);
     function vertexIndex(i, j) { return j * nu + ((i % nu) + nu) % nu; }
+    if (exactSeigaiha) {
+      var gradStep = Math.min(0.05, target / 8);
+      for (var evi = 0; evi < nu; evi++) {
+        var euv = evi * du;
+        for (var evj = 0; evj <= nz; evj++) {
+          var ezv = zs[evj];
+          if (ezv < ring - 1e-9 || ezv > P.height - ring + 1e-9) continue;
+          var esd = seigaihaFieldDistance(euv, ezv);
+          var egx = (seigaihaFieldDistance(euv + gradStep, ezv) -
+                     seigaihaFieldDistance(euv - gradStep, ezv)) / (2 * gradStep);
+          var egy = (seigaihaFieldDistance(euv, ezv + gradStep) -
+                     seigaihaFieldDistance(euv, ezv - gradStep)) / (2 * gradStep);
+          var egn = Math.hypot(egx, egy), evk = vertexIndex(evi, evj);
+          bestSigned[evk] = esd;
+          if (egn > 1e-8) {
+            shiftU[evk] = -esd * egx / egn;
+            shiftZ[evk] = -esd * egy / egn;
+          }
+        }
+      }
+    }
     for (s = 0; s < segs.length; s++) {
       var sp = segs[s];
       var vp = [sp[0][0] + C / 2, sp[0][1] + zShift];
@@ -2649,7 +2806,7 @@ var Kumiko = (function () {
 
     return { mask: mask, nu: nu, nz: nz, du: du, zs: zs, C: C,
       shiftU: shiftU, shiftZ: shiftZ,
-      slats: segs.length, filled: filled, target: target,
+      slats: segs.length, filledRepeat: exactSeigaiha, filled: filled, target: target,
       chordError: R * (1 - Math.cos(Math.PI / nu)) };
   }
 
@@ -3437,6 +3594,13 @@ var Kumiko = (function () {
     buildCap: buildCap, buildRing: buildRing, buildLeg: buildLeg,
     buildModernShade: buildModernShade, buildStrictModernShade: buildStrictModernShade,
     buildModernBase: buildModernBase,
+    SEIGAIHA_TILE_LOOPS: SEIGAIHA_TILE_LOOPS,
+    SEIGAIHA_TILE_REFERENCE_SLAT: SEIGAIHA_TILE_REFERENCE_SLAT,
+    SEIGAIHA_MAX_BRIDGE: SEIGAIHA_MAX_BRIDGE,
+    modernSeigaihaContours: modernSeigaihaContours,
+    modernSeigaihaSignedDistance: modernSeigaihaSignedDistance,
+    modernPointInSeigaiha: modernPointInSeigaiha,
+    modernSeigaihaBridgeSpan: modernSeigaihaBridgeSpan,
     buildDiffuserPlate: buildDiffuserPlate, buildCapFinial: buildCapFinial,
     latticeSegments: latticeSegments, clipRect: clipRect, clipCircle: clipCircle,
     extrudeStack: extrudeStack, rectLoop: rectLoop, circleLoop: circleLoop,
@@ -4449,28 +4613,44 @@ var Kumiko = (function () {
       x.fillRect(-P.size / 2, -P.height / 2, P.size, P.modernRingH);
       x.fillRect(-P.size / 2, P.height / 2 - P.modernRingH,
                  P.size, P.modernRingH);
-      var previewSegs = K.latticeSegments(P, state.pattern, P.size,
-                                          P.modernOpenH, 0);
+      var previewSegs = [];
       x.save();
       x.beginPath();
       x.rect(-P.size / 2, -P.modernOpenH / 2, P.size, P.modernOpenH);
       x.clip();
-      x.strokeStyle = cs.getPropertyValue('--kigara').trim();
-      x.lineWidth = P.slatW; x.lineCap = 'butt';
-      x.beginPath();
-      for (var ps = 0; ps < previewSegs.length; ps++) {
-        x.moveTo(previewSegs[ps][0][0], previewSegs[ps][0][1]);
-        x.lineTo(previewSegs[ps][1][0], previewSegs[ps][1][1]);
+      if (state.pattern === 'seigaiha') {
+        var motif = K.modernSeigaihaContours(P.size, P.modernOpenH, P.grid);
+        x.fillStyle = cs.getPropertyValue('--kigara').trim();
+        x.beginPath();
+        for (var mc = 0; mc < motif.length; mc++) {
+          var ml = motif[mc];
+          x.moveTo(ml[0][0], ml[0][1]);
+          for (var mp = 1; mp < ml.length; mp++) x.lineTo(ml[mp][0], ml[mp][1]);
+          x.closePath();
+        }
+        x.fill('nonzero');
+      } else {
+        previewSegs = K.latticeSegments(P, state.pattern, P.size,
+                                        P.modernOpenH, 0);
+        x.strokeStyle = cs.getPropertyValue('--kigara').trim();
+        x.lineWidth = P.slatW; x.lineCap = 'butt';
+        x.beginPath();
+        for (var ps = 0; ps < previewSegs.length; ps++) {
+          x.moveTo(previewSegs[ps][0][0], previewSegs[ps][0][1]);
+          x.lineTo(previewSegs[ps][1][0], previewSegs[ps][1][1]);
+        }
+        x.stroke();
       }
-      x.stroke();
       x.restore();
       x.restore();
       var wrapped = model && model.P.lanternStyle === 'modern' ? model.slats : previewSegs.length;
       document.getElementById('sw-name').textContent = lang === 'th'
         ? PATTERN_TH[state.pattern] : K.PATTERN_LABEL[state.pattern];
-      document.getElementById('sw-meta').textContent = lang === 'th'
-        ? wrapped + ' ซี่ · พันรอบทรงกระบอก'
-        : wrapped + ' slats · continuously wrapped';
+      document.getElementById('sw-meta').textContent = state.pattern === 'seigaiha'
+        ? (lang === 'th' ? 'ลายทึบซ้ำ · พันรอบต่อเนื่อง'
+                         : 'filled repeat · continuously wrapped')
+        : (lang === 'th' ? wrapped + ' ซี่ · พันรอบทรงกระบอก'
+                         : wrapped + ' slats · continuously wrapped');
       document.getElementById('sw-meaning').textContent = lang === 'th'
         ? (MEANING_TH[state.pattern] || '') : (K.PATTERN_MEANING[state.pattern] || '');
       return;
@@ -4661,6 +4841,8 @@ var Kumiko = (function () {
       .replace(/^Panel groove (.+) mm cuts the corner off the (.+) mm post\. Widen the post or shallow the groove\.$/, 'ร่องแผง $1 mm ตัดมุมเสาขนาด $2 mm ให้เพิ่มขนาดเสาหรือลดความลึกร่อง')
       .replace(/^Slat width (.+) mm is under two extrusions\.$/, 'ซี่กว้าง $1 mm ซึ่งน้อยกว่าสองแนวฉีด')
       .replace(/^Slat width (.+) mm is not a multiple of the (.+) mm nozzle\.$/, 'ซี่กว้าง $1 mm ไม่เป็นจำนวนเท่าของหัวฉีด $2 mm')
+      .replace(/^Modern Seigaiha rounded roof bridge (.+) mm exceeds the (.+) mm support-free limit\.$/,
+               'ช่วงพาดโค้งของลายเซไกฮะแบบโมเดิร์น $1 mm เกินขีดจำกัดพิมพ์โดยไม่ใช้ซัพพอร์ต $2 mm')
       .replace(/^Edge chamfer (.+) mm cuts into the socket walls of the base and cap\.$/, 'ลบมุม $1 mm กินผนังเบ้าของฐานและฝา')
       .replace(/^Edge chamfer (.+) mm is more than half the (.+) mm cap thickness\.$/, 'ลบมุม $1 mm มากกว่าครึ่งหนึ่งของฝาหนา $2 mm')
       .replace(/^Edge chamfer (.+) mm is more than half the (.+) mm base thickness\.$/, 'ลบมุม $1 mm มากกว่าครึ่งหนึ่งของฐานหนา $2 mm')

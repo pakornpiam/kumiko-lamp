@@ -19,6 +19,7 @@ y-down, so the flip inverts every winding -- which is exactly what makes the
 outer contour positive and the holes negative, as FillRule.Positive wants.
 """
 
+import argparse
 import math
 import re
 import sys
@@ -162,7 +163,8 @@ def area(loop):
     return a / 2.0
 
 
-def convert(path, tol_frac=0.0015):
+def convert(path, tol_frac=0.001, first_path=False,
+            preserve_svg_winding=False):
     tree = ET.parse(path)
     root = tree.getroot()
     vb = [float(v) for v in root.get('viewBox').split()]
@@ -171,9 +173,12 @@ def convert(path, tol_frac=0.0015):
     tol = span * tol_frac
 
     loops = []
-    for el in root.iter():
-        if el.tag.split('}')[-1] == 'path':
-            loops.extend(parse_path(el.get('d'), tol))
+    path_elements = [el for el in root.iter()
+                     if el.tag.split('}')[-1] == 'path']
+    if first_path:
+        path_elements = path_elements[:1]
+    for el in path_elements:
+        loops.extend(parse_path(el.get('d'), tol))
 
     # normalise into -0.5..0.5 on the longer axis, flipping Y so it points up
     out = []
@@ -182,6 +187,22 @@ def convert(path, tol_frac=0.0015):
                for x, y in lp]
         if len(pts) > 1 and math.dist(pts[0], pts[-1]) < 1e-9:
             pts.pop()
+        # Flipping SVG's downward Y axis reverses every contour.  Most artwork
+        # authored for this project relies on that reversal to put its outer
+        # contour positive.  Some externally supplied tiles already carry the
+        # positive/negative/positive nesting required by FillRule.Positive;
+        # reverse once more for those so their authored winding survives.
+        if preserve_svg_winding:
+            pts.reverse()
+        if first_path:
+            # Repeated artwork commonly rounds a nominal boundary coordinate
+            # by a few hundredths of an SVG unit.  Snap anything within the
+            # flattening tolerance back to the repeat boundary so neighbouring
+            # copies weld instead of leaving micron-scale disconnected tips.
+            bounds = (-0.5, 0.5, -vh / (2 * span), vh / (2 * span))
+            pts = [(next((b for b in bounds[:2] if abs(x - b) <= tol_frac), x),
+                    next((b for b in bounds[2:] if abs(y - b) <= tol_frac), y))
+                   for x, y in pts]
         out.append(pts)
     return out
 
@@ -196,8 +217,18 @@ def emit(loops, lang):
 
 
 if __name__ == '__main__':
-    src = sys.argv[1] if len(sys.argv) > 1 else 'reference/laithai.svg'
-    loops = convert(src)
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('source', nargs='?', default='reference/laithai.svg')
+    ap.add_argument('--first-path', action='store_true',
+                    help='convert only the first path (one tile from repeated artwork)')
+    ap.add_argument('--preserve-svg-winding', action='store_true',
+                    help='preserve authored contour signs after the SVG Y-axis flip')
+    ap.add_argument('--tolerance', type=float, default=0.001, metavar='FRACTION',
+                    help='curve chord tolerance as a fraction of the longest viewBox axis')
+    args = ap.parse_args()
+    loops = convert(args.source, args.tolerance, args.first_path,
+                    args.preserve_svg_winding)
     tot = sum(len(l) for l in loops)
     sys.stderr.write('%d loops, %d points\n' % (len(loops), tot))
     for j, lp in enumerate(loops):
