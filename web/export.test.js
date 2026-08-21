@@ -235,6 +235,26 @@ async function exportZip(payload) {
         'the Modern shade carries no more zero-area facets than the generator always has',
         `${shadeTop.degenerate} of ${shadeTop.triangles}`);
 
+  const modernGlazed = await exportZip({ pattern: 'asanoha', style: 'modern',
+                                         params: { size: 100, height: 218,
+                                                   plate_t: 1.2 } });
+  check(modernGlazed.status === 200, 'Modern diffuser export succeeds',
+        String(modernGlazed.status));
+  const modernGlazedParts = zipEntries(Buffer.from(await modernGlazed.arrayBuffer()));
+  check([...modernGlazedParts.keys()].sort().join(',') ===
+        'diffuser_plate.stl,modern_base.stl,modern_shade_asanoha.stl,socket_adapter_ring.stl',
+        'Modern diffuser adds one stable file to the zip',
+        [...modernGlazedParts.keys()].sort().join(','));
+  const diffuserTop = stlTopology(modernGlazedParts.get('diffuser_plate.stl'));
+  check(diffuserTop.nonTwo === 0 && diffuserTop.sameDirection === 0 &&
+        diffuserTop.degenerate === 0 && diffuserTop.components === 1 &&
+        diffuserTop.signedVolume > 0,
+        'exported Modern diffuser is one positive float32-watertight body',
+        JSON.stringify(diffuserTop));
+  check(Math.abs(diffuserTop.signedVolume / 1000 - 67.13) < 0.2,
+        'exported Modern diffuser volume matches Python',
+        `${(diffuserTop.signedVolume / 1000).toFixed(2)} cm3`);
+
   const seigaiha = await exportZip({ pattern: 'seigaiha', style: 'modern',
                                      params: { size: 100, height: 218 } });
   check(seigaiha.status === 200, 'filled Modern Seigaiha export succeeds',

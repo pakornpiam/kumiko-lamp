@@ -53,6 +53,9 @@ MODERN_THREAD_DEPTH = 0.8
 MODERN_THREAD_CLEAR = 0.30
 MODERN_CHORD_ERROR = 0.1
 MODERN_LATTICE_OVERLAP = 0.8
+MODERN_DIFFUSER_CLEARANCE = 0.4
+MODERN_DIFFUSER_MIN_T = 1.0
+MODERN_DIFFUSER_MAX_T = 4.0
 
 # Material left between the holder pocket and the ventilation slots.  The ring
 # steps outward to keep it, so `base_vent_r0` is the ring's minimum radius rather
@@ -478,6 +481,15 @@ class Params:
     @property
     def modern_lattice_h(self) -> float:
         return self.height - 2 * MODERN_RING_H
+
+    @property
+    def modern_diffuser_outer_r(self) -> float:
+        """Outer radius of the removable sleeve behind the Modern lattice."""
+        return self.modern_inner_r - MODERN_DIFFUSER_CLEARANCE
+
+    @property
+    def modern_diffuser_inner_r(self) -> float:
+        return self.modern_diffuser_outer_r - self.plate_t
 
     @property
     def modern_thread_root_r(self) -> float:
@@ -1734,6 +1746,23 @@ def build_diffuser_plate(P: Params) -> trimesh.Trimesh:
     return cleanup(box(-P.panel_w / 2, 0, 0, P.panel_w / 2, P.height, P.plate_t))
 
 
+def build_modern_diffuser(P: Params) -> trimesh.Trimesh:
+    """Build the removable, open-ended diffuser sleeve for a Modern shade.
+
+    The sleeve covers only the lattice field, so it prints upright as a plain
+    annulus with no roof and rests on the lower shade ring after assembly.  A
+    fixed radial fitting gap lets it slide through the shade's upper opening.
+    """
+    transform = trimesh.transformations.translation_matrix(
+        (0.0, 0.0, P.modern_lattice_h / 2.0))
+    return cleanup(trimesh.creation.annulus(
+        r_min=P.modern_diffuser_inner_r,
+        r_max=P.modern_diffuser_outer_r,
+        height=P.modern_lattice_h,
+        sections=P.arc,
+        transform=transform))
+
+
 def _post_insert_cutter(P: Params):
     """
     Blind pilot hole for a heat-set insert, down from the post's top face.
@@ -2448,8 +2477,8 @@ def _rotx(deg):
     return trimesh.transformations.rotation_matrix(math.radians(deg), (1, 0, 0))
 
 
-def place_modern_parts(P: Params, shade, base, socket_ring=None):
-    """Return the two cylindrical bodies (and holder ring) assembled upright."""
+def place_modern_parts(P: Params, shade, base, socket_ring=None, diffuser=None):
+    """Return the Modern printed parts in their assembled positions."""
     out = {"modern_base": base.copy()}
     q = shade.copy()
     q.apply_translation((0.0, 0.0,
@@ -2460,11 +2489,18 @@ def place_modern_parts(P: Params, shade, base, socket_ring=None):
         r.apply_translation((0.0, 0.0,
                              P.modern_base_h - P.socket_cbore_d))
         out["socket_adapter_ring"] = r
+    if diffuser is not None:
+        d = diffuser.copy()
+        d.apply_translation((0.0, 0.0,
+                             P.modern_base_h - MODERN_THREAD_ENGAGEMENT
+                             + MODERN_RING_H))
+        out["diffuser_plate"] = d
     return out
 
 
-def build_modern_assembly(P: Params, shade, base, socket_ring=None):
-    parts = place_modern_parts(P, shade, base, socket_ring)
+def build_modern_assembly(P: Params, shade, base, socket_ring=None,
+                          diffuser=None):
+    parts = place_modern_parts(P, shade, base, socket_ring, diffuser)
     return trimesh.util.concatenate(list(parts.values())), parts
 
 
@@ -2622,6 +2658,18 @@ def check_modern_fits(P: Params, pattern=None):
         issues.append(f"slat width {P.slat_w} is not a multiple of the nozzle")
     if P.grid <= P.slat_w:
         issues.append("modern pattern pitch must be wider than its slats")
+    if P.plate_t < 0:
+        issues.append("diffuser thickness cannot be negative")
+    if 0 < P.plate_t < MODERN_DIFFUSER_MIN_T - 1e-9:
+        issues.append(
+            f"diffuser sleeve thickness is under the "
+            f"{MODERN_DIFFUSER_MIN_T:.1f} mm minimum")
+    if P.plate_t > MODERN_DIFFUSER_MAX_T + 1e-9:
+        issues.append(
+            f"diffuser sleeve thickness exceeds the "
+            f"{MODERN_DIFFUSER_MAX_T:.1f} mm maximum")
+    if P.plate_t > 0 and P.modern_diffuser_inner_r < 2 * P.nozzle - 1e-9:
+        issues.append("diffuser sleeve thickness closes its hollow centre")
     if pattern == "seigaiha":
         bridge = modern_seigaiha_bridge_span(P.grid, P.slat_w)
         if bridge > _SEIGAIHA_MAX_BRIDGE + 1e-9:
@@ -2931,8 +2979,8 @@ def main(argv=None):
     ap.add_argument("--edge-chamfer", type=float,
                     help="bevel on the base and cap perimeter edges (mm)")
     ap.add_argument("--diffuser-plate", type=float,
-                    help="clear plate behind each lattice, in the same groove "
-                         "(mm); 0 for none, 1.2 is the working value")
+                    help="Classic clear plate or Modern cylindrical sleeve "
+                         "thickness (mm); 0 for none, 1.2 is the working value")
     ap.add_argument("--post-insert", type=float,
                     help="heat-set insert pilot hole in each post top (mm); "
                          "0 for none, 4.0 is the working value for M3")
@@ -3094,9 +3142,14 @@ def main(argv=None):
         print("  building socket ring ...", flush=True)
         socket_ring = emit("socket_adapter_ring", build_socket_ring(P))
 
+        diffuser = None
+        if P.plate_t > 0:
+            print("  building modern diffuser sleeve ...", flush=True)
+            diffuser = emit("diffuser_plate", build_modern_diffuser(P))
+
         print("  assembling ...", flush=True)
         asm, parts = build_modern_assembly(P, shades[args.pattern], base,
-                                           socket_ring)
+                                           socket_ring, diffuser)
         # Keep the shade at its validated 0..height float32 coordinates in the
         # non-printable preview.  Moving a heavily offset contour shell upward
         # before STL quantisation can collapse micron-scale edges at thin
@@ -3107,7 +3160,7 @@ def main(argv=None):
                                  MODERN_THREAD_ENGAGEMENT)))
         emit("assembly_preview", asm, bodies=len(parts), printable=False)
         clearance_names = ("modern_base", "modern_shade",
-                           "socket_adapter_ring")
+                           "socket_adapter_ring", "diffuser_plate")
     else:
         patterns = pattern_names() if args.all else [args.pattern]
         panels = {}

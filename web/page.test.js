@@ -642,8 +642,10 @@ function zipEntry(buf, wanted) {
   check(await page.$eval('#r-socketNeck', x => x.closest('details').classList.contains('fixed') &&
         x.closest('details').open), 'Modern lamp-holder controls start pinned open');
   check(await page.$('#r-post') === null && await page.$('#r-snapEngagement') === null &&
-        await page.$('#r-modernThreadClear') !== null,
-        'Modern hides Classic frame/snap controls and shows thread clearance');
+        await page.$('#r-modernThreadClear') !== null && await page.$('#r-plateT') !== null,
+        'Modern hides Classic frame/snap controls and shows thread and diffuser controls');
+  check(await page.getAttribute('#r-plateT', 'max') === '4',
+        'Modern diffuser control reaches 4 mm');
   /* The Modern base prints deck-down, so a riser above that deck would grow
      into the bed; the slider is Classic-only rather than merely ignored. */
   check(await page.$('#r-socketRiser') === null,
@@ -660,6 +662,29 @@ function zipEntry(buf, wanted) {
   check((await page.textContent('#cli')).trim() ===
         'python3 kumiko_lamp.py --style modern',
         'Modern preset has a clean CLI echo', (await page.textContent('#cli')).trim());
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
+  await page.fill('#r-plateT', '1.2');
+  await page.dispatchEvent('#r-plateT', 'input');
+  await page.waitForFunction(() => document.querySelectorAll('#parts tr').length === 4,
+    null, { timeout: 10000 });
+  const modernGlazedRows = await page.$$eval('#parts .note', n =>
+    n.map(x => x.textContent.split(' ')[0]));
+  check(modernGlazedRows.join(',') ===
+        'modern_shade_asanoha.stl,diffuser_plate.stl,modern_base.stl,socket_adapter_ring.stl',
+        'Modern diffuser adds one stable upright-sleeve print row',
+        modernGlazedRows.join(','));
+  check(await page.textContent('#parts tr:nth-child(2) td.num') === '1' &&
+        /--diffuser-plate 1\.2/.test(await page.textContent('#cli')),
+        'Modern diffuser quantity and CLI echo use the existing option',
+        await page.textContent('#cli'));
+  check(/printed sleeve/.test(await page.textContent('#s-diff')) &&
+        /prints upright without supports/.test(await page.textContent(
+          '.block:nth-of-type(2) .cols > div:nth-child(3) p')),
+        'Modern diffuser copy explains the generated support-free sleeve');
+  await page.fill('#r-plateT', '0');
+  await page.dispatchEvent('#r-plateT', 'input');
+  await page.waitForFunction(() => document.querySelectorAll('#parts tr').length === 3,
+    null, { timeout: 10000 });
   const modernFamilies = await page.$$eval('.famtabs button', b =>
     b.map(x => x.textContent.trim()));
   check(modernFamilies.join(',') === 'Kumiko' &&

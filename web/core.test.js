@@ -177,6 +177,26 @@ check(Math.abs(MODERN.modernShoulderH - 4.8) < 1e-9 &&
       Math.abs(MODERN.modernShoulderH -
                (MODERN.modernOuterR - MODERN.modernThreadCoreR)) < 1e-9,
       'Modern base contracts to its thread root on a 45-degree shoulder');
+check(MODERN.glazed === false &&
+      Math.abs(MODERN.modernDiffuserOuterR - 45.6) < 1e-9,
+      'Modern diffuser is off by default with a 0.4 mm radial fitting gap');
+const MODERN_GLAZED = K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                                  plateT: 1.2 });
+check(MODERN_GLAZED.glazed &&
+      Math.abs(MODERN_GLAZED.modernDiffuserInnerR - 44.4) < 1e-9,
+      'Modern diffuser thickness grows inward from its fitted outer radius');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             plateT: 0.8 })).length > 0,
+      'Modern diffuser under 1 mm is rejected');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             plateT: 1.0 })).length === 0,
+      'Modern diffuser at the 1 mm minimum is accepted');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             plateT: 4.0 })).length === 0,
+      'Modern diffuser at the 4 mm maximum is accepted');
+check(K.checkFits(K.derive({ lanternStyle: 'modern', size: 100, height: 218,
+                             plateT: 4.2 })).length > 0,
+      'Modern diffuser over 4 mm is rejected');
 const modernCableEdgeY = -Math.sqrt(
   MODERN.modernCavityR ** 2 - (MODERN.cableW / 2) ** 2);
 check(Math.abs(MODERN.modernCavityR - 45) < 1e-9 &&
@@ -657,6 +677,33 @@ check(modern.problems.length === 0 && modern.parts.length === 3,
 check(modern.parts.map(p => p.id).join(',') ===
       'modern_shade_asanoha,modern_base,socket_adapter_ring',
       'Modern printable filenames are stable', modern.parts.map(p => p.id).join(','));
+const modernGlazed = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
+                                  plateT: 1.2 });
+check(modernGlazed.problems.length === 0 && modernGlazed.parts.length === 4 &&
+      modernGlazed.parts.map(p => p.id).join(',') ===
+      'modern_shade_asanoha,diffuser_plate,modern_base,socket_adapter_ring',
+      'Modern glazing adds one stable diffuser file after the shade');
+const modernDiffuser = modernGlazed.parts[1];
+check(modernDiffuser.qty === 1 && modernDiffuser.bbox.size.every((v, i) =>
+        Math.abs(v - [91.2, 91.2, 198][i]) < 1e-6),
+      'Modern diffuser is one lattice-height sleeve with nominal clearance',
+      modernDiffuser.bbox.size.map(v => v.toFixed(1)).join(' x '));
+const modernDiffuserTopology = stlTopology(K.stlBinary(modernDiffuser.mesh.tris));
+check(modernDiffuserTopology.nonTwo === 0 &&
+      modernDiffuserTopology.sameDirection === 0 &&
+      modernDiffuserTopology.degenerate === 0 &&
+      modernDiffuserTopology.components === 1 &&
+      modernDiffuserTopology.signedVolume > 0,
+      'Modern diffuser is one positive float32-watertight body',
+      JSON.stringify(modernDiffuserTopology));
+check(Math.abs(modernDiffuser.vol / 1000 - 67.13) < 0.2,
+      'Modern diffuser browser volume matches its annular cross-section',
+      `${(modernDiffuser.vol / 1000).toFixed(2)} cm3`);
+const modernDiffuserAsm = modernGlazed.assembly.find(p => p.name === 'diffuser_plate');
+check(modernDiffuserAsm && modernDiffuserAsm.clear &&
+      Math.abs(K.bbox(modernDiffuserAsm.tris).lo[2] - 90) < 1e-9 &&
+      Math.abs(K.bbox(modernDiffuserAsm.tris).hi[2] - 288) < 1e-9,
+      'Modern diffuser previews translucent between the assembled shade rings');
 check(modern.parts.every(p => p.fits), 'all nominal Modern parts fit the 256 mm bed');
 check(modern.parts[0].bbox.size.every((v, i) =>
         Math.abs(v - [100, 100, 218][i]) < 1e-6),
