@@ -483,8 +483,13 @@ class Params:
         return self.height - 2 * MODERN_RING_H
 
     @property
+    def modern_diffuser_h(self) -> float:
+        """Cup height from the lower-ring seat to the shade's top edge."""
+        return self.height - MODERN_RING_H
+
+    @property
     def modern_diffuser_outer_r(self) -> float:
-        """Outer radius of the removable sleeve behind the Modern lattice."""
+        """Outer radius of the removable cup behind the Modern lattice."""
         return self.modern_inner_r - MODERN_DIFFUSER_CLEARANCE
 
     @property
@@ -1747,20 +1752,27 @@ def build_diffuser_plate(P: Params) -> trimesh.Trimesh:
 
 
 def build_modern_diffuser(P: Params) -> trimesh.Trimesh:
-    """Build the removable, open-ended diffuser sleeve for a Modern shade.
+    """Build the removable, closed-top diffuser cup for a Modern shade.
 
-    The sleeve covers only the lattice field, so it prints upright as a plain
-    annulus with no roof and rests on the lower shade ring after assembly.  A
+    The cup rests on the lower shade ring in assembly and rises through the
+    upper ring so its lid is flush with the shade's top edge.  Its lower end
+    stays open while a flat lid, as thick as the wall, closes the upper end.  A
     fixed radial fitting gap lets it slide through the shade's upper opening.
     """
-    transform = trimesh.transformations.translation_matrix(
-        (0.0, 0.0, P.modern_lattice_h / 2.0))
-    return cleanup(trimesh.creation.annulus(
-        r_min=P.modern_diffuser_inner_r,
-        r_max=P.modern_diffuser_outer_r,
-        height=P.modern_lattice_h,
-        sections=P.arc,
-        transform=transform))
+    outer = cyl(2 * P.modern_diffuser_outer_r, 0.0,
+                P.modern_diffuser_h, sections=P.arc)
+    cavity = cyl(2 * P.modern_diffuser_inner_r, -EPS,
+                 P.modern_diffuser_h - P.plate_t, sections=P.arc)
+    return cleanup(difference(outer, [cavity]))
+
+
+def modern_diffuser_for_print(P: Params, diffuser=None) -> trimesh.Trimesh:
+    """Turn the diffuser lid-down so its closed top starts on the print bed."""
+    printed = (diffuser if diffuser is not None
+               else build_modern_diffuser(P)).copy()
+    printed.apply_transform(_rotx(180))
+    printed.apply_translation((0.0, 0.0, P.modern_diffuser_h))
+    return printed
 
 
 def _post_insert_cutter(P: Params):
@@ -2662,14 +2674,14 @@ def check_modern_fits(P: Params, pattern=None):
         issues.append("diffuser thickness cannot be negative")
     if 0 < P.plate_t < MODERN_DIFFUSER_MIN_T - 1e-9:
         issues.append(
-            f"diffuser sleeve thickness is under the "
+            f"diffuser cup thickness is under the "
             f"{MODERN_DIFFUSER_MIN_T:.1f} mm minimum")
     if P.plate_t > MODERN_DIFFUSER_MAX_T + 1e-9:
         issues.append(
-            f"diffuser sleeve thickness exceeds the "
+            f"diffuser cup thickness exceeds the "
             f"{MODERN_DIFFUSER_MAX_T:.1f} mm maximum")
     if P.plate_t > 0 and P.modern_diffuser_inner_r < 2 * P.nozzle - 1e-9:
-        issues.append("diffuser sleeve thickness closes its hollow centre")
+        issues.append("diffuser cup thickness closes its hollow centre")
     if pattern == "seigaiha":
         bridge = modern_seigaiha_bridge_span(P.grid, P.slat_w)
         if bridge > _SEIGAIHA_MAX_BRIDGE + 1e-9:
@@ -2979,7 +2991,7 @@ def main(argv=None):
     ap.add_argument("--edge-chamfer", type=float,
                     help="bevel on the base and cap perimeter edges (mm)")
     ap.add_argument("--diffuser-plate", type=float,
-                    help="Classic clear plate or Modern cylindrical sleeve "
+                    help="Classic clear plate or Modern closed-top cup "
                          "thickness (mm); 0 for none, 1.2 is the working value")
     ap.add_argument("--post-insert", type=float,
                     help="heat-set insert pilot hole in each post top (mm); "
@@ -3144,8 +3156,9 @@ def main(argv=None):
 
         diffuser = None
         if P.plate_t > 0:
-            print("  building modern diffuser sleeve ...", flush=True)
-            diffuser = emit("diffuser_plate", build_modern_diffuser(P))
+            print("  building closed-top modern diffuser ...", flush=True)
+            diffuser = build_modern_diffuser(P)
+            emit("diffuser_plate", modern_diffuser_for_print(P, diffuser))
 
         print("  assembling ...", flush=True)
         asm, parts = build_modern_assembly(P, shades[args.pattern], base,

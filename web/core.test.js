@@ -165,7 +165,7 @@ const MODERN = K.derive({ lanternStyle: 'modern', size: 100, height: 218 });
 check(MODERN.lanternStyle === 'modern' && MODERN.totalHeight === 298,
       'Modern preset assembles to 100 x 298 mm');
 check(Math.abs(MODERN.modernOpenW - Math.PI * 100) < 1e-9 &&
-      MODERN.modernOpenH === 198,
+      MODERN.modernOpenH === 198 && MODERN.modernDiffuserH === 208,
       'Modern field develops over the 100 mm circumference and between 10 mm rings');
 check(Math.abs(MODERN.modernThreadCoreR - 45.2) < 1e-9 &&
       Math.abs(MODERN.modernThreadCrestR - 46) < 1e-9 &&
@@ -685,8 +685,8 @@ check(modernGlazed.problems.length === 0 && modernGlazed.parts.length === 4 &&
       'Modern glazing adds one stable diffuser file after the shade');
 const modernDiffuser = modernGlazed.parts[1];
 check(modernDiffuser.qty === 1 && modernDiffuser.bbox.size.every((v, i) =>
-        Math.abs(v - [91.2, 91.2, 198][i]) < 1e-6),
-      'Modern diffuser is one lattice-height sleeve with nominal clearance',
+        Math.abs(v - [91.2, 91.2, 208][i]) < 1e-6),
+      'Modern diffuser reaches the shade top with nominal clearance',
       modernDiffuser.bbox.size.map(v => v.toFixed(1)).join(' x '));
 const modernDiffuserTopology = stlTopology(K.stlBinary(modernDiffuser.mesh.tris));
 check(modernDiffuserTopology.nonTwo === 0 &&
@@ -696,14 +696,42 @@ check(modernDiffuserTopology.nonTwo === 0 &&
       modernDiffuserTopology.signedVolume > 0,
       'Modern diffuser is one positive float32-watertight body',
       JSON.stringify(modernDiffuserTopology));
-check(Math.abs(modernDiffuser.vol / 1000 - 67.13) < 0.2,
-      'Modern diffuser browser volume matches its annular cross-section',
+check(Math.abs(modernDiffuser.vol / 1000 - 78.00) < 0.2,
+      'Modern diffuser browser volume includes its full-thickness lid',
       `${(modernDiffuser.vol / 1000).toFixed(2)} cm3`);
+function hasFlatCenterAt(tris, z) {
+  for (let i = 0; i < tris.length; i += 9) {
+    if (Math.abs(tris[i + 2] - z) > 1e-6 ||
+        Math.abs(tris[i + 5] - z) > 1e-6 ||
+        Math.abs(tris[i + 8] - z) > 1e-6) continue;
+    for (let j = 0; j < 9; j += 3)
+      if (Math.hypot(tris[i + j], tris[i + j + 1]) < 1e-6) return true;
+  }
+  return false;
+}
+check(hasFlatCenterAt(modernDiffuser.mesh.tris, 0) &&
+      hasFlatCenterAt(modernDiffuser.mesh.tris, modernGlazed.P.plateT) &&
+      !hasFlatCenterAt(modernDiffuser.mesh.tris, modernGlazed.P.modernDiffuserH),
+      'Modern diffuser STL is lid-down with its lower end open');
 const modernDiffuserAsm = modernGlazed.assembly.find(p => p.name === 'diffuser_plate');
 check(modernDiffuserAsm && modernDiffuserAsm.clear &&
       Math.abs(K.bbox(modernDiffuserAsm.tris).lo[2] - 90) < 1e-9 &&
-      Math.abs(K.bbox(modernDiffuserAsm.tris).hi[2] - 288) < 1e-9,
-      'Modern diffuser previews translucent between the assembled shade rings');
+      Math.abs(K.bbox(modernDiffuserAsm.tris).hi[2] - 298) < 1e-9 &&
+      !hasFlatCenterAt(modernDiffuserAsm.tris, 90) &&
+      hasFlatCenterAt(modernDiffuserAsm.tris, 298),
+      'Modern diffuser previews open-bottom with its lid level with the shade top');
+for (const thickness of [1.0, 4.0]) {
+  const cup = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
+                           plateT: thickness });
+  const part = cup.parts[1], P = cup.P;
+  const analytic = Math.PI * (P.modernDiffuserOuterR ** 2 * P.modernDiffuserH -
+    P.modernDiffuserInnerR ** 2 * (P.modernDiffuserH - P.plateT));
+  check(Math.abs(part.vol - analytic) / analytic < 0.002 &&
+        hasFlatCenterAt(part.mesh.tris, 0) &&
+        hasFlatCenterAt(part.mesh.tris, thickness),
+        `Modern ${thickness.toFixed(1)} mm diffuser keeps a full lid and volume`,
+        `${(part.vol / 1000).toFixed(2)} cm3`);
+}
 check(modern.parts.every(p => p.fits), 'all nominal Modern parts fit the 256 mm bed');
 check(modern.parts[0].bbox.size.every((v, i) =>
         Math.abs(v - [100, 100, 218][i]) < 1e-6),

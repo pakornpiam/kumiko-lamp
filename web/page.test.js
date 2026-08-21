@@ -671,16 +671,20 @@ function zipEntry(buf, wanted) {
     n.map(x => x.textContent.split(' ')[0]));
   check(modernGlazedRows.join(',') ===
         'modern_shade_asanoha.stl,diffuser_plate.stl,modern_base.stl,socket_adapter_ring.stl',
-        'Modern diffuser adds one stable upright-sleeve print row',
+        'Modern diffuser adds one stable closed-cup print row',
         modernGlazedRows.join(','));
+  check(/lid down/.test(await page.textContent('#parts tr:nth-child(2) .note')),
+        'Modern diffuser row gives its support-free lid-down orientation');
   check(await page.textContent('#parts tr:nth-child(2) td.num') === '1' &&
         /--diffuser-plate 1\.2/.test(await page.textContent('#cli')),
         'Modern diffuser quantity and CLI echo use the existing option',
         await page.textContent('#cli'));
-  check(/printed sleeve/.test(await page.textContent('#s-diff')) &&
-        /prints upright without supports/.test(await page.textContent(
+  check(/printed cup/.test(await page.textContent('#s-diff')) &&
+        /level with the shade top/.test(await page.textContent(
+          '.block:nth-of-type(2) .cols > div:nth-child(3) p')) &&
+        /prints lid-down without supports/.test(await page.textContent(
           '.block:nth-of-type(2) .cols > div:nth-child(3) p')),
-        'Modern diffuser copy explains the generated support-free sleeve');
+        'Modern diffuser copy explains its flush top and support-free print');
   await page.fill('#r-plateT', '0');
   await page.dispatchEvent('#r-plateT', 'input');
   await page.waitForFunction(() => document.querySelectorAll('#parts tr').length === 3,

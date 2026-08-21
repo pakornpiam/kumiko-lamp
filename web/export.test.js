@@ -251,8 +251,8 @@ async function exportZip(payload) {
         diffuserTop.signedVolume > 0,
         'exported Modern diffuser is one positive float32-watertight body',
         JSON.stringify(diffuserTop));
-  check(Math.abs(diffuserTop.signedVolume / 1000 - 67.13) < 0.2,
-        'exported Modern diffuser volume matches Python',
+  check(Math.abs(diffuserTop.signedVolume / 1000 - 77.95) < 0.2,
+        'exported closed-top Modern diffuser volume matches Python',
         `${(diffuserTop.signedVolume / 1000).toFixed(2)} cm3`);
 
   const seigaiha = await exportZip({ pattern: 'seigaiha', style: 'modern',

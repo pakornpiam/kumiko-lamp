@@ -58,7 +58,7 @@ expands without a horizontal cantilever.
 Modern supports the eleven Kumiko patterns only. The three Lai Thai compositions are
 panel-sized artwork and cannot be wrapped periodically, so Modern rejects them instead of
 substituting another design. For softer light, set **Diffuser thickness** above zero to
-generate a removable cylindrical sleeve, or leave it at zero and add a paper or vellum
+generate a removable closed-top cup, or leave it at zero and add a paper or vellum
 liner.
 
 Modern **Seigaiha** is the exception to the normal swept-slat construction. It preserves
@@ -99,7 +99,7 @@ the airiest, asanoha and goma-gara the densest.
 | STL | Qty | Reference size | Orientation on the plate |
 |---|---|---|---|
 | `modern_shade_asanoha.stl` | **1** | Ø100 × 218 mm | Upright, as exported. Use a brim if your slicer or material needs it. |
-| `diffuser_plate.stl` | 0 or **1** | Ø91.2 × 198 × 1.2 mm wall | Upright, as exported. Optional removable Modern diffuser sleeve. |
+| `diffuser_plate.stl` | 0 or **1** | Ø91.2 × 208 × 1.2 mm wall/lid | **Lid down, as exported.** Optional removable Modern diffuser cup. |
 | `modern_base.stl` | **1** | Ø100 × 90 mm nominal | **Inverted, as exported.** The mounting deck starts on the bed and the neck reaches the body through a 45-degree transition. |
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 mm | Flat. The same E27/E14 adapter used by Classic. |
 
@@ -343,14 +343,17 @@ width, the patterns and every other part are identical glazed or not.
 
 You can still use paper as well; the 0.6 mm rebate is untouched.
 
-### Modern diffuser sleeve
+### Modern diffuser cup
 
-The same `--diffuser-plate 1.2` option creates one open-ended cylindrical sleeve in Modern
-mode. It spans the 198 mm lattice field between the shade rings and sits 0.4 mm radially
-inside the lattice, so it can be removed through the open top. Print it upright in
-**translucent PETG**; the open cylinder has no roof and needs no supports. Thicknesses from
-1 to 4 mm are available in the configurator, while `0` keeps the original three-part
-Modern print set and lets you use paper or vellum instead.
+The same `--diffuser-plate 1.2` option creates one cylindrical cup in Modern mode. It rests
+on the lower ring, passes through the upper ring, and finishes level with the shade's top
+edge. It sits 0.4 mm radially inside the lattice, so it can be removed through the shade
+opening. Its upper end is a completely solid flat lid, its lower end remains open, and the
+selected 1–4 mm thickness controls both the wall and the lid. The STL is already turned
+**lid-down**: print it that way in
+**translucent PETG** so the lid starts on the bed and the cup needs no supports. `0` keeps
+the original three-part Modern print set and lets you use paper or vellum instead. Because
+the lid reduces upward convection, retain the lamp's LED-only, maximum-9 W requirement.
 
 ## E27 / E14 holder
 

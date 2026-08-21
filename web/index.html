@@ -745,6 +745,7 @@ var Kumiko = (function () {
     p.modernPatternR = p.modernOuterR;
     p.modernOpenW = 2 * Math.PI * p.modernPatternR;
     p.modernOpenH = p.height - 2 * p.modernRingH;
+    p.modernDiffuserH = p.height - p.modernRingH;
     p.modernDiffuserClearance = 0.4;
     p.modernDiffuserOuterR = p.modernOuterR - p.panelT -
                              p.modernDiffuserClearance;
@@ -834,13 +835,13 @@ var Kumiko = (function () {
       if (P.plateT < 0)
         bad('Diffuser thickness cannot be negative.');
       if (P.plateT > 0 && P.plateT < MODERN_DIFFUSER_MIN_T - 1e-9)
-        bad('Diffuser sleeve thickness is under the ' +
+        bad('Diffuser cup thickness is under the ' +
             MODERN_DIFFUSER_MIN_T.toFixed(1) + ' mm minimum.');
       if (P.plateT > MODERN_DIFFUSER_MAX_T + 1e-9)
-        bad('Diffuser sleeve thickness exceeds the ' +
+        bad('Diffuser cup thickness exceeds the ' +
             MODERN_DIFFUSER_MAX_T.toFixed(1) + ' mm maximum.');
       if (P.plateT > 0 && P.modernDiffuserInnerR < 2 * P.nozzle - 1e-9)
-        bad('Diffuser sleeve thickness closes its hollow centre.');
+        bad('Diffuser cup thickness closes its hollow centre.');
       if (P.pattern === 'seigaiha') {
         var bridge = modernSeigaihaBridgeSpan(P.grid, P.slatW);
         if (bridge > SEIGAIHA_MAX_BRIDGE + 1e-9)
@@ -2476,26 +2477,28 @@ var Kumiko = (function () {
                0, P.plateT), manifold: true };
   }
 
-  /* Open-ended cylindrical liner for Modern.  Its only horizontal surfaces
-     are the narrow annular first and last layers, so it prints upright without
-     supports and slides through the shade with a fixed radial fitting gap. */
+  /* Closed-top cylindrical diffuser for Modern.  Assembly space keeps the lid
+     at the top; buildAll turns this raw mesh lid-down only for print/export. */
   function buildModernDiffuser(P) {
-    var rings = [], tris = [];
+    var rings = [], tris = [], cavityTop = P.modernDiffuserH - P.plateT;
+    var topCenter = [0, 0, P.modernDiffuserH];
+    var ceilingCenter = [0, 0, cavityTop];
     for (var i = 0; i < P.arc; i++) {
       var a = 2 * Math.PI * i / P.arc, co = Math.cos(a), si = Math.sin(a);
       rings.push({
         bo: [P.modernDiffuserOuterR * co, P.modernDiffuserOuterR * si, 0],
-        to: [P.modernDiffuserOuterR * co, P.modernDiffuserOuterR * si, P.modernOpenH],
+        to: [P.modernDiffuserOuterR * co, P.modernDiffuserOuterR * si, P.modernDiffuserH],
         bi: [P.modernDiffuserInnerR * co, P.modernDiffuserInnerR * si, 0],
-        ti: [P.modernDiffuserInnerR * co, P.modernDiffuserInnerR * si, P.modernOpenH]
+        ci: [P.modernDiffuserInnerR * co, P.modernDiffuserInnerR * si, cavityTop]
       });
     }
     for (i = 0; i < P.arc; i++) {
       var j = (i + 1) % P.arc, q = rings[i], n = rings[j];
       pushQuad(tris, q.bo, n.bo, n.to, q.to);       // outer wall
-      pushQuad(tris, q.bi, q.ti, n.ti, n.bi);       // inner wall
+      pushQuad(tris, q.bi, q.ci, n.ci, n.bi);       // inner wall
       pushQuad(tris, q.bo, q.bi, n.bi, n.bo);       // bottom rim
-      pushQuad(tris, q.to, n.to, n.ti, q.ti);       // top rim
+      pushTri(tris, topCenter, q.to, n.to);          // solid top
+      pushTri(tris, ceilingCenter, n.ci, q.ci);      // lid underside
     }
     if (volume(tris) < 0)
       for (var k = 0; k < tris.length; k += 9) {
@@ -3330,6 +3333,9 @@ var Kumiko = (function () {
   function modernBasePrintTransform(P) {
     return mul(trans(0, 0, P.modernBaseH), rotX(180));
   }
+  function modernDiffuserPrintTransform(P) {
+    return mul(trans(0, 0, P.modernDiffuserH), rotX(180));
+  }
 
   function assembleModern(P, base, shade, ring, diffuser) {
     var out = [
@@ -3561,9 +3567,12 @@ var Kumiko = (function () {
           note: 'upright, add a brim if needed' }
       ];
       if (modernDiffuser)
-        modernParts.push({ id: 'diffuser_plate', label: 'Modern diffuser sleeve',
-          qty: 1, mesh: modernDiffuser,
-          note: 'upright, print in translucent PETG' });
+        modernParts.push({ id: 'diffuser_plate', label: 'Modern diffuser cup',
+          qty: 1,
+          mesh: { tris: transform(modernDiffuser.tris,
+                                  modernDiffuserPrintTransform(P)),
+                  manifold: modernDiffuser.manifold },
+          note: 'lid down, print in translucent PETG' });
       modernParts.push(
         { id: 'modern_base', label: 'Modern lamp-holder base', qty: 1,
           mesh: { tris: transform(modernBase.tris, modernBasePrintTransform(P)),
@@ -3667,6 +3676,7 @@ var Kumiko = (function () {
     volume: volume, bbox: bbox, stlBinary: stlBinary, zipStore: zipStore,
     transform: transform, capPrintTransform: capPrintTransform,
     modernBasePrintTransform: modernBasePrintTransform,
+    modernDiffuserPrintTransform: modernDiffuserPrintTransform,
     modernThreadProfile: modernThreadProfile,
     modernThreadedAnnulus: modernThreadedAnnulus
   };
@@ -3835,7 +3845,7 @@ var Kumiko = (function () {
     en: {
       '.block:nth-of-type(2) .cols > div:nth-child(2) ol':'<li>Fit the E27 or E14 adapter ring and wire the LED holder in the base.</li><li>Lower the shade over the base neck, then turn gently until the threads engage.</li><li>Turn only until the full 10 mm thread engagement is reached; do not force it.</li>',
       '.block:nth-of-type(2) .cols > div:nth-child(2) p':'The shade remains removable for bulb access. Start with 0.30 mm thread clearance; increase it after a small test section if your printer makes the fit tight.',
-      '.block:nth-of-type(2) .cols > div:nth-child(3) p':'Choose a Diffuser thickness from 1 to 4 mm to generate a removable cylindrical sleeve behind the lattice. It prints upright without supports; use translucent PETG. Leave it at zero for a paper or vellum liner.',
+      '.block:nth-of-type(2) .cols > div:nth-child(3) p':'Choose a Diffuser thickness from 1 to 4 mm to generate a removable cylindrical cup behind the lattice. Its solid upper lid finishes level with the shade top, and its lower end stays open. It prints lid-down without supports; use translucent PETG. Leave it at zero for a paper or vellum liner.',
       '.block:nth-of-type(2) .cols > div:nth-child(3) dl':'<div><dt>Generated diffuser</dt><dd id="s-diff">none</dd></div><div><dt>Thread engagement</dt><dd id="s-reb">10.0 mm</dd></div>',
       '.block:nth-of-type(2) .warn p:nth-of-type(2)':'Print the <strong>base in PETG</strong>; it sits nearest the bulb. PETG is also recommended for the threaded lower shade ring. Mains wiring is your responsibility.',
       '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(1)':'The <strong>downloaded Modern shade, base, adapter ring and optional diffuser</strong> are each emitted as one watertight body. The shade export shares float32 vertices across its continuous wrap, rings and female thread, so strict STL checks see one consistently wound shell.',
@@ -3845,10 +3855,10 @@ var Kumiko = (function () {
     th: {
       '.block:nth-of-type(2) .cols > div:nth-child(2) ol':'<li>ติดตั้งวงแหวนแปลง E27 หรือ E14 และเดินสายขั้วหลอด LED ในฐาน</li><li>สวมโป๊ะครอบคอฐาน แล้วหมุนเบา ๆ จนเกลียวเริ่มจับกัน</li><li>หมุนเพียงจนเกลียวสวมกันครบระยะ 10 mm อย่าฝืนขัน</li>',
       '.block:nth-of-type(2) .cols > div:nth-child(2) p':'ถอดโป๊ะออกเพื่อเปลี่ยนหลอดไฟได้ เริ่มด้วยระยะเผื่อเกลียว 0.30 mm และเพิ่มค่าหลังพิมพ์ชิ้นทดสอบเล็ก ๆ หากเครื่องพิมพ์ของคุณทำให้เกลียวแน่นเกินไป',
-      '.block:nth-of-type(2) .cols > div:nth-child(3) p':'เลือกความหนาตัวกระจายแสงตั้งแต่ 1 ถึง 4 mm เพื่อสร้างปลอกทรงกระบอกแบบถอดได้หลังโครงลาย พิมพ์ตั้งโดยไม่ใช้ซัพพอร์ตด้วย PETG โปร่งแสง หรือตั้งเป็นศูนย์เพื่อใช้กระดาษหรือเวลลัม',
+      '.block:nth-of-type(2) .cols > div:nth-child(3) p':'เลือกความหนาตัวกระจายแสงตั้งแต่ 1 ถึง 4 mm เพื่อสร้างถ้วยทรงกระบอกแบบถอดได้หลังโครงลาย ฝาบนปิดทึบและเสมอกับขอบบนของโป๊ะ ส่วนด้านล่างเปิดอยู่ พิมพ์คว่ำฝาลงโดยไม่ใช้ซัพพอร์ตด้วย PETG โปร่งแสง หรือตั้งเป็นศูนย์เพื่อใช้กระดาษหรือเวลลัม',
       '.block:nth-of-type(2) .cols > div:nth-child(3) dl':'<div><dt>ชิ้นส่วนกระจายแสงที่สร้าง</dt><dd id="s-diff">ไม่มี</dd></div><div><dt>ระยะเกลียวสวม</dt><dd id="s-reb">10.0 mm</dd></div>',
       '.block:nth-of-type(2) .warn p:nth-of-type(2)':'พิมพ์<strong>ฐานด้วย PETG</strong> เพราะอยู่ใกล้หลอดไฟที่สุด และแนะนำ PETG สำหรับวงแหวนเกลียวล่างของโป๊ะด้วย การเดินสายไฟบ้านเป็นความรับผิดชอบของผู้ประกอบ',
-      '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(1)':'<strong>โป๊ะโมเดิร์น ฐาน วงแหวนแปลง และปลอกกระจายแสงเสริมที่ดาวน์โหลด</strong>ถูกสร้างเป็นเมชปิดสนิทชิ้นเดียวแต่ละชิ้น ไฟล์โป๊ะใช้จุดยอด float32 ร่วมกันตลอดลายพันรอบ วงแหวน และเกลียวตัวเมีย เครื่องมือตรวจ STL แบบเข้มงวดจึงเห็นเป็นเปลือกเดียวที่เรียงหน้าสม่ำเสมอ',
+      '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(1)':'<strong>โป๊ะโมเดิร์น ฐาน วงแหวนแปลง และถ้วยกระจายแสงเสริมที่ดาวน์โหลด</strong>ถูกสร้างเป็นเมชปิดสนิทชิ้นเดียวแต่ละชิ้น ไฟล์โป๊ะใช้จุดยอด float32 ร่วมกันตลอดลายพันรอบ วงแหวน และเกลียวตัวเมีย เครื่องมือตรวจ STL แบบเข้มงวดจึงเห็นเป็นเปลือกเดียวที่เรียงหน้าสม่ำเสมอ',
       '.block:nth-of-type(3) .cols > div:nth-child(1) p:nth-of-type(2)':'ภาพตัวอย่างโมเดิร์นใช้ซี่โค้งแบบซ้อนที่มีน้ำหนักเบาเพื่อให้ทุกตัวควบคุมตอบสนองทันที เมื่อกดดาวน์โหลด STL หรือ ZIP ระบบจะสร้างโป๊ะใหม่ด้วยเมชส่งออกแบบชิ้นเดียวที่เป็นแมนิโฟลด์อย่างเข้มงวดโดยอัตโนมัติ',
       '.block:nth-of-type(3) .cols > div:nth-child(2) p':'ปริมาตรโป๊ะในตารางมาจากภาพตัวอย่างน้ำหนักเบา จึงนับซี่ที่ซ้อนกันมากกว่าหนึ่งครั้ง โป๊ะเมชปิดสนิทที่ดาวน์โหลดมีปริมาตรหลังรวมใกล้เคียงไฟล์ CSG จาก Python ส่วนปริมาตรฐานและวงแหวนแปลงไม่เปลี่ยนแปลง'
     }
@@ -4032,7 +4042,7 @@ var Kumiko = (function () {
     ]},
     { name: 'Diffuser', items: [
       /* 0 disables the part.  At any positive printable thickness this is a
-         single open-ended sleeve, not four Classic panels. */
+         single closed-top cup, not four Classic panels. */
       ['plateT', 'Diffuser thickness', 0, 4, 0.2, 'mm']
     ]},
     { name: 'Thread', items: [
@@ -4784,12 +4794,12 @@ var Kumiko = (function () {
       var tr = el('tr');
       var td0 = el('td');
       var partLabels = { diffuser_plate:(model.P.lanternStyle === 'modern'
-          ? 'ปลอกกระจายแสงโมเดิร์น' : 'แผ่นกระจายแสง'), post:'เสามุม', base:'ฐาน',
+          ? 'ถ้วยกระจายแสงโมเดิร์น' : 'แผ่นกระจายแสง'), post:'เสามุม', base:'ฐาน',
         top_cap:'ฝาบน', leg:'ขา', finial:'ฝาครอบหัวสกรูทรงยอด',
         modern_base:'ฐานขั้วหลอดแบบโมเดิร์น',
         socket_adapter_ring:'วงแหวนแปลง ' + model.P.holderType.toUpperCase() };
       var partNotes = { diffuser_plate:(model.P.lanternStyle === 'modern'
-          ? 'พิมพ์ตั้งด้วย PETG โปร่งแสง' : 'วางราบ พิมพ์ด้วย PETG ใส'), post:'วางตั้งและใช้ปีกยึด',
+          ? 'คว่ำฝาลง พิมพ์ด้วย PETG โปร่งแสง' : 'วางราบ พิมพ์ด้วย PETG ใส'), post:'วางตั้งและใช้ปีกยึด',
         base:'ใช้ทิศทางตามไฟล์ส่งออก', top_cap:'พลิกพร้อมสำหรับการพิมพ์แล้ว',
         leg:'หงายเดือยขึ้นตามไฟล์ส่งออก',
         finial:(model.P.snapped ? 'หงายบ่าสแนปขึ้นตามไฟล์ส่งออก' : 'หงายเดือยขึ้นตามไฟล์ส่งออก'),
@@ -4873,9 +4883,9 @@ var Kumiko = (function () {
       'Modern lattice depth is under two extrusions.':'ความลึกโครงลายโมเดิร์นน้อยกว่าสองแนวฉีด',
       'Modern pattern pitch must be wider than its slats.':'ระยะลายโมเดิร์นต้องกว้างกว่าซี่ลาย',
       'Diffuser thickness cannot be negative.':'ความหนาตัวกระจายแสงต้องไม่ติดลบ',
-      'Diffuser sleeve thickness closes its hollow centre.':'ปลอกกระจายแสงหนาเกินไปจนช่องกลางตัน',
-      'Diffuser sleeve thickness is under the 1.0 mm minimum.':'ปลอกกระจายแสงบางกว่าค่าต่ำสุด 1.0 mm',
-      'Diffuser sleeve thickness exceeds the 4.0 mm maximum.':'ปลอกกระจายแสงหนาเกินค่าสูงสุด 4.0 mm',
+      'Diffuser cup thickness closes its hollow centre.':'ถ้วยกระจายแสงหนาเกินไปจนช่องกลางตัน',
+      'Diffuser cup thickness is under the 1.0 mm minimum.':'ถ้วยกระจายแสงบางกว่าค่าต่ำสุด 1.0 mm',
+      'Diffuser cup thickness exceeds the 4.0 mm maximum.':'ถ้วยกระจายแสงหนาเกินค่าสูงสุด 4.0 mm',
       'Thread clearance is under the 0.10 mm radial minimum.':'ระยะเผื่อเกลียวน้อยกว่าค่าต่ำสุดตามรัศมี 0.10 mm',
       'Female thread leaves under two walls at the shade outside.':'เกลียวตัวเมียเหลือผนังด้านนอกโป๊ะน้อยกว่าสองเส้น',
       'Modern neck has insufficient wall outside the holder deck.':'คอฐานโมเดิร์นมีผนังรอบแท่นขั้วหลอดไม่เพียงพอ',
@@ -4989,8 +4999,8 @@ var Kumiko = (function () {
     if (P.lanternStyle === 'modern') {
       document.getElementById('s-diff').textContent = P.glazed
         ? (lang === 'th'
-          ? 'ปลอกพิมพ์ ×1 — หนา ' + fmt(P.plateT, 1) + ' mm'
-          : 'printed sleeve ×1 — ' + fmt(P.plateT, 1) + ' mm thick')
+          ? 'ถ้วยพิมพ์ ×1 — หนา ' + fmt(P.plateT, 1) + ' mm'
+          : 'printed cup ×1 — ' + fmt(P.plateT, 1) + ' mm thick')
         : (lang === 'th' ? 'ไม่มี — เลือกใส่กระดาษเอง' : 'none — optional paper liner');
       document.getElementById('s-reb').textContent = fmt(P.modernThreadEngagement, 1) + ' mm';
     } else {

@@ -240,11 +240,13 @@ do not encode either diameter. Browser ZIP names retain
 `kumiko-lamp-modern-shade100mm-base140mm-<pattern>.zip` form when they differ.
 
 `plate_t` is shared deliberately: in Classic it is each flat groove-held plate, while in
-Modern it enables one open-ended `diffuser_plate.stl` sleeve. The Modern sleeve occupies
-only `modern_lattice_h`, prints upright, and is assembled on top of the lower ring at
-`modern_inner_r - MODERN_DIFFUSER_CLEARANCE`. Keep the fixed 0.4 mm radial clearance and
-the browser/Python annular geometry in sync. At `plate_t = 0` it must not appear in the
-part list, ZIP, or assembly so the default Modern artifact set remains unchanged. Positive
+Modern it enables one closed-top, open-bottom `diffuser_plate.stl` cup. The Modern cup uses
+`modern_diffuser_h = height - MODERN_RING_H`, assembles lid-up on top of the lower ring at
+`modern_inner_r - MODERN_DIFFUSER_CLEARANCE`, and exports lid-down through a dedicated
+print transform. Its flat lid is level with the shade top and uses the same `plate_t` as
+its wall. Keep the fixed 0.4 mm radial clearance and the browser/Python cup geometry in
+sync. At `plate_t = 0` it must not
+appear in the part list, ZIP, or assembly so the default Modern artifact set remains unchanged. Positive
 Modern values are inclusive from 1.0 through 4.0 mm; the browser slider and both guards
 must reject the otherwise reachable 0.2–0.8 mm notches and API values over 4.0 mm.
 
