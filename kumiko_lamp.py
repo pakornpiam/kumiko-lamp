@@ -28,6 +28,8 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
+from sakura_v2_tile import SAKURA_V2_TILE_ASPECT, SAKURA_V2_TILE_LOOPS
+
 EPS = 1e-3          # nudge used to make through-cuts unambiguous
 SNAP_BAND_H = 0.4   # two 0.2 mm layers
 SNAP_TIP = 0.6      # solid lead-in left beyond the detent
@@ -809,6 +811,28 @@ def pat_asanoha(w, h, s):
     return ss.segs
 
 
+def pat_sakura(w, h, s):
+    """Sakura: triangular grid plus centroid-to-edge-midpoint petals.
+
+    Each triangular opening receives the traditional three-spoke insert.  The
+    spoke endpoints stay exactly on the grid edge and at the shared centroid:
+    extending them creates nearly coincident boundaries after the Modern field
+    is bent and can open the float32 STL at those junctions.
+    """
+    ss = SegSet()
+    for tri in _triangles(w, h, s):
+        for j in range(3):
+            ss.add(tri[j], tri[(j + 1) % 3])
+        c = (sum(p[0] for p in tri) / 3.0,
+             sum(p[1] for p in tri) / 3.0)
+        for j in range(3):
+            q = tri[(j + 1) % 3]
+            midpoint = ((tri[j][0] + q[0]) / 2.0,
+                        (tri[j][1] + q[1]) / 2.0)
+            ss.add(c, midpoint)
+    return ss.segs
+
+
 def _hexes(w, h, r):
     """Pointy-top hexagon centres and vertices covering w x h."""
     col_w = math.sqrt(3.0) * r
@@ -1239,6 +1263,59 @@ def modern_point_in_seigaiha(u, z, grid, slat_w):
     return modern_seigaiha_signed_distance(u, z, grid) <= delta
 
 
+def sakura_v2_contours(w, h, s):
+    """Repeat the exact filled tile from vectorstock_20834246.svg."""
+    tile_w = 2.0 * s
+    tile_h = tile_w * SAKURA_V2_TILE_ASPECT
+    i0 = int(math.ceil((-w / 2.0 - tile_w / 2.0) / tile_w))
+    i1 = int(math.floor((w / 2.0 + tile_w / 2.0) / tile_w))
+    j0 = int(math.ceil((-h / 2.0 - tile_h / 2.0) / tile_h))
+    j1 = int(math.floor((h / 2.0 + tile_h / 2.0) / tile_h))
+    out = []
+    for j in range(j0, j1 + 1):
+        for i in range(i0, i1 + 1):
+            ox, oy = i * tile_w, j * tile_h
+            for flat in SAKURA_V2_TILE_LOOPS:
+                out.append([(ox + flat[k] * tile_w,
+                             oy + flat[k + 1] * tile_w)
+                            for k in range(0, len(flat), 2)])
+    return out
+
+
+def _filled_tile_sample(loops, x, y):
+    """Return Positive-fill membership and contour distance in tile units."""
+    winding, best = 0, math.inf
+    for flat in loops:
+        pts = list(zip(flat[::2], flat[1::2]))
+        for p, q in zip(pts, pts[1:] + pts[:1]):
+            cross = ((q[0] - p[0]) * (y - p[1]) -
+                     (x - p[0]) * (q[1] - p[1]))
+            if p[1] <= y:
+                if q[1] > y and cross > 0:
+                    winding += 1
+            elif q[1] <= y and cross < 0:
+                winding -= 1
+            dx, dy = q[0] - p[0], q[1] - p[1]
+            den = dx * dx + dy * dy
+            t = 0.0 if den == 0 else max(
+                0.0, min(1.0, ((x - p[0]) * dx +
+                               (y - p[1]) * dy) / den))
+            best = min(best, math.hypot(
+                x - (p[0] + t * dx), y - (p[1] + t * dy)))
+    return winding > 0, best
+
+
+def modern_sakura_v2_signed_distance(u, z, grid):
+    """Periodic signed distance to the imported Sakura V2 artwork."""
+    tile_w = 2.0 * grid
+    tile_h = tile_w * SAKURA_V2_TILE_ASPECT
+    x = (u + tile_w / 2.0) % tile_w - tile_w / 2.0
+    y = (z + tile_h / 2.0) % tile_h - tile_h / 2.0
+    inside, distance = _filled_tile_sample(
+        SAKURA_V2_TILE_LOOPS, x / tile_w, y / tile_w)
+    return (-1.0 if inside else 1.0) * distance * tile_w
+
+
 # --------------------------------------------------------------------------
 # Lai Thai (ลายไทย) patterns
 #
@@ -1580,6 +1657,7 @@ def _region_thai_rosette(w, h, s):
 
 PATTERN_REGIONS = {
     "thai_rosette": _region_thai_rosette,
+    "sakura_v2": sakura_v2_contours,
 }
 
 
@@ -1615,6 +1693,7 @@ PATTERNS = {
     "goma_gara": pat_goma,
     "bishamon_kikkou": pat_bishamon,
     "seigaiha": pat_seigaiha,
+    "sakura": pat_sakura,
     "kranok_kan_khot": pat_kranok_kan_khot,
     "dok_phut_tan": pat_dok_phut_tan,
 }
@@ -1627,9 +1706,8 @@ PATTERN_FAMILY = {name: "laithai" if name in LAITHAI else "kumiko"
 # --pattern, out of --all, and out of the configurator.  Everything else stays
 # -- the generators, the baked contour table, tools/svg2pattern.py and the three
 # checked-in STLs -- so flipping this back to True is the whole re-enable.
-# thai_rosette is the only region pattern, which is why this is a switch rather
-# than a deletion: removing it would take PATTERN_REGIONS, extrude_region and
-# the imported-artwork extension point with it.
+# Thai Rosette remains a useful imported-region implementation and test case;
+# Sakura V2 now uses the same region extension point while staying enabled.
 LAITHAI_ENABLED = False
 
 
@@ -1645,8 +1723,9 @@ def pattern_names():
 
 
 def kumiko_pattern_names():
-    """The eleven Kumiko names that can wrap around a modern shade."""
-    return sorted(name for name in PATTERNS if name not in LAITHAI)
+    """The thirteen Kumiko names that can wrap around a modern shade."""
+    return sorted(name for name in list(PATTERNS) + list(PATTERN_REGIONS)
+                  if name not in LAITHAI)
 
 
 def is_region(pattern: str) -> bool:
@@ -1662,7 +1741,8 @@ def is_region(pattern: str) -> bool:
 # the panel rather than a grille, so it falls back.  The single-body assertion
 # in check_part is the backstop for anything else that opts out.
 CAP_FALLBACK = "kikkou"
-CAP_UNSAFE = frozenset({"kranok_kan_khot", "dok_phut_tan", "thai_rosette"})
+CAP_UNSAFE = frozenset({"kranok_kan_khot", "dok_phut_tan", "thai_rosette",
+                        "sakura_v2"})
 PATTERN_CAP_SAFE = {name: name not in CAP_UNSAFE
                     for name in list(PATTERNS) + list(PATTERN_REGIONS)}
 
@@ -2282,15 +2362,21 @@ def _wrapped_pattern_shell(P: Params, pattern: str) -> trimesh.Trimesh:
     circumference = 2.0 * math.pi * r_out
     lattice_h = P.modern_lattice_h
     grow = MODERN_LATTICE_OVERLAP
-    if pattern == "seigaiha":
+    if pattern in {"seigaiha", "sakura_v2"}:
         # The reference artwork is a filled region, not a family of stroked
         # centre lines.  Preserve its signed contour hierarchy and offset the
         # material about the approved 1.6 mm reference weight.
-        contours = modern_seigaiha_contours(
+        contours = (modern_seigaiha_contours(
             circumference, lattice_h + 2 * grow, P.grid)
+            if pattern == "seigaiha" else sakura_v2_contours(
+                circumference, lattice_h + 2 * grow, P.grid))
         field = manifold3d.CrossSection(
             contours, manifold3d.FillRule.Positive)
-        delta = (P.slat_w - _SEIGAIHA_TILE_REFERENCE_SLAT) / 2.0
+        # Sakura V2 keeps the source's variable stroke weights exactly; there
+        # is no single slat width that can be applied without breaking joints.
+        reference_slat = (_SEIGAIHA_TILE_REFERENCE_SLAT
+                          if pattern == "seigaiha" else P.slat_w)
+        delta = (P.slat_w - reference_slat) / 2.0
         if abs(delta) > 1e-9:
             field = field.offset(delta, manifold3d.JoinType.Round,
                                  circular_segments=max(12, P.arc // 4))

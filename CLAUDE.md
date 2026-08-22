@@ -24,7 +24,7 @@ python3 kumiko_lamp.py --post-insert 4.0        # M3 inserts, screws, finials
 python3 kumiko_lamp.py --holder e14             # 27 mm E14 sleeve preset
 python3 kumiko_lamp.py --snap-lock              # 0.2 mm foot + finial detents
 python3 kumiko_lamp.py --style modern            # reference cylindrical lamp
-python3 kumiko_lamp.py --style modern --all      # 11 shades + base/ring + assembly preview
+python3 kumiko_lamp.py --style modern --all      # 13 shades + base/ring + assembly preview
 python3 kumiko_lamp.py --style modern --size 120 --height 240 --modern-base-height 100
 python3 kumiko_lamp.py --style modern --modern-base-diameter 140  # Ø100 shade, wider body
 python3 kumiko_lamp.py --style modern --holder e14 --thread-clearance 0.35
@@ -205,8 +205,8 @@ relabels the same `panelT` slider for the active style and its CLI echo must emi
 `--modern-base-diameter`, `--modern-base-height` and `--thread-clearance`.
 `--style {classic,modern}` is the only
 style selector. `--style modern --all` emits one Modern base, the stable adapter ring, all
-eleven Kumiko shades and the non-printable assembly preview; Classic `--all` continues to
-emit all eleven offered patterns and both post styles.
+thirteen Kumiko shades and the non-printable assembly preview; Classic `--all` continues to
+emit all thirteen offered patterns and both post styles.
 
 The reference Modern geometry is a Ø100 × 218 mm shade over a Ø100 × 90 mm hollow base.
 Shade and base radii are separate derived values: the rings, lattice and both halves of the
@@ -215,7 +215,7 @@ footprint follow `modern_base_d`. The 45° shoulder spans from that body radius 
 shade-sized thread root. The base
 has a 5 mm wall, circularly adapted ventilation, the existing Ø40/50 mm holder bore and
 counterbore, and a bottom cable outlet. The shade has 10 mm upper and lower rings and wraps
-the selected periodic Kumiko field around the circumference. Ten patterns map segments;
+the selected periodic Kumiko field around the circumference. Twelve patterns map segments;
 Modern Seigaiha maps its filled contours. Subdivide as needed to keep the cylindrical chord
 error at or below 0.1 mm, split at the angular seam and weld the seam vertices. Only
 patterns whose family is `kumiko` are valid: the three
@@ -233,7 +233,7 @@ The removable joint is a 10 mm-long printed thread with 2 mm pitch, 0.8 mm radia
 45° flanks and the configurable radial clearance. It places the shade 10 mm over the base
 neck, making the reference assembly 298 mm high. Keep the base model upright in assembly
 space but export `modern_base.stl` inverted for support-free printing. Modern outputs are
-`modern_base.stl` and `modern_shade_<pattern>.stl`; the reference base and all eleven
+`modern_base.stl` and `modern_shade_<pattern>.stl`; the reference base and all thirteen
 reference shades are checked in, but the source comparison STLs are not. Stable part names
 do not encode either diameter. Browser ZIP names retain
 `kumiko-lamp-modern-100mm-<pattern>.zip` for equal diameters and use the unambiguous
@@ -536,6 +536,11 @@ name so Classic selection, CLI flags and filenames do not change. Its contour ta
 periodic signed-distance helpers sit beside the Classic segment generator rather than in
 `PATTERN_REGIONS`, which would change Classic into a filled panel too.
 
+Sakura V2 is different: both Classic and Modern use the exact 79-contour filled repeat
+extracted from `reference/vectorstock_20834246.svg`, so it belongs in `PATTERN_REGIONS`.
+Its varying source-authored weights are not uniformly offset by the slat-width control;
+doing so changes the supplied silhouette and breaks fine joints.
+
 **Contours are baked, never parsed at runtime.** `web/index.html` has no file access and both
 implementations must emit identical geometry. Regenerate with `tools/svg2pattern.py` and
 paste into both. Source artwork lives in `reference/`.
@@ -636,7 +641,7 @@ there. `core.test.js`'s `strictBoundaryError` measures the boundary directly ins
 
 `stl/` and `preview/` are checked in generated outputs. Classic artifacts come from
 `python3 kumiko_lamp.py --all`. Regenerate Modern with `--style modern --all --out` pointed
-at a temporary directory, then bring back **only** `modern_base.stl` and the eleven
+at a temporary directory, then bring back **only** `modern_base.stl` and the thirteen
 `modern_shade_<pattern>.stl` files. Its stable adapter ring should match the existing file,
 and its style-specific `assembly_preview.stl` is for inspection, not for replacing the
 checked-in Classic preview. Do not hand-edit generated files. Verify all stock Classic

@@ -282,9 +282,9 @@ a { color: var(--ai); }
    so centre it rather than let it hang off the left edge of the card. */
 .swatch canvas { width: 100%; height: auto; display: block; margin-inline: auto; }
 /* 232px less padding leaves ~102px a button, which wraps "Kawari-asanoha" and
-   "Bishamon-kikkou".  Tighten the type rather than widen the column -- the
-   column's width is the preview's 808. */
-.picker .styles button { font-size: 12px; padding: 7px 3px; }
+   "Bishamon-kikkou".  Thirteen choices need seven rows, so keep those rows
+   compact rather than letting the picker make the preview taller than square. */
+.picker .styles button { font-size: 12px; padding: 5px 3px; }
 .picker .cap {
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
   text-transform: uppercase; color: var(--sumi-3);
@@ -1132,6 +1132,25 @@ var Kumiko = (function () {
     return ss.segs;
   }
 
+  function patSakura(w, h, s) {
+    var ss = new SegSet(), t = triGrid(w, h, s);
+    for (var i = 0; i < t.length; i++) {
+      var tri = t[i];
+      for (var j = 0; j < 3; j++) ss.add(tri[j], tri[(j + 1) % 3]);
+      var c = [(tri[0][0] + tri[1][0] + tri[2][0]) / 3,
+               (tri[0][1] + tri[1][1] + tri[2][1]) / 3];
+      /* Exact T-junctions are deliberate.  Extending these spokes creates
+         near-coincident boundaries that can open the bent float32 shell. */
+      for (var edge = 0; edge < 3; edge++) {
+        var q = tri[(edge + 1) % 3];
+        var midpoint = [(tri[edge][0] + q[0]) / 2,
+                        (tri[edge][1] + q[1]) / 2];
+        ss.add(c, midpoint);
+      }
+    }
+    return ss.segs;
+  }
+
   function hexGrid(w, h, r) {
     var colW = Math.sqrt(3) * r, rowH = 1.5 * r, out = [];
     var c0 = Math.floor(-w / 2 / colW) - 2, c1 = Math.ceil(w / 2 / colW) + 2;
@@ -1460,6 +1479,57 @@ var Kumiko = (function () {
     return modernSeigaihaSignedDistance(u, z, P) <= delta;
   }
 
+  /* Exact filled repeat extracted from reference/vectorstock_20834246.svg. */
+  var SAKURA_V2_TILE_ASPECT = (490.98 / 2) / (566.93 / 4);
+  var SAKURA_V2_TILE_LOOPS = [[0.5,0.866033,0.421641,0.866033,0.440725,0.85492,0.395287,0.828744,0.380117,0.85492,0.386489,0.866033,0.18297,0.866033,0.202247,0.85492,0.138112,0.817949,0.138112,0.866033,0.099095,0.866033,0.099095,0.789586,0.049071,0.702873,0.018803,0.702873,0.018803,0.866033,-0.020426,0.866033,-0.020426,0.702944,-0.050694,0.702944,-0.100718,0.789657,-0.100718,0.866033,-0.139735,0.866033,-0.139735,0.817949,-0.203658,0.85492,-0.184445,0.866033,-0.388152,0.866033,-0.38174,0.85485,-0.39691,0.828674,-0.442347,0.85485,-0.423142,0.866033,-0.5,0.866033,-0.5,-0.866033,-0.42318,-0.866033,-0.39691,-0.850899,-0.388139,-0.866033,-0.184689,-0.866033,-0.139735,-0.840033,-0.139735,-0.866033,-0.100647,-0.866033,-0.100647,-0.811529,-0.050624,-0.724816,-0.020355,-0.724816,-0.020355,-0.866033,0.018803,-0.866033,0.018803,-0.724746,0.049071,-0.724746,0.099095,-0.811458,0.099095,-0.866033,0.138112,-0.866033,0.138112,-0.840033,0.183215,-0.866033,0.386476,-0.866033,0.395287,-0.850828,0.42168,-0.866033,0.5,-0.866033],[0.082867,0.6834,0.132891,0.770113,0.246344,0.835588,0.346463,0.835588,0.361632,0.809412,0.098037,0.657224],[-0.362973,0.8092,-0.347803,0.835377,-0.247685,0.835377,-0.134232,0.769901,-0.084208,0.683188,-0.099377,0.657012],[-0.461821,0.821407,-0.416383,0.79523,-0.431552,0.768772,-0.461821,0.768772],[0.41476,0.79516,0.460198,0.821336,0.460198,0.768702,0.42993,0.768702],[0.117581,0.623569,0.381176,0.775757,0.396345,0.749299,0.346321,0.662798,0.232868,0.597111,0.13275,0.597111],[-0.347662,0.662586,-0.397686,0.749087,-0.382516,0.775545,-0.118921,0.623357,-0.134091,0.596899,-0.234209,0.596899],[-0.461821,0.425732,-0.461821,0.729826,-0.431552,0.729826,-0.381529,0.643325,-0.381529,0.512162,-0.431552,0.425661,-0.461821,0.425661],[0.380117,0.512021,0.380117,0.643113,0.42993,0.729614,0.460198,0.729614,0.460198,0.42552,0.42993,0.42552],[0.018803,0.663856,0.049071,0.663856,0.064241,0.63768,0.018803,0.611504],[-0.065793,0.637539,-0.050624,0.663715,-0.020355,0.663715,-0.020355,0.611363],[-0.342441,0.614467,-0.278306,0.577496,-0.342441,0.540525],[0.276965,0.577496,0.3411,0.614467,0.3411,0.540525],[-0.100506,0.577637,-0.085337,0.604096,-0.039899,0.577637,-0.085337,0.551461],[0.038135,0.577637,0.083573,0.604096,0.098742,0.577637,0.083573,0.551461],[0.117581,0.531988,0.13275,0.558164,0.232868,0.558164,0.346321,0.492689,0.346321,0.492759,0.396345,0.406258,0.381176,0.3798],[-0.397686,0.405905,-0.347662,0.492406,-0.234209,0.557882,-0.134091,0.557882,-0.118921,0.531706,-0.382516,0.379518,-0.382516,0.379447],[0.018803,0.544053,0.064241,0.517877,0.049071,0.491419,0.018803,0.491419],[-0.065793,0.517736,-0.020355,0.543912,-0.020355,0.491278,-0.050624,0.491278],[0.132891,0.385374,0.082888,0.47184,0.098037,0.498263,0.361632,0.346074,0.346463,0.319898,0.246344,0.319898],[-0.362973,0.345933,-0.362973,0.346004,-0.099377,0.498192,-0.084208,0.471734,-0.134232,0.385233,-0.247685,0.319757,-0.347803,0.319757],[0.018874,0.452684,0.049142,0.452684,0.099166,0.365901,0.099166,0.234809,0.049142,0.148308,0.018874,0.148308],[-0.100647,0.234526,-0.100647,0.365689,-0.050624,0.452472,-0.020355,0.452472,-0.020355,0.148096,-0.050624,0.148096,-0.050624,0.148025],[-0.461821,0.386644,-0.431552,0.386644,-0.416383,0.360186,-0.461821,0.334009],[0.41476,0.360115,0.42993,0.386573,0.460198,0.386573,0.460198,0.333939],[-0.203658,0.300284,-0.139735,0.337255,-0.139735,0.263313],[0.138112,0.337255,0.202247,0.300284,0.138112,0.263313],[0.380117,0.300284,0.395287,0.32646,0.440725,0.300284,0.395287,0.273826],[-0.442347,0.300213,-0.39691,0.32639,-0.38174,0.300213,-0.39691,0.273755],[0.082867,0.128693,0.132891,0.215194,0.132891,0.215265,0.246344,0.280952,0.346463,0.280952,0.361632,0.254494,0.098037,0.102517],[-0.362942,0.254264,-0.347803,0.28067,-0.247685,0.28067,-0.134232,0.214982,-0.084208,0.128481,-0.099377,0.102305],[-0.481365,0.232621,-0.435927,0.206445,-0.451096,0.180269,-0.481365,0.180269],[0.434234,0.206375,0.479671,0.232551,0.479671,0.180199,0.449403,0.180199],[0.137054,0.034713,0.400649,0.186901,0.415819,0.160725,0.365795,0.074013,0.252342,0.008537,0.152223,0.008537],[-0.367065,0.073872,-0.417089,0.160584,-0.401919,0.18676,-0.138324,0.034572,-0.153493,0.008396,-0.253612,0.008396],[-0.481365,0.141181,-0.451096,0.141181,-0.401072,0.054469,-0.401072,-0.076412,-0.451096,-0.163124,-0.451096,-0.163195,-0.481365,-0.163195],[0.399591,-0.076412,0.399591,0.054469,0.449403,0.141181,0.479671,0.141181,0.479671,-0.163124,0.449403,-0.163124],[0.018803,0.10922,0.049071,0.10922,0.064241,0.083044,0.018803,0.056585],[-0.065793,0.082973,-0.050624,0.109149,-0.020355,0.109149,-0.020355,0.056515],[-0.361985,0.025964,-0.29785,-0.011007,-0.361985,-0.047978],[0.296509,-0.011007,0.360644,0.025964,0.360644,-0.047978],[-0.11998,-0.010866,-0.10481,0.015311,-0.059372,-0.010866,-0.10481,-0.037042],[0.05782,-0.010866,0.103258,0.015311,0.118427,-0.010866,0.103258,-0.037042],[0.137054,-0.056656,0.152223,-0.03048,0.252342,-0.03048,0.365795,-0.095955,0.415819,-0.182668,0.400649,-0.208844],[-0.417089,-0.182739,-0.367065,-0.096026,-0.253612,-0.030551,-0.153493,-0.030551,-0.138324,-0.056727,-0.401919,-0.208915],[-0.085337,-0.070908,-0.039899,-0.044732,-0.039899,-0.097084,-0.070167,-0.097084],[0.038347,-0.044803,0.083785,-0.070979,0.068615,-0.097155,0.038347,-0.097155],[0.152506,-0.203129,0.102482,-0.116628,0.117651,-0.090452,0.381246,-0.24264,0.366077,-0.268816,0.265959,-0.268816],[-0.382516,-0.242852,-0.118921,-0.090664,-0.103752,-0.11684,-0.153776,-0.203341,-0.267229,-0.269028,-0.367347,-0.269028],[-0.120191,-0.353836,-0.120191,-0.222673,-0.070167,-0.136172,-0.039899,-0.136172,-0.039899,-0.440548,-0.070167,-0.440548],[0.038347,-0.136172,0.068615,-0.136172,0.118639,-0.222673,0.118639,-0.353836,0.068615,-0.440548,0.038347,-0.440548],[-0.481365,-0.202141,-0.451096,-0.202141,-0.435927,-0.228317,-0.481365,-0.254494],[0.434234,-0.228388,0.449403,-0.202212,0.479671,-0.202212,0.479671,-0.254564],[0.157656,-0.251389,0.221791,-0.28836,0.157656,-0.325331],[-0.223132,-0.288501,-0.159208,-0.25153,-0.159208,-0.325472],[-0.461821,-0.288431,-0.416383,-0.262255,-0.401214,-0.288431,-0.416383,-0.314607],[0.399591,-0.288501,0.41476,-0.262325,0.460198,-0.288501,0.41476,-0.314677],[0.102482,-0.460022,0.152506,-0.373309,0.265959,-0.307833,0.366077,-0.307833,0.381246,-0.334009,0.117651,-0.486198],[-0.382516,-0.334221,-0.367347,-0.308045,-0.267229,-0.308045,-0.153776,-0.373521,-0.103752,-0.460233,-0.118921,-0.486409],[-0.481365,-0.322015,-0.435927,-0.348473,-0.451096,-0.374649,-0.481365,-0.374649],[0.434234,-0.348544,0.479671,-0.322086,0.479671,-0.37472,0.449403,-0.37472],[-0.367065,-0.480694,-0.367065,-0.480624,-0.417089,-0.394123,-0.401919,-0.367947,-0.138324,-0.519923,-0.153493,-0.546381,-0.253612,-0.546381],[0.137054,-0.519994,0.400649,-0.368017,0.415819,-0.394193,0.365795,-0.480694,0.252342,-0.546381,0.152223,-0.546381,0.152223,-0.546452],[-0.481365,-0.413667,-0.451096,-0.413667,-0.401072,-0.500168,-0.401072,-0.63133,-0.451096,-0.718043,-0.481365,-0.718043],[0.399591,-0.631401,0.399591,-0.500238,0.449403,-0.413737,0.479671,-0.413737,0.479671,-0.718113,0.449403,-0.718113],[0.038276,-0.479565,0.068545,-0.479565,0.083714,-0.505741,0.038276,-0.531918],[-0.085266,-0.505883,-0.070097,-0.479706,-0.039829,-0.479706,-0.039829,-0.532059],[-0.361985,-0.528884,-0.29785,-0.565855,-0.361985,-0.602826],[0.296509,-0.565925,0.360644,-0.528954,0.360644,-0.602896],[-0.11998,-0.565784,-0.10481,-0.539326,-0.059372,-0.565784,-0.10481,-0.59196],[0.05782,-0.565784,0.103258,-0.539326,0.118427,-0.565784,0.103258,-0.59196],[0.137054,-0.611575,0.152223,-0.585399,0.252342,-0.585399,0.252342,-0.585328,0.365795,-0.650803,0.415819,-0.737304,0.400649,-0.763763],[-0.417089,-0.737375,-0.367065,-0.650874,-0.253612,-0.585399,-0.253612,-0.585469,-0.153493,-0.585469,-0.138324,-0.611645,-0.401919,-0.763833],[0.018803,-0.633306,0.064241,-0.659482,0.049071,-0.685658,0.018803,-0.685658],[-0.065793,-0.659552,-0.020355,-0.633376,-0.020355,-0.685728,-0.050624,-0.685728],[0.132891,-0.791844,0.082867,-0.705131,0.098037,-0.678955,0.361632,-0.831143,0.346463,-0.857319,0.246344,-0.857319],[-0.362973,-0.831355,-0.099377,-0.679167,-0.084208,-0.705343,-0.134232,-0.792055,-0.247685,-0.857531,-0.347803,-0.857531],[-0.481365,-0.75706,-0.451096,-0.75706,-0.435927,-0.783236,-0.481365,-0.809412],[0.434234,-0.783307,0.449403,-0.757131,0.479671,-0.757131,0.479671,-0.809483]];
+
+  function sakuraV2Contours(w, h, s) {
+    var tw = 2 * s, th = tw * SAKURA_V2_TILE_ASPECT, out = [];
+    var i0 = Math.ceil((-w / 2 - tw / 2) / tw);
+    var i1 = Math.floor((w / 2 + tw / 2) / tw);
+    var j0 = Math.ceil((-h / 2 - th / 2) / th);
+    var j1 = Math.floor((h / 2 + th / 2) / th);
+    for (var j = j0; j <= j1; j++) for (var i = i0; i <= i1; i++) {
+      var ox = i * tw, oy = j * th;
+      for (var n = 0; n < SAKURA_V2_TILE_LOOPS.length; n++) {
+        var flat = SAKURA_V2_TILE_LOOPS[n], lp = [];
+        for (var k = 0; k < flat.length; k += 2)
+          lp.push([ox + flat[k] * tw, oy + flat[k + 1] * tw]);
+        out.push(lp);
+      }
+    }
+    return out;
+  }
+
+  function filledTileSample(loops, x, y) {
+    var winding = 0, minD2 = Infinity;
+    for (var n = 0; n < loops.length; n++) {
+      var flat = loops[n];
+      for (var i = 0; i < flat.length; i += 2) {
+        var j = (i + 2) % flat.length;
+        var x1 = flat[i], y1 = flat[i + 1], x2 = flat[j], y2 = flat[j + 1];
+        var cross = (x2 - x1) * (y - y1) - (x - x1) * (y2 - y1);
+        if (y1 <= y) { if (y2 > y && cross > 0) winding++; }
+        else if (y2 <= y && cross < 0) winding--;
+        var dx = x2 - x1, dy = y2 - y1, den = dx * dx + dy * dy;
+        var t = den ? ((x - x1) * dx + (y - y1) * dy) / den : 0;
+        t = Math.max(0, Math.min(1, t));
+        var rx = x - (x1 + t * dx), ry = y - (y1 + t * dy);
+        minD2 = Math.min(minD2, rx * rx + ry * ry);
+      }
+    }
+    return { inside: winding > 0, distance: Math.sqrt(minD2) };
+  }
+
+  function modernSakuraV2SignedDistance(u, z, P) {
+    var tw = 2 * P.grid, th = tw * SAKURA_V2_TILE_ASPECT;
+    var x = ((u + tw / 2) % tw + tw) % tw - tw / 2;
+    var y = ((z + th / 2) % th + th) % th - th / 2;
+    var sample = filledTileSample(SAKURA_V2_TILE_LOOPS, x / tw, y / tw);
+    return (sample.inside ? -1 : 1) * sample.distance * tw;
+  }
+
+
 
   // ------------------------------------------------------------------
   // Lai Thai (ลายไทย) — curvilinear, so stroked as polylines rather than
@@ -1729,7 +1799,10 @@ var Kumiko = (function () {
     return out;
   }
 
-  var PATTERN_REGIONS = { thai_rosette: regionThaiRosette };
+  var PATTERN_REGIONS = {
+    thai_rosette: regionThaiRosette,
+    sakura_v2: sakuraV2Contours
+  };
   function isRegion(p) { return Object.prototype.hasOwnProperty.call(PATTERN_REGIONS, p); }
 
   var PATTERNS = {
@@ -1744,6 +1817,7 @@ var Kumiko = (function () {
     goma_gara: patGoma,
     bishamon_kikkou: patBishamon,
     seigaiha: patSeigaiha,
+    sakura: patSakura,
     kranok_kan_khot: patKranok,
     dok_phut_tan: patDokPhutTan
   };
@@ -1753,7 +1827,7 @@ var Kumiko = (function () {
     kagome: 'Kagome', masu: 'Masu', masu_tsunagi: 'Masu-tsunagi',
     senbon: 'Senbon',
     goma_gara: 'Goma-gara', bishamon_kikkou: 'Bishamon-kikkou',
-    seigaiha: 'Seigaiha',
+    seigaiha: 'Seigaiha', sakura: 'Sakura', sakura_v2: 'Sakura V2',
     kranok_kan_khot: 'Kranok Kan Khot', dok_phut_tan: 'Dok Phut Tan',
     thai_rosette: 'Thai Rosette'
   };
@@ -1769,6 +1843,8 @@ var Kumiko = (function () {
     goma_gara: 'Sesame seeds — a small-seed motif evoking fertility, plenty, and flourishing life.',
     bishamon_kikkou: 'Bishamon tortoiseshell — an armour-like emblem of protection, dignity, and good fortune.',
     seigaiha: 'Blue-ocean waves — a peaceful life and good fortune continuing without end.',
+    sakura: 'Cherry blossoms — renewal, fleeting beauty, and hope returning with spring.',
+    sakura_v2: 'Interlocking cherry blossoms — renewal, fleeting beauty, and hope returning with spring.',
     kranok_kan_khot: 'A curling Thai flame-vine — graceful growth, vitality, and life unfolding.',
     dok_phut_tan: 'The cotton-rose flower — layered beauty, blossoming, and natural abundance.',
     thai_rosette: 'A four-way floral rosette — harmony, balance, and beauty radiating from a shared centre.'
@@ -1800,7 +1876,8 @@ var Kumiko = (function () {
      A lattice always survives that; panel-sized compositions also become too
      dense to read at vent scale. Anything in CAP_UNSAFE uses Kikkou instead. */
   var CAP_FALLBACK = 'kikkou';
-  var CAP_UNSAFE = ['kranok_kan_khot', 'dok_phut_tan', 'thai_rosette'];
+  var CAP_UNSAFE = ['kranok_kan_khot', 'dok_phut_tan', 'thai_rosette',
+                    'sakura_v2'];
   var PATTERN_CAP_SAFE = {};
   allPatternNames().forEach(function (n) {
     PATTERN_CAP_SAFE[n] = CAP_UNSAFE.indexOf(n) < 0;
@@ -2438,7 +2515,7 @@ var Kumiko = (function () {
        the slat path this IS manifold -- the winding rule resolves the holes,
        so there are no overlapping prisms to double-count. */
     if (isRegion(pattern)) {
-      var cont = PATTERN_REGIONS[pattern](P.openW, P.openH), loops = [];
+      var cont = PATTERN_REGIONS[pattern](P.openW, P.openH, P.grid), loops = [];
       for (i = 0; i < cont.length; i++) {
         var lp = [], c = cont[i];
         for (var k = 0; k < c.length; k++) lp.push([c[k][0], c[k][1] + cy]);
@@ -2571,7 +2648,7 @@ var Kumiko = (function () {
   function buildModernShade(P, pattern) {
     if (PATTERN_FAMILY[pattern] !== 'kumiko')
       throw new Error('Modern lanterns support Kumiko patterns only.');
-    if (pattern === 'seigaiha') {
+    if (pattern === 'seigaiha' || pattern === 'sakura_v2') {
       /* The filled artwork needs one shared occupancy shell, not overlapping
          swept slats.  A coarser live grid keeps controls responsive; downloads
          use buildStrictModernShade's normal sub-millimetre grid. */
@@ -2682,27 +2759,35 @@ var Kumiko = (function () {
     /* Pattern generators carry generous construction padding.  Clip it before
        using periodic column indices; wrapping the padding itself would fold
        neighbouring construction tiles onto the shade. */
-    var grow = 0.8, exactSeigaiha = pattern === 'seigaiha';
-    var segs = exactSeigaiha ? [] :
+    var grow = 0.8;
+    var exactFilled = pattern === 'seigaiha' || pattern === 'sakura_v2';
+    var segs = exactFilled ? [] :
       clipRect(PATTERNS[pattern](C, P.modernOpenH, P.grid),
         -C / 2, -P.modernOpenH / 2 - grow,
          C / 2,  P.modernOpenH / 2 + grow);
     var half = P.slatW / 2;
     var endGrow = Math.min(P.slatW * 0.20, 0.25);
     var zShift = P.height / 2;
-    var artDelta = (P.slatW - SEIGAIHA_TILE_REFERENCE_SLAT) / 2;
-    function seigaihaFieldDistance(u, z) {
-      var art = modernSeigaihaSignedDistance(u - C / 2, z - zShift, P) - artDelta;
+    /* Sakura V2 has variable source-authored weights. Uniformly thinning it
+       breaks its finest joints, so its imported silhouette remains exact. */
+    var referenceSlat = pattern === 'sakura_v2'
+      ? P.slatW : SEIGAIHA_TILE_REFERENCE_SLAT;
+    var artDelta = (P.slatW - referenceSlat) / 2;
+    function filledFieldDistance(u, z) {
+      var artDistance = pattern === 'sakura_v2'
+        ? modernSakuraV2SignedDistance(u - C / 2, z - zShift, P)
+        : modernSeigaihaSignedDistance(u - C / 2, z - zShift, P);
+      var art = artDistance - artDelta;
       var seam = Math.min(Math.abs(u), Math.abs(C - u)) - half;
       return Math.min(art, seam);
     }
-    if (exactSeigaiha) {
+    if (exactFilled) {
       for (i = 0; i < nu; i++) {
         var eum = (i + 0.5) * du;
         for (j = 0; j < nz; j++) {
           zm = (zs[j] + zs[j + 1]) / 2;
           if (zm < ring || zm > P.height - ring) continue;
-          if (seigaihaFieldDistance(eum, zm) <= 0)
+          if (filledFieldDistance(eum, zm) <= 0)
             mask[index(i, j)] = 1;
         }
       }
@@ -2776,18 +2861,18 @@ var Kumiko = (function () {
        which erodes every crossing -- worst on the chained arcs of seigaiha. */
     var bestSigned = new Float32Array(nv).fill(Infinity);
     function vertexIndex(i, j) { return j * nu + ((i % nu) + nu) % nu; }
-    if (exactSeigaiha) {
+    if (exactFilled) {
       var gradStep = Math.min(0.05, target / 8);
       for (var evi = 0; evi < nu; evi++) {
         var euv = evi * du;
         for (var evj = 0; evj <= nz; evj++) {
           var ezv = zs[evj];
           if (ezv < ring - 1e-9 || ezv > P.height - ring + 1e-9) continue;
-          var esd = seigaihaFieldDistance(euv, ezv);
-          var egx = (seigaihaFieldDistance(euv + gradStep, ezv) -
-                     seigaihaFieldDistance(euv - gradStep, ezv)) / (2 * gradStep);
-          var egy = (seigaihaFieldDistance(euv, ezv + gradStep) -
-                     seigaihaFieldDistance(euv, ezv - gradStep)) / (2 * gradStep);
+          var esd = filledFieldDistance(euv, ezv);
+          var egx = (filledFieldDistance(euv + gradStep, ezv) -
+                     filledFieldDistance(euv - gradStep, ezv)) / (2 * gradStep);
+          var egy = (filledFieldDistance(euv, ezv + gradStep) -
+                     filledFieldDistance(euv, ezv - gradStep)) / (2 * gradStep);
           var egn = Math.hypot(egx, egy), evk = vertexIndex(evi, evj);
           bestSigned[evk] = esd;
           if (egn > 1e-8) {
@@ -2853,7 +2938,7 @@ var Kumiko = (function () {
 
     return { mask: mask, nu: nu, nz: nz, du: du, zs: zs, C: C,
       shiftU: shiftU, shiftZ: shiftZ,
-      slats: segs.length, filledRepeat: exactSeigaiha, filled: filled, target: target,
+      slats: segs.length, filledRepeat: exactFilled, filled: filled, target: target,
       chordError: R * (1 - Math.cos(Math.PI / nu)) };
   }
 
@@ -3661,9 +3746,13 @@ var Kumiko = (function () {
     buildModernShade: buildModernShade, buildStrictModernShade: buildStrictModernShade,
     buildModernBase: buildModernBase,
     SEIGAIHA_TILE_LOOPS: SEIGAIHA_TILE_LOOPS,
+    SAKURA_V2_TILE_LOOPS: SAKURA_V2_TILE_LOOPS,
+    SAKURA_V2_TILE_ASPECT: SAKURA_V2_TILE_ASPECT,
     SEIGAIHA_TILE_REFERENCE_SLAT: SEIGAIHA_TILE_REFERENCE_SLAT,
     SEIGAIHA_MAX_BRIDGE: SEIGAIHA_MAX_BRIDGE,
     modernSeigaihaContours: modernSeigaihaContours,
+    sakuraV2Contours: sakuraV2Contours,
+    modernSakuraV2SignedDistance: modernSakuraV2SignedDistance,
     modernSeigaihaSignedDistance: modernSeigaihaSignedDistance,
     modernPointInSeigaiha: modernPointInSeigaiha,
     modernSeigaihaBridgeSpan: modernSeigaihaBridgeSpan,
@@ -3765,6 +3854,7 @@ var Kumiko = (function () {
     kagome:'คาโกเมะ (Kagome)', masu:'มาสุ (Masu)', masu_tsunagi:'มาสึสึนางิ (Masu-tsunagi)',
     senbon:'เซ็นบง (Senbon)', goma_gara:'โกมะการะ (Goma-gara)',
     bishamon_kikkou:'บิชามงคิกโค (Bishamon-kikkou)', seigaiha:'เซไกฮะ (Seigaiha)',
+    sakura:'ซากุระ (Sakura)', sakura_v2:'ซากุระ V2 (Sakura V2)',
     kranok_kan_khot:'กระหนกก้านขด (Kranok Kan Khot)',
     dok_phut_tan:'ดอกพุดตาน (Dok Phut Tan)', thai_rosette:'ดอกประจำยามไทย (Thai Rosette)'
   };
@@ -3780,6 +3870,8 @@ var Kumiko = (function () {
     goma_gara:'เมล็ดงา — ลายเมล็ดเล็กที่สื่อถึงความอุดมสมบูรณ์และชีวิตที่งอกงาม',
     bishamon_kikkou:'กระดองเต่าแห่งบิชามง — สัญลักษณ์คล้ายเกราะ สื่อถึงการคุ้มครอง ศักดิ์ศรี และโชคลาภ',
     seigaiha:'คลื่นทะเลสีคราม — ชีวิตสงบสุขและโชคดีต่อเนื่องไม่สิ้นสุด',
+    sakura:'ดอกซากุระ — การเริ่มต้นใหม่ ความงามอันไม่จีรัง และความหวังที่กลับมาพร้อมฤดูใบไม้ผลิ',
+    sakura_v2:'ดอกซากุระประสาน — การเริ่มต้นใหม่ ความงามอันไม่จีรัง และความหวังที่กลับมาพร้อมฤดูใบไม้ผลิ',
     kranok_kan_khot:'เปลวกระหนกเถาโค้ง — การเติบโตอย่างสง่างาม พลังชีวิต และชีวิตที่คลี่คลาย',
     dok_phut_tan:'ดอกพุดตาน — ความงามซ้อนชั้น การเบ่งบาน และความอุดมสมบูรณ์ของธรรมชาติ',
     thai_rosette:'ดอกสี่ทิศ — ความกลมกลืน สมดุล และความงามที่แผ่ออกจากศูนย์กลางร่วมกัน'
@@ -4096,7 +4188,7 @@ var Kumiko = (function () {
     host.textContent = '';
     host.appendChild(el('div', 'cap', t('Pattern')));
 
-    /* One tab per pattern family, then only that family's buttons.  Nine
+    /* One tab per pattern family, then only that family's buttons.  Many
        patterns in a single grid had become a wall; the families also read
        as what they are — two different traditions, not one long list. */
     var fams = [];
@@ -4645,7 +4737,15 @@ var Kumiko = (function () {
        and nothing is competing for the row's height. */
     if (window.matchMedia && !window.matchMedia('(min-width: 941px)').matches) return Infinity;
     var chrome = side.getBoundingClientRect().height - c.getBoundingClientRect().height;
-    var budget = view.getBoundingClientRect().height - chrome;
+    /* Budget against the preview's natural height, not its current stretched
+       height.  The side column is allowed to stretch .view to its own bottom;
+       feeding that stretched height back into the swatch made a circular
+       layout where rebuilding the picker could grow both by one pixel at a
+       time.  The desktop preview is square, subject to its 470px minimum. */
+    var viewRect = view.getBoundingClientRect();
+    var viewMin = parseFloat(getComputedStyle(view).minHeight) || 0;
+    var naturalViewH = Math.max(viewRect.width, viewMin);
+    var budget = naturalViewH - chrome;
     /* Below roughly 1000px of window the picker and the swatch's text already
        exceed the preview on their own, so no cap can make the column fit -- and
        clamping anyway shrinks the artwork to a thumbnail while the page still
@@ -4693,8 +4793,10 @@ var Kumiko = (function () {
       x.beginPath();
       x.rect(-P.size / 2, -P.modernOpenH / 2, P.size, P.modernOpenH);
       x.clip();
-      if (state.pattern === 'seigaiha') {
-        var motif = K.modernSeigaihaContours(P.size, P.modernOpenH, P.grid);
+      if (state.pattern === 'seigaiha' || state.pattern === 'sakura_v2') {
+        var motif = state.pattern === 'sakura_v2'
+          ? K.sakuraV2Contours(P.size, P.modernOpenH, P.grid)
+          : K.modernSeigaihaContours(P.size, P.modernOpenH, P.grid);
         x.fillStyle = cs.getPropertyValue('--kigara').trim();
         x.beginPath();
         for (var mc = 0; mc < motif.length; mc++) {
@@ -4721,7 +4823,8 @@ var Kumiko = (function () {
       var wrapped = model && model.P.lanternStyle === 'modern' ? model.slats : previewSegs.length;
       document.getElementById('sw-name').textContent = lang === 'th'
         ? PATTERN_TH[state.pattern] : K.PATTERN_LABEL[state.pattern];
-      document.getElementById('sw-meta').textContent = state.pattern === 'seigaiha'
+      document.getElementById('sw-meta').textContent = K.isRegion(state.pattern) ||
+                                                       state.pattern === 'seigaiha'
         ? (lang === 'th' ? 'ลายทึบซ้ำ · พันรอบต่อเนื่อง'
                          : 'filled repeat · continuously wrapped')
         : (lang === 'th' ? wrapped + ' ซี่ · พันรอบทรงกระบอก'
@@ -4743,7 +4846,7 @@ var Kumiko = (function () {
     if (K.isRegion(state.pattern)) {
       /* Fill, do not stroke: the whole point of a region is that its thickness
          varies, so outlining it would misreport what actually gets printed. */
-      var cont = K.PATTERN_REGIONS[state.pattern](P.openW, P.openH);
+      var cont = K.PATTERN_REGIONS[state.pattern](P.openW, P.openH, P.grid);
       x.fillStyle = cs.getPropertyValue('--kigara').trim();
       x.beginPath();
       for (var r = 0; r < cont.length; r++) {

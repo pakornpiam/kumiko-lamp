@@ -206,6 +206,36 @@ async function exportZip(payload) {
         'single-part export is named for the part',
         single.headers.get('content-disposition'));
 
+  const classicSakura = await exportZip({ pattern: 'sakura', style: 'classic',
+                                          part: 'panel_sakura', params: {} });
+  const classicSakuraBytes = Buffer.from(await classicSakura.arrayBuffer());
+  const classicSakuraTop = classicSakura.status === 200
+    ? stlTopology(classicSakuraBytes) : null;
+  check(classicSakura.status === 200 &&
+        /filename="panel_sakura\.stl"/.test(
+          classicSakura.headers.get('content-disposition') || ''),
+        'Classic Sakura exports under its stable panel filename');
+  check(classicSakuraTop && classicSakuraTop.nonTwo === 0 &&
+        classicSakuraTop.sameDirection === 0 &&
+        classicSakuraTop.components === 1 && classicSakuraTop.signedVolume > 0,
+        'the Classic Sakura panel is one positive float32-watertight body',
+        JSON.stringify(classicSakuraTop));
+
+  const classicSakuraV2 = await exportZip({ pattern: 'sakura_v2', style: 'classic',
+                                            part: 'panel_sakura_v2', params: {} });
+  const classicSakuraV2Bytes = Buffer.from(await classicSakuraV2.arrayBuffer());
+  const classicSakuraV2Top = classicSakuraV2.status === 200
+    ? stlTopology(classicSakuraV2Bytes) : null;
+  check(classicSakuraV2.status === 200 &&
+        /filename="panel_sakura_v2\.stl"/.test(
+          classicSakuraV2.headers.get('content-disposition') || ''),
+        'Classic Sakura V2 exports under its stable panel filename');
+  check(classicSakuraV2Top && classicSakuraV2Top.nonTwo === 0 &&
+        classicSakuraV2Top.sameDirection === 0 &&
+        classicSakuraV2Top.components === 1 && classicSakuraV2Top.signedVolume > 0,
+        'the Classic Sakura V2 panel is one positive float32-watertight body',
+        JSON.stringify(classicSakuraV2Top));
+
   // --- Modern: the strongest check in the suite --------------------------
   const modern = await exportZip({ pattern: 'asanoha', style: 'modern',
                                    params: { size: 100, height: 218 } });
@@ -234,6 +264,48 @@ async function exportZip(payload) {
   check(shadeTop.degenerate <= 3,
         'the Modern shade carries no more zero-area facets than the generator always has',
         `${shadeTop.degenerate} of ${shadeTop.triangles}`);
+
+  const modernSakura = await exportZip({ pattern: 'sakura', style: 'modern',
+                                         params: { size: 100, height: 218 } });
+  check(modernSakura.status === 200, 'subscribed Modern Sakura export succeeds',
+        String(modernSakura.status));
+  const modernSakuraBytes = Buffer.from(await modernSakura.arrayBuffer());
+  const modernSakuraParts = modernSakura.status === 200
+    ? zipEntries(modernSakuraBytes) : new Map();
+  check([...modernSakuraParts.keys()].sort().join(',') ===
+        'modern_base.stl,modern_shade_sakura.stl,socket_adapter_ring.stl',
+        'Modern Sakura zip carries its stable shade filename',
+        [...modernSakuraParts.keys()].sort().join(','));
+  const sakuraShade = modernSakuraParts.get('modern_shade_sakura.stl');
+  const sakuraTop = sakuraShade ? stlTopology(sakuraShade) : null;
+  check(sakuraTop && sakuraTop.nonTwo === 0 && sakuraTop.sameDirection === 0 &&
+        sakuraTop.components === 1 && sakuraTop.signedVolume > 0,
+        'the Modern Sakura shade is one positive float32-watertight body',
+        JSON.stringify(sakuraTop));
+  check(sakuraTop && Math.abs(sakuraTop.signedVolume / 1000 - 95.61) < 0.2,
+        'Modern Sakura export volume matches the Python manifold',
+        `${(sakuraTop.signedVolume / 1000).toFixed(2)} cm3`);
+
+  const modernSakuraV2 = await exportZip({ pattern: 'sakura_v2', style: 'modern',
+                                           params: { size: 100, height: 218 } });
+  check(modernSakuraV2.status === 200, 'subscribed Modern Sakura V2 export succeeds',
+        String(modernSakuraV2.status));
+  const modernSakuraV2Parts = modernSakuraV2.status === 200
+    ? zipEntries(Buffer.from(await modernSakuraV2.arrayBuffer())) : new Map();
+  check([...modernSakuraV2Parts.keys()].sort().join(',') ===
+        'modern_base.stl,modern_shade_sakura_v2.stl,socket_adapter_ring.stl',
+        'Modern Sakura V2 zip carries its stable shade filename',
+        [...modernSakuraV2Parts.keys()].sort().join(','));
+  const sakuraV2Shade = modernSakuraV2Parts.get('modern_shade_sakura_v2.stl');
+  const sakuraV2Top = sakuraV2Shade ? stlTopology(sakuraV2Shade) : null;
+  check(sakuraV2Top && sakuraV2Top.nonTwo === 0 &&
+        sakuraV2Top.sameDirection === 0 && sakuraV2Top.components === 1 &&
+        sakuraV2Top.signedVolume > 0,
+        'the Modern Sakura V2 shade is one positive float32-watertight body',
+        JSON.stringify(sakuraV2Top));
+  check(sakuraV2Top && Math.abs(sakuraV2Top.signedVolume / 1000 - 152.24) < 0.3,
+        'Modern Sakura V2 export volume matches the Python manifold',
+        `${(sakuraV2Top.signedVolume / 1000).toFixed(2)} cm3`);
 
   const modernGlazed = await exportZip({ pattern: 'asanoha', style: 'modern',
                                          params: { size: 100, height: 218,

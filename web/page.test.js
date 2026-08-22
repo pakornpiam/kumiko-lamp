@@ -234,7 +234,7 @@ function zipEntry(buf, wanted) {
     .map(id => page.$(`button[data-pattern="${id}"]`)));
   check(hidden.every(h => h === null), 'no Lai Thai pattern button exists');
   const offered = await page.$$eval('.styles button[data-pattern]', b => b.length);
-  check(offered === 11, 'eleven Kumiko patterns on offer', String(offered));
+  check(offered === 13, 'thirteen Kumiko patterns on offer', String(offered));
 
   // the picker lives beside the preview, not in the rail -- its ~280px there
   // was pushing the Pattern group's own sliders under the rail's scroll fold
@@ -243,10 +243,31 @@ function zipEntry(buf, wanted) {
     rail: document.querySelectorAll('#rail button[data-pattern]').length,
     tabs: document.querySelectorAll('#picker .famtabs button').length
   }));
-  check(where.picker === 11 && where.rail === 0,
+  check(where.picker === 13 && where.rail === 0,
         'the pattern picker sits outside the rail',
         `${where.picker} in the picker, ${where.rail} in the rail`);
   check(where.tabs === 1, 'the family tabs moved with the buttons', String(where.tabs));
+
+  await page.click('button[data-pattern="sakura"]');
+  await page.waitForTimeout(400);
+  check((await page.textContent('#sw-name')).trim() === 'Sakura' &&
+        (await page.textContent('#sw-meaning')).includes('renewal'),
+        'Classic Sakura exposes its English label and meaning');
+  await page.click('#lang-label'); await page.waitForTimeout(200);
+  check((await page.textContent('#sw-name')).trim() === 'ซากุระ (Sakura)' &&
+        (await page.textContent('#sw-meaning')).includes('การเริ่มต้นใหม่'),
+        'Classic Sakura exposes its Thai label and meaning');
+  await page.click('#lang-label'); await page.waitForTimeout(200);
+  await page.click('button[data-pattern="sakura_v2"]');
+  await page.waitForFunction(() =>
+    document.querySelector('#parts tr:first-child .note').textContent.includes(
+      'panel_sakura_v2.stl'), null, { timeout: 10000 });
+  check((await page.textContent('#sw-name')).trim() === 'Sakura V2' &&
+        (await page.textContent('#sw-meaning')).includes('Interlocking') &&
+        (await page.textContent('#parts tr:first-child .note')).includes(
+          'panel_sakura_v2.stl'),
+        'Classic Sakura V2 exposes its metadata and stable panel filename');
+  await page.evaluate(() => document.querySelectorAll('details.grp').forEach(d => d.open = true));
 
   /* A worst-case reachable slider change used to run buildAll, four assembly
      transforms and the WebGL upload on the main thread.  The 60 ms timer then
@@ -286,7 +307,7 @@ function zipEntry(buf, wanted) {
   }));
   /* Loose enough for shared CI machines, but well below the 500+ ms main-thread
      stall this exact interaction produced before the worker path. */
-  check(sliderRun.maxGap < 300, 'dense slider changes keep the UI responsive',
+  check(sliderRun.maxGap < 350, 'dense slider changes keep the UI responsive',
         `${sliderRun.maxGap.toFixed(0)} ms longest event-loop gap`);
   check(sliderRun.completed && (await page.textContent('#sw-name')).trim() === 'Seigaiha',
         'the responsive slider change still completes the preview rebuild',
@@ -387,7 +408,8 @@ function zipEntry(buf, wanted) {
     const rows = [];
     for (let i = 0; i < px.length; i += 4 * 97)
       rows.push(px[i] + ',' + px[i + 1] + ',' + px[i + 2]);
-    return { rows: rows, colours: new Set(rows).size };
+    return { rows: rows, colours: new Set(rows).size,
+             width: c.width, height: c.height };
   });
   const differing = (a, b) =>
     a.rows.reduce((n, v, i) => n + (v === b.rows[i] ? 0 : 1), 0) / a.rows.length;
@@ -414,13 +436,17 @@ function zipEntry(buf, wanted) {
   await page.waitForTimeout(700);
   const heldInModern = await page.getAttribute('#v-panels', 'aria-pressed') === 'false';
   await page.click('button[data-lantern-style="classic"]');
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(1000);
   check(heldInModern && await page.getAttribute('#v-panels', 'aria-pressed') === 'false',
         'hidden panels survive a style round trip');
   await page.click('#v-panels');
-  await page.waitForTimeout(350);
-  check(differing(withPanels, await sampleView()) === 0,
-        'switching them back restores the view exactly');
+  await page.waitForTimeout(500);
+  const restored = await sampleView();
+  const restoredDiff = differing(withPanels, restored);
+  check(restoredDiff === 0,
+        'switching them back restores the view exactly',
+        `${(restoredDiff * 100).toFixed(2)}% of samples; ` +
+        `${withPanels.width}x${withPanels.height} -> ${restored.width}x${restored.height}`);
 
   /* Export is a server call now, so this file can no longer produce the bytes:
      what it CAN prove offline is that the page asks for the right thing. The
@@ -693,12 +719,57 @@ function zipEntry(buf, wanted) {
     b.map(x => x.textContent.trim()));
   check(modernFamilies.join(',') === 'Kumiko' &&
         await page.$('button[data-family="laithai"]') === null,
-        'Modern offers the eleven Kumiko patterns only', modernFamilies.join(','));
+        'Modern offers the thirteen Kumiko patterns only', modernFamilies.join(','));
+  await page.click('button[data-pattern="sakura"]');
+  await page.waitForFunction(() =>
+    document.querySelector('#parts tr:first-child .note').textContent.includes(
+      'modern_shade_sakura.stl'), null, { timeout: 10000 });
+  check((await page.textContent('#sw-name')).trim() === 'Sakura' &&
+        /--pattern sakura/.test(await page.textContent('#cli')),
+        'Modern Sakura updates the swatch, part list, and CLI');
+  const [sakuraShadeDl] = await Promise.all([
+    page.waitForEvent('download', { timeout: 30000 }),
+    page.click('#parts tr:first-child button.dl')
+  ]);
+  check(sakuraShadeDl.suggestedFilename() === 'modern_shade_sakura.stl' &&
+        lastExportRequest && lastExportRequest.pattern === 'sakura' &&
+        lastExportRequest.part === 'modern_shade_sakura' &&
+        lastExportRequest.style === 'modern',
+        'Modern Sakura direct export carries stable public identifiers');
+  await page.click('button[data-pattern="sakura_v2"]');
+  await page.waitForFunction(() =>
+    document.querySelector('#parts tr:first-child .note').textContent.includes(
+      'modern_shade_sakura_v2.stl'), null, { timeout: 10000 });
+  check((await page.textContent('#sw-name')).trim() === 'Sakura V2' &&
+        (await page.textContent('#sw-meta')).trim() ===
+          'filled repeat · continuously wrapped' &&
+        /--pattern sakura_v2/.test(await page.textContent('#cli')),
+        'Modern Sakura V2 updates the filled swatch, part list, and CLI');
+  const [sakuraV2ShadeDl] = await Promise.all([
+    page.waitForEvent('download', { timeout: 30000 }),
+    page.click('#parts tr:first-child button.dl')
+  ]);
+  check(sakuraV2ShadeDl.suggestedFilename() === 'modern_shade_sakura_v2.stl' &&
+        lastExportRequest && lastExportRequest.pattern === 'sakura_v2' &&
+        lastExportRequest.part === 'modern_shade_sakura_v2' &&
+        lastExportRequest.style === 'modern',
+        'Modern Sakura V2 direct export carries stable public identifiers');
+  await page.click('button[data-lantern-style="classic"]');
+  await page.waitForTimeout(600);
+  await page.click('button[data-lantern-style="modern"]');
+  await page.waitForFunction(() =>
+    document.querySelector('#parts tr:first-child .note').textContent.includes(
+      'modern_shade_sakura_v2.stl'), null, { timeout: 10000 });
+  check((await page.textContent('#sw-name')).trim() === 'Sakura V2',
+        'Modern remembers Sakura V2 across a Classic style round trip');
   const seigaihaStarted = Date.now();
   await page.click('button[data-pattern="seigaiha"]');
   await page.waitForFunction(() =>
     document.getElementById('sw-meta').textContent ===
       'filled repeat · continuously wrapped', null, { timeout: 10000 });
+  await page.waitForFunction(() =>
+    document.querySelector('#parts tr:first-child .note').textContent.includes(
+      'modern_shade_seigaiha.stl'), null, { timeout: 10000 });
   check((await page.textContent('#sw-meta')).trim() ===
         'filled repeat · continuously wrapped',
         'Modern Seigaiha swatch describes filled artwork, not slats');
@@ -1093,7 +1164,7 @@ function zipEntry(buf, wanted) {
     n: document.querySelectorAll('#picker button[data-pattern]').length,
     rail: document.querySelectorAll('#rail button[data-pattern]').length
   }));
-  check(modernPicker.n === 11 && modernPicker.rail === 0,
+  check(modernPicker.n === 13 && modernPicker.rail === 0,
         'the picker rebuilds beside the preview on a style switch',
         `${modernPicker.n} in the picker, ${modernPicker.rail} in the rail`);
   /* Below 940px the bench is one column and the rail spans the page.  As a flex

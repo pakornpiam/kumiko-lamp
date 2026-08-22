@@ -300,6 +300,7 @@ console.log('\npattern segment counts (vs Python)');
 const segCounts = { asanoha: 350, kawari_asanoha: 286, kikkou: 79, mitsukude: 118,
                     kagome: 248, masu: 12, masu_tsunagi: 292, senbon: 22,
                     goma_gara: 162, bishamon_kikkou: 204, seigaiha: 972,
+                    sakura: 350,
                     kranok_kan_khot: 550, dok_phut_tan: 980 };
 for (const name of Object.keys(K.PATTERNS)) {
   const segs = K.clipRect(K.PATTERNS[name](P.openW, P.openH, P.grid),
@@ -310,11 +311,13 @@ for (const name of Object.keys(K.PATTERNS)) {
 
 console.log('\npattern families and cap safety');
 check(K.PATTERN_FAMILY.kranok_kan_khot === 'laithai', 'kranok is in the Lai Thai family');
-check(Object.keys(K.PATTERNS).filter(n => K.PATTERN_FAMILY[n] === 'kumiko').length === 11,
-      'eleven kumiko patterns');
+check(K.allPatternNames().filter(n => K.PATTERN_FAMILY[n] === 'kumiko').length === 13,
+      'thirteen kumiko patterns');
 check(Object.keys(K.PATTERNS).filter(n => K.PATTERN_FAMILY[n] === 'laithai').length === 2,
       'two Lai Thai patterns');
 check(K.capPattern('asanoha') === 'asanoha', 'cap keeps a kumiko pattern');
+check(K.capPattern('sakura') === 'sakura', 'cap keeps the Sakura lattice');
+check(K.capPattern('sakura_v2') === 'kikkou', 'Sakura V2 cap uses the safe Kikkou grille');
 /* kranok is a panel-sized composition, not a repeating field: squeezed into the
    vent it is a shrunken copy of the panel, so the cap falls back. */
 check(K.capPattern('kranok_kan_khot') === 'kikkou', 'cap falls back off the composition');
@@ -385,13 +388,14 @@ for (const [sample, pythonValue] of signedParity) {
 console.log('');
 console.log('region patterns');
 check(K.isRegion('thai_rosette'), 'thai_rosette is a region pattern');
+check(K.isRegion('sakura_v2'), 'Sakura V2 is imported as a filled region');
 check(!K.isRegion('asanoha'), 'asanoha is not a region pattern');
 /* Lai Thai is registered and still buildable, just not offered.  The metadata
    must keep answering for it, or the Modern guards start passing because
    PATTERN_FAMILY returns undefined rather than because it returns 'laithai'. */
-check(K.patternNames().length === 11, `11 selectable patterns`,
+check(K.patternNames().length === 13, `13 selectable patterns`,
       String(K.patternNames().length));
-check(K.allPatternNames().length === 14, `14 registered patterns`,
+check(K.allPatternNames().length === 16, `16 registered patterns`,
       String(K.allPatternNames().length));
 check(K.patternNames().every(n => K.PATTERN_FAMILY[n] === 'kumiko'),
       'nothing Lai Thai is on offer');
@@ -409,6 +413,16 @@ check(K.buildPanel(P, 'thai_rosette').region === true,
   check(Math.abs(bb.size[0] - 155.7) < 0.01 && Math.abs(bb.size[1] - 210) < 0.01,
         'rosette panel bbox 155.7 x 210',
         bb.size.map(v => v.toFixed(1)).join(' x '));
+}
+{
+  const cont = K.PATTERN_REGIONS.sakura_v2(P.openW, P.openH, P.grid);
+  check(K.SAKURA_V2_TILE_LOOPS.length === 79,
+        'Sakura V2 source repeat preserves all 79 signed contours');
+  check(cont.length > 79, `Sakura V2 repeats across the panel`,
+        `${cont.length} contours`);
+  const m = K.buildPanel(P, 'sakura_v2');
+  check(m.region === true && m.slats === 0,
+        'Sakura V2 panel is filled source artwork, not swept slats');
 }
 {
   const a = K.buildCap(P, 'kranok_kan_khot').tris.length;
@@ -763,7 +777,8 @@ const STRICT_MODERN_PY = {
   asanoha: 117.61, mitsukude: 72.03, kikkou: 55.91,
   kawari_asanoha: 103.79, kagome: 69.60, masu: 52.14,
   masu_tsunagi: 90.65, senbon: 77.37, goma_gara: 111.33,
-  bishamon_kikkou: 69.76, seigaiha: 165.90
+  bishamon_kikkou: 69.76, seigaiha: 165.90, sakura: 95.61,
+  sakura_v2: 152.24
 };
 /* Mean distance from each boundary grid vertex to the true slat outline, in the
    developed plane.  A pure cell raster leaves this at roughly a quarter cell
@@ -772,7 +787,8 @@ const STRICT_MODERN_PY = {
 function strictBoundaryError(K, P, pattern, raster) {
   const { mask, nu, nz, du, zs, C, shiftU, shiftZ } = raster;
   const grow = 0.8, zShift = P.height / 2, ring = P.modernRingH;
-  const segs = pattern === 'seigaiha' ? [] : K.clipRect(K.PATTERNS[pattern](C, P.modernOpenH, P.grid),
+  const exactFilled = pattern === 'seigaiha' || pattern === 'sakura_v2';
+  const segs = exactFilled ? [] : K.clipRect(K.PATTERNS[pattern](C, P.modernOpenH, P.grid),
     -C / 2, -P.modernOpenH / 2 - grow, C / 2, P.modernOpenH / 2 + grow)
     .map(s => [[s[0][0] + C / 2, s[0][1] + zShift],
                [s[1][0] + C / 2, s[1][1] + zShift]]);
@@ -787,10 +803,12 @@ function strictBoundaryError(K, P, pattern, raster) {
       const k = j * nu + i;
       const u = i * du + shiftU[k], z = zs[j] + shiftZ[k];
       let best = Infinity;
-      if (pattern === 'seigaiha') {
-        const delta = (P.slatW - K.SEIGAIHA_TILE_REFERENCE_SLAT) / 2;
-        const art = K.modernSeigaihaSignedDistance(u - C / 2,
-                                                   z - zShift, P) - delta;
+      if (exactFilled) {
+        const delta = pattern === 'seigaiha'
+          ? (P.slatW - K.SEIGAIHA_TILE_REFERENCE_SLAT) / 2 : 0;
+        const art = (pattern === 'sakura_v2'
+          ? K.modernSakuraV2SignedDistance(u - C / 2, z - zShift, P)
+          : K.modernSeigaihaSignedDistance(u - C / 2, z - zShift, P)) - delta;
         const seam = Math.min(Math.abs(u), Math.abs(C - u)) - P.slatW / 2;
         best = Math.min(art, seam);
       }
@@ -845,7 +863,11 @@ for (const [name, want] of Object.entries(STRICT_MODERN_PY)) {
 for (const variant of [
   { pattern: 'masu', modernThreadClear: 0.2, label: '0.20 mm clearance' },
   { pattern: 'masu', modernThreadClear: 0.6, label: '0.60 mm clearance' },
-  { pattern: 'kikkou', slatW: 0.8, label: '0.8 mm slat' }
+  { pattern: 'kikkou', slatW: 0.8, label: '0.8 mm slat' },
+  { pattern: 'sakura', grid: 12, slatW: 0.8, label: 'Sakura pitch 12 / slat 0.8' },
+  { pattern: 'sakura', grid: 12, slatW: 3.2, label: 'Sakura pitch 12 / slat 3.2' },
+  { pattern: 'sakura', grid: 45, slatW: 0.8, label: 'Sakura pitch 45 / slat 0.8' },
+  { pattern: 'sakura', grid: 45, slatW: 3.2, label: 'Sakura pitch 45 / slat 3.2' }
 ]) {
   const VP = K.derive(Object.assign({ lanternStyle: 'modern', size: 100,
                                       height: 218 }, variant));
@@ -896,7 +918,7 @@ check(K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
       'Modern export blocks when the shade exceeds build height');
 const modernCounts = { asanoha:982, mitsukude:348, kikkou:221,
   kawari_asanoha:774, kagome:600, masu:18, masu_tsunagi:706, senbon:40,
-  goma_gara:422, bishamon_kikkou:512 };
+  goma_gara:422, bishamon_kikkou:512, sakura:924 };
 for (const [name, count] of Object.entries(modernCounts)) {
   const r = K.buildAll({ lanternStyle: 'modern', size: 100, height: 218,
                          pattern: name });
@@ -908,6 +930,11 @@ const modernSeigaiha = K.buildAll({ lanternStyle: 'modern', size: 100,
 check(modernSeigaiha.problems.length === 0 &&
       modernSeigaiha.parts[0].mesh.filledRepeat === true,
       'Modern Seigaiha reports a filled continuously wrapped repeat');
+const modernSakuraV2 = K.buildAll({ lanternStyle: 'modern', size: 100,
+                                    height: 218, pattern: 'sakura_v2' });
+check(modernSakuraV2.problems.length === 0 &&
+      modernSakuraV2.parts[0].mesh.filledRepeat === true,
+      'Modern Sakura V2 reports its filled continuously wrapped source repeat');
 
 console.log('\nvariations');
 for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
@@ -918,6 +945,8 @@ for (const v of [{ size: 150, height: 170, grid: 22 }, { pattern: 'kikkou' },
                  { pattern: 'kranok_kan_khot', grid: 16 },
                  { pattern: 'dok_phut_tan' },
                  { pattern: 'seigaiha' }, { pattern: 'seigaiha', grid: 16 },
+                 { pattern: 'sakura' },
+                 { pattern: 'sakura_v2' },
                  { pattern: 'masu' }, { pattern: 'senbon' },
                  { pattern: 'senbon', grid: 45 },
                  { holderType: 'e14' },

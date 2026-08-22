@@ -16,6 +16,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY kumiko_lamp.py ./
+COPY sakura_v2_tile.py ./
 COPY container/server.py ./container/server.py
 
 # Nothing here writes outside a per-request temp dir, so it never needs root.

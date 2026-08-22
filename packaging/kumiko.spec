@@ -17,6 +17,7 @@ datas = [("../web/index.html", "web")]
 binaries = []
 hiddenimports = [
     "kumiko_lamp",
+    "sakura_v2_tile",
     "container", "container.server",
     "tools", "tools.dev_export_server",
     "manifold3d",

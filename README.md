@@ -36,7 +36,7 @@ parts. Classic's live-built lattices use a lighter representation — see
 ## Lantern styles
 
 **Classic** is the existing square lamp: four interchangeable panels slide between four
-posts, with separate feet, a grooved base and a removable top cap. It supports all eleven
+posts, with separate feet, a grooved base and a removable top cap. It supports all thirteen
 offered patterns, optional diffusers, two-piece posts, cap screws, finials and reusable
 snap locks.
 
@@ -55,7 +55,7 @@ uses its independently selected diameter. Immediately below the neck, the body c
 through a 45-degree transition; after the base is inverted for printing, that transition
 expands without a horizontal cantilever.
 
-Modern supports the eleven Kumiko patterns only. The three Lai Thai compositions are
+Modern supports the thirteen Kumiko patterns only. The three Lai Thai compositions are
 panel-sized artwork and cannot be wrapped periodically, so Modern rejects them instead of
 substituting another design. For softer light, set **Diffuser thickness** above zero to
 generate a removable closed-top cup, or leave it at zero and add a paper or vellum
@@ -68,6 +68,12 @@ reference 1.6 mm material setting it matches the source; Material width offsets 
 region thinner or thicker. A fit guard rejects any rounded opening whose estimated roof
 bridge exceeds 9 mm, and the repeat-boundary tips are normalized so every row welds.
 Classic Seigaiha remains the original three-arc line pattern.
+
+**Sakura V2** is also filled source artwork. Its repeat is extracted directly from
+`reference/vectorstock_20834246.svg`: all 79 signed contours preserve the interlocking
+blossoms, their openings, and the varying member widths. Pattern pitch scales the complete
+repeat; Material width is intentionally ignored for this motif because a uniform offset
+would alter the artwork and disconnect its finest joints.
 
 ---
 
@@ -89,8 +95,8 @@ Classic Seigaiha remains the original three-arc line pattern.
 Swap in `panel_kikkou.stl`, `panel_mitsukude.stl`, `panel_kawari_asanoha.stl`,
 `panel_kagome.stl`, `panel_masu.stl`, `panel_masu_tsunagi.stl`, `panel_senbon.stl`,
 `panel_goma_gara.stl`,
-`panel_bishamon_kikkou.stl` or `panel_seigaiha.stl` for a different motif — all
-eleven Classic panels are dimensionally identical
+`panel_bishamon_kikkou.stl`, `panel_seigaiha.stl`, `panel_sakura.stl` or
+`panel_sakura_v2.stl` for a different motif — all thirteen Classic panels are dimensionally identical
 and interchangeable. Roughly in order of open area: masu and kikkou are
 the airiest, asanoha and goma-gara the densest.
 
@@ -104,8 +110,8 @@ the airiest, asanoha and goma-gara the densest.
 | `socket_adapter_ring.stl` | **1** | Ø49.6 × 4 mm | Flat. The same E27/E14 adapter used by Classic. |
 
 Replace `asanoha` in the shade filename with `kikkou`, `mitsukude`, `kawari_asanoha`,
-`kagome`, `masu`, `masu_tsunagi`, `senbon`, `goma_gara`, `bishamon_kikkou` or
-`seigaiha`. A reference-size `modern_base.stl` and all eleven
+`kagome`, `masu`, `masu_tsunagi`, `senbon`, `goma_gara`, `bishamon_kikkou`, `seigaiha`,
+`sakura` or `sakura_v2`. A reference-size `modern_base.stl` and all thirteen
 `modern_shade_<pattern>.stl` files are checked into `stl/`; custom sizes are generated or
 downloaded on demand. The supplied reference STLs used to establish the proportions are
 not copied into the repository.
@@ -121,11 +127,23 @@ rather than a straight lattice. Classic uses rows of overlapping three-arc fans,
 offset half a fan from the one below. Modern instead uses the imported filled repeat
 described above, with its wave ends joined for one support-free cylindrical shell.
 
+**Sakura** (桜, "cherry blossom") starts with the same equilateral-triangle groundwork
+as other straight-slat Kumiko. A three-spoke insert runs from each triangle's centre to
+its edge midpoints, turning the repeating openings into geometric petals. It uses the same
+adjustable pitch and material width in Classic and Modern, and the Classic cap keeps the
+Sakura lattice rather than substituting a fallback grille.
+
+**Sakura V2** is the exact filled repeat supplied in
+`reference/vectorstock_20834246.svg`, not a rotation of the straight-slat Sakura pattern.
+It preserves the source's interlocking floral silhouette and varying stroke weights in
+Classic and around the Modern shade. Its dense contours are unsuitable at cap scale, so
+the Classic top vent safely uses the Kikkou grille when Sakura V2 is selected.
+
 **Masu** (枡格子) and **Senbon** (千本格子) are the plain ones: a bare square grid, and
 close-set vertical bars crossed by a rail every third bar. Senbon's bars run at a third of
 the pattern pitch, so the stock 28 mm gives a 9.3 mm spacing — fine enough to earn the
 "thousand sticks" of its name. At 12 and 22 slats they are the two cheapest panels to
-print, and Masu is the most open of the eleven.
+print, and Masu is the most open of the thirteen.
 
 ## The Lai Thai family is currently disabled
 
@@ -141,10 +159,9 @@ kumiko_lamp.py   LAITHAI_ENABLED = True
 web/index.html   var LAITHAI_ENABLED = true;
 ```
 
-They are switched off rather than deleted because `thai_rosette` is the only *region*
-pattern, so removing the family would take `PATTERN_REGIONS`, `extrude_region` and the
-whole imported-artwork extension point with it. The descriptions below are kept for that
-reason.
+They are switched off rather than deleted because Thai Rosette remains a complete imported
+region implementation and test case. The same region machinery now also carries Sakura V2.
+The descriptions below are kept for that reason.
 
 **Kranok Kan Khot**
 (กระหนกก้านขด) is a different kind of thing: not a repeating lattice but **one composition filling the
@@ -407,7 +424,7 @@ Every dimension lives in the `Params` dataclass at the top of `kumiko_lamp.py`. 
 worth reaching for are on the command line:
 
 ```bash
-python3 kumiko_lamp.py --all                    # Classic: all 11 offered patterns + both post styles
+python3 kumiko_lamp.py --all                    # Classic: all 13 offered patterns + both post styles
 python3 kumiko_lamp.py --style classic          # explicit form of the unchanged default
 python3 kumiko_lamp.py --pattern kikkou         # one Classic pattern's part set
 python3 kumiko_lamp.py --grid 20                # finer lattice
@@ -418,7 +435,7 @@ python3 kumiko_lamp.py --edge-chamfer 0         # square off the base and cap ed
 python3 kumiko_lamp.py --diffuser-plate 1.2     # printed diffuser behind each lattice
 
 python3 kumiko_lamp.py --style modern           # Ø100 × 218 shade + 90 mm base
-python3 kumiko_lamp.py --style modern --all     # 11 shades + base/ring + assembly preview
+python3 kumiko_lamp.py --style modern --all     # 13 shades + base/ring + assembly preview
 python3 kumiko_lamp.py --style modern --size 120 --height 240
 python3 kumiko_lamp.py --style modern --modern-base-diameter 140  # wider body, Ø100 shade
 python3 kumiko_lamp.py --style modern --panel-thickness 5  # deeper radial lattice
@@ -506,8 +523,9 @@ strict mesh is checked separately against the Python volume.
 The configurator is checked the same way, headlessly: its geometry core runs in Node and
 is compared against the Python generator's measured volumes (`base` and `leg` match to
 0.00%, `post` 0.06%, ring 0.25%) and against its pattern segment counts, slat for slat,
-across all eleven offered segment patterns. Modern adds wrapped-seam, thread, volume and
-placement comparisons across its ten swept patterns and the filled Seigaiha region. The page
+across all offered segment patterns and both imported region patterns. Modern adds wrapped-seam,
+thread, volume and placement comparisons across its eleven swept patterns and the filled
+Seigaiha and Sakura V2 repeats. The page
 itself is then driven in headless Chromium — sliders, pattern switches, bed-fit warnings,
 a deliberately unassemblable configuration to confirm it blocks rather than exports,
 Classic/Modern state switching, linked-until-edited Modern diameters, English/Thai labels,
