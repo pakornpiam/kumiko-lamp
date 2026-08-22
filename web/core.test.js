@@ -423,6 +423,11 @@ check(K.buildPanel(P, 'thai_rosette').region === true,
   const m = K.buildPanel(P, 'sakura_v2');
   check(m.region === true && m.slats === 0,
         'Sakura V2 panel is filled source artwork, not swept slats');
+  const bb = K.bbox(m.tris);
+  check(Math.abs(bb.size[0] - 155.7) < 0.01 &&
+        Math.abs(bb.size[1] - 210) < 0.01,
+        'Sakura V2 artwork stays inside the Classic panel bounds',
+        bb.size.map(v => v.toFixed(1)).join(' x '));
 }
 {
   const a = K.buildCap(P, 'kranok_kan_khot').tris.length;
